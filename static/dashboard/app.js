@@ -139,6 +139,8 @@
   const totalFollowing = document.getElementById("totalFollowing");
   const totalPostShare = document.getElementById("totalPostShare");
   const insightMeta = document.getElementById("insightMeta");
+  const insightPageHero = document.getElementById("insightPageHero");
+  const insightPageName = document.getElementById("insightPageName");
   const insightPostsTable = document.getElementById("insightPostsTable");
   const insightMetricsTable = document.getElementById("insightMetricsTable");
 
@@ -234,9 +236,13 @@
 
     if (insightMeta) {
       const fetchedAt = toIndianDateTime(data.fetched_at);
-      insightMeta.textContent = `Account ID: ${data.account_id || "-"} | Page Name: ${data.page_name || "-"} | Platform: ${
+      insightMeta.textContent = `Account ID: ${data.account_id || "-"} | Platform: ${
         data.platform || "-"
       } | Snapshot: ${data.snapshot_id || "-"} | Fetched: ${fetchedAt || "-"} | Cached: ${data.cached ? "Yes" : "No"}`;
+    }
+    if (insightPageHero && insightPageName) {
+      insightPageName.textContent = data.page_name || "-";
+      insightPageHero.hidden = false;
     }
 
     const publishedPosts = (data.published_posts || []).map((row) => ({

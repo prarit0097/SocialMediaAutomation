@@ -167,6 +167,31 @@ pre {
   font-size: 13px;
 }
 
+.page-name-hero {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid #d8b778;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #fff7e0 0%, #ffeec6 100%);
+}
+
+.page-name-label {
+  margin: 0;
+  color: #765b1d;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+.page-name-title {
+  margin: 4px 0 0;
+  font-size: 30px;
+  line-height: 1.1;
+  font-weight: 900;
+  color: #1f2b35;
+}
+
 .nested-card {
   margin-top: 12px;
   background: #fffcf7;
