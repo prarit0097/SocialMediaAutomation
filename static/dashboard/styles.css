@@ -178,6 +178,20 @@ pre {
   font-weight: 600;
 }
 
+.media-preview {
+  width: 120px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+
+.media-empty {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 @media (max-width: 760px) {
   .grid.two {
     grid-template-columns: 1fr;

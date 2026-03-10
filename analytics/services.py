@@ -16,11 +16,42 @@ def _first_metric_value(insights: list[dict], names: list[str]):
 
 
 def _get_published_posts(account: ConnectedAccount) -> list[dict]:
-    return list(
+    rows = list(
         ScheduledPost.objects.filter(account=account, status=POST_STATUS_PUBLISHED)
         .values("id", "message", "media_url", "external_post_id", "published_at", "scheduled_for")
         .order_by("-published_at", "-id")[:50]
     )
+    client = MetaClient()
+    enriched_rows = []
+    for row in rows:
+        stats = {
+            "total_views": None,
+            "total_likes": None,
+            "total_comments": None,
+        }
+        if account.platform == FACEBOOK and row.get("external_post_id"):
+            try:
+                stats = client.fetch_facebook_post_stats(
+                    post_id=row["external_post_id"],
+                    page_access_token=account.access_token,
+                )
+            except Exception:  # noqa: BLE001
+                pass
+
+        enriched_rows.append(
+            {
+                "id": row["id"],
+                "message": row["message"],
+                "media_url": row["media_url"],
+                "published_at": row["published_at"],
+                "scheduled_for": row["scheduled_for"],
+                "total_views": stats.get("total_views"),
+                "total_likes": stats.get("total_likes"),
+                "total_comments": stats.get("total_comments"),
+            }
+        )
+
+    return enriched_rows
 
 
 def build_insight_response(
@@ -40,7 +71,7 @@ def build_insight_response(
         "insights": insights,
         "summary": {
             "total_followers": total_followers,
-            "total_following": total_following,
+            "total_following": 0 if total_following is None else total_following,
             "total_post_share": len(published_posts),
         },
         "published_posts": published_posts,

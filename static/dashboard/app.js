@@ -161,6 +161,60 @@
     element.textContent = value === null || value === undefined || value === "" ? "N/A" : String(value);
   }
 
+  function isVideoUrl(url) {
+    if (!url) return false;
+    const clean = String(url).split("?")[0].toLowerCase();
+    return clean.endsWith(".mp4") || clean.endsWith(".mov") || clean.endsWith(".webm") || clean.endsWith(".m4v");
+  }
+
+  function mediaPreviewHtml(url) {
+    if (!url) return "<span class='media-empty'>No media</span>";
+    if (isVideoUrl(url)) {
+      return `<video class="media-preview" src="${url}" controls preload="metadata"></video>`;
+    }
+    return `<img class="media-preview" src="${url}" alt="post-media" loading="lazy" />`;
+  }
+
+  function renderPostsTable(container, rows) {
+    if (!container) return;
+    if (!rows.length) {
+      container.innerHTML = "<p>No published posts yet.</p>";
+      return;
+    }
+
+    const head = `
+      <tr>
+        <th>id</th>
+        <th>message</th>
+        <th>media</th>
+        <th>views</th>
+        <th>likes</th>
+        <th>comments</th>
+        <th>published_at</th>
+        <th>scheduled_for</th>
+      </tr>
+    `;
+
+    const body = rows
+      .map(
+        (row) => `
+          <tr>
+            <td>${row.id ?? ""}</td>
+            <td>${row.message ?? ""}</td>
+            <td>${mediaPreviewHtml(row.media_url)}</td>
+            <td>${row.total_views ?? 0}</td>
+            <td>${row.total_likes ?? 0}</td>
+            <td>${row.total_comments ?? 0}</td>
+            <td>${row.published_at ?? ""}</td>
+            <td>${row.scheduled_for ?? ""}</td>
+          </tr>
+        `
+      )
+      .join("");
+
+    container.innerHTML = `<table>${head}${body}</table>`;
+  }
+
   function renderInsights(data) {
     if (!data) return;
     if (insightError) insightError.textContent = "";
@@ -182,7 +236,7 @@
       scheduled_for: toIndianDateTime(row.scheduled_for),
       published_at: toIndianDateTime(row.published_at),
     }));
-    renderTable(insightPostsTable, publishedPosts);
+    renderPostsTable(insightPostsTable, publishedPosts);
 
     const metrics = (data.insights || []).map((metric) => ({
       metric: metric.name,

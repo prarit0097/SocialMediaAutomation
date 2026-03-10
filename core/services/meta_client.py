@@ -148,6 +148,38 @@ class MetaClient:
         )
         return data.get("data", [])
 
+    def fetch_facebook_post_stats(self, post_id: str, page_access_token: str) -> dict:
+        post_data = self._get(
+            f"/{post_id}",
+            {
+                "access_token": page_access_token,
+                "fields": "likes.summary(true),comments.summary(true)",
+            },
+        )
+
+        likes_count = (post_data.get("likes") or {}).get("summary", {}).get("total_count")
+        comments_count = (post_data.get("comments") or {}).get("summary", {}).get("total_count")
+        views_count = None
+        try:
+            insight_data = self._get(
+                f"/{post_id}/insights",
+                {
+                    "access_token": page_access_token,
+                    "metric": "post_impressions",
+                },
+            )
+            insights = insight_data.get("data", [])
+            if insights and insights[0].get("values"):
+                views_count = insights[0]["values"][0].get("value")
+        except MetaPermanentError:
+            views_count = None
+
+        return {
+            "total_likes": likes_count,
+            "total_comments": comments_count,
+            "total_views": views_count,
+        }
+
     def debug_token(self, input_token: str) -> dict:
         app_access_token = f"{settings.META_APP_ID}|{settings.META_APP_SECRET}"
         return self._get(
