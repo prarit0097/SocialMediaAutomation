@@ -153,11 +153,11 @@ class MetaClient:
             f"/{post_id}",
             {
                 "access_token": page_access_token,
-                "fields": "likes.summary(true),comments.summary(true)",
+                "fields": "reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0)",
             },
         )
 
-        likes_count = (post_data.get("likes") or {}).get("summary", {}).get("total_count")
+        likes_count = (post_data.get("reactions") or {}).get("summary", {}).get("total_count")
         comments_count = (post_data.get("comments") or {}).get("summary", {}).get("total_count")
         views_count = None
         try:

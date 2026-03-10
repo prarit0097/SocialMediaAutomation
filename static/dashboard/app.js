@@ -202,9 +202,9 @@
             <td>${row.id ?? ""}</td>
             <td>${row.message ?? ""}</td>
             <td>${mediaPreviewHtml(row.media_url)}</td>
-            <td>${row.total_views ?? 0}</td>
-            <td>${row.total_likes ?? 0}</td>
-            <td>${row.total_comments ?? 0}</td>
+            <td>${row.total_views ?? "-"}</td>
+            <td>${row.total_likes ?? "-"}</td>
+            <td>${row.total_comments ?? "-"}</td>
             <td>${row.published_at ?? ""}</td>
             <td>${row.scheduled_for ?? ""}</td>
           </tr>

@@ -1,9 +1,13 @@
+import logging
+
 from core.constants import FACEBOOK, POST_STATUS_PUBLISHED
 from core.services.meta_client import MetaClient
 from integrations.models import ConnectedAccount
 from publishing.models import ScheduledPost
 
 from .models import InsightSnapshot
+
+logger = logging.getLogger("analytics")
 
 
 def _first_metric_value(insights: list[dict], names: list[str]):
@@ -36,7 +40,11 @@ def _get_published_posts(account: ConnectedAccount) -> list[dict]:
                     page_access_token=account.access_token,
                 )
             except Exception:  # noqa: BLE001
-                pass
+                logger.warning(
+                    "failed to fetch post stats account_id=%s post_id=%s",
+                    account.id,
+                    row.get("external_post_id"),
+                )
 
         enriched_rows.append(
             {
