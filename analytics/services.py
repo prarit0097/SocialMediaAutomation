@@ -124,10 +124,12 @@ def build_insight_response(
     snapshot_id: int | None,
     fetched_at,
     cached: bool,
+    published_posts: list[dict] | None = None,
 ) -> dict:
     total_followers = _first_metric_value(insights, ["followers_count", "fan_count", "follower_count"])
     total_following = _first_metric_value(insights, ["follows_count", "following_count"])
-    published_posts = _get_published_posts(account)
+    if published_posts is None:
+        published_posts = _get_published_posts(account)
 
     return {
         "account_id": account.id,
@@ -157,10 +159,11 @@ def fetch_and_store_insights(account: ConnectedAccount) -> dict:
         insights = client.fetch_instagram_insights(account.ig_user_id or account.page_id, account.access_token)
         platform = "instagram"
 
+    published_posts = _get_published_posts(account)
     snapshot = InsightSnapshot.objects.create(
         account=account,
         platform=platform,
-        payload={"insights": insights},
+        payload={"insights": insights, "published_posts": published_posts},
     )
 
     return build_insight_response(
@@ -170,4 +173,5 @@ def fetch_and_store_insights(account: ConnectedAccount) -> dict:
         snapshot_id=snapshot.id,
         fetched_at=snapshot.fetched_at,
         cached=False,
+        published_posts=published_posts,
     )

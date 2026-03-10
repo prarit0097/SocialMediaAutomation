@@ -51,6 +51,7 @@ def account_insights(request: HttpRequest, account_id: int) -> JsonResponse:
             snapshot_id=latest.id,
             fetched_at=latest.fetched_at,
             cached=True,
+            published_posts=latest.payload.get("published_posts", []),
         )
         return JsonResponse(data)
 
