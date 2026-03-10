@@ -190,6 +190,7 @@
         <th>views</th>
         <th>likes</th>
         <th>comments</th>
+        <th>reason</th>
         <th>published_at</th>
         <th>scheduled_for</th>
       </tr>
@@ -208,9 +209,10 @@
             <td>${row.id ?? ""}</td>
             <td>${row.message ?? ""}</td>
             <td>${mediaPreviewHtml(row.media_url)}</td>
-            <td>${metricCell(row.total_views, row.stats_error)}</td>
-            <td>${metricCell(row.total_likes, row.stats_error)}</td>
-            <td>${metricCell(row.total_comments, row.stats_error)}</td>
+            <td>${metricCell(row.total_views, row.reason)}</td>
+            <td>${metricCell(row.total_likes, row.reason)}</td>
+            <td>${metricCell(row.total_comments, row.reason)}</td>
+            <td>${row.reason ?? "-"}</td>
             <td>${row.published_at ?? ""}</td>
             <td>${row.scheduled_for ?? ""}</td>
           </tr>

@@ -67,7 +67,7 @@ def _get_published_posts(account: ConnectedAccount) -> list[dict]:
                 "total_views": stats.get("total_views"),
                 "total_likes": stats.get("total_likes"),
                 "total_comments": stats.get("total_comments"),
-                "stats_error": stats.get("stats_error"),
+                "reason": stats.get("stats_error"),
             }
         )
 
