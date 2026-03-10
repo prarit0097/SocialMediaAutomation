@@ -234,9 +234,9 @@
 
     if (insightMeta) {
       const fetchedAt = toIndianDateTime(data.fetched_at);
-      insightMeta.textContent = `Platform: ${data.platform || "-"} | Snapshot: ${data.snapshot_id || "-"} | Fetched: ${
-        fetchedAt || "-"
-      } | Cached: ${data.cached ? "Yes" : "No"}`;
+      insightMeta.textContent = `Account ID: ${data.account_id || "-"} | Page Name: ${data.page_name || "-"} | Platform: ${
+        data.platform || "-"
+      } | Snapshot: ${data.snapshot_id || "-"} | Fetched: ${fetchedAt || "-"} | Cached: ${data.cached ? "Yes" : "No"}`;
     }
 
     const publishedPosts = (data.published_posts || []).map((row) => ({

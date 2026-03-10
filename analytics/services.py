@@ -87,6 +87,9 @@ def build_insight_response(
     published_posts = _get_published_posts(account)
 
     return {
+        "account_id": account.id,
+        "page_id": account.page_id,
+        "page_name": account.page_name,
         "platform": platform,
         "insights": insights,
         "summary": {
