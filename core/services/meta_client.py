@@ -165,12 +165,23 @@ class MetaClient:
                 f"/{post_id}/insights",
                 {
                     "access_token": page_access_token,
-                    "metric": "post_impressions",
+                    "metric": "post_impressions,post_reactions_by_type_total,post_comments",
                 },
             )
             insights = insight_data.get("data", [])
-            if insights and insights[0].get("values"):
-                views_count = insights[0]["values"][0].get("value")
+            for metric in insights:
+                name = metric.get("name")
+                values = metric.get("values") or []
+                if not values or not isinstance(values[0], dict):
+                    continue
+                metric_value = values[0].get("value")
+
+                if name == "post_impressions":
+                    views_count = metric_value
+                elif name == "post_comments" and comments_count is None:
+                    comments_count = metric_value
+                elif name == "post_reactions_by_type_total" and likes_count is None and isinstance(metric_value, dict):
+                    likes_count = sum(v for v in metric_value.values() if isinstance(v, int))
         except MetaPermanentError:
             views_count = None
 
