@@ -75,6 +75,25 @@ class MetaClient:
             payload,
         )
 
+    def publish_facebook_video(
+        self,
+        page_id: str,
+        page_access_token: str,
+        video_url: str,
+        description: str | None = None,
+    ) -> dict:
+        payload = {
+            "access_token": page_access_token,
+            "file_url": video_url,
+        }
+        if description:
+            payload["description"] = description
+
+        return self._post(
+            f"/{page_id}/videos",
+            payload,
+        )
+
     def create_instagram_media(self, ig_user_id: str, page_access_token: str, image_url: str, caption: str) -> dict:
         return self._post(
             f"/{ig_user_id}/media",
