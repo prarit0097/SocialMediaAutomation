@@ -154,21 +154,6 @@ class MetaClient:
         views_count = None
         errors: list[str] = []
 
-        # Most reliable for page posts across versions.
-        try:
-            engagement_data = self._get(
-                f"/{post_id}",
-                {
-                    "access_token": page_access_token,
-                    "fields": "engagement",
-                },
-            )
-            engagement = engagement_data.get("engagement") or {}
-            likes_count = engagement.get("reaction_count")
-            comments_count = engagement.get("comment_count")
-        except MetaAPIError as exc:
-            errors.append(f"engagement: {exc}")
-
         # Secondary fallback.
         try:
             post_data = self._get(
@@ -185,34 +170,54 @@ class MetaClient:
         except MetaAPIError as exc:
             errors.append(f"reactions/comments: {exc}")
 
-        try:
-            insight_data = self._get(
-                f"/{post_id}/insights",
-                {
-                    "access_token": page_access_token,
-                    "metric": "post_impressions,post_reactions_by_type_total,post_comments",
-                },
-            )
-            insights = insight_data.get("data", [])
-            for metric in insights:
-                name = metric.get("name")
-                values = metric.get("values") or []
+        # Per-metric fallback to avoid failing on unsupported metric names.
+        insight_metrics = [
+            "post_impressions_unique",
+            "post_reactions_by_type_total",
+            "post_reactions_like_total",
+            "post_activity_by_action_type",
+        ]
+        for metric in insight_metrics:
+            try:
+                insight_data = self._get(
+                    f"/{post_id}/insights",
+                    {
+                        "access_token": page_access_token,
+                        "metric": metric,
+                    },
+                )
+                insights = insight_data.get("data", [])
+                if not insights:
+                    continue
+                values = insights[0].get("values") or []
                 if not values or not isinstance(values[0], dict):
                     continue
                 metric_value = values[0].get("value")
 
-                if name == "post_impressions":
+                if metric == "post_impressions_unique" and views_count is None:
                     views_count = metric_value
-                elif name == "post_comments" and comments_count is None:
-                    comments_count = metric_value
-                elif name == "post_reactions_by_type_total" and likes_count is None and isinstance(metric_value, dict):
+                elif metric == "post_reactions_by_type_total" and likes_count is None and isinstance(metric_value, dict):
                     likes_count = sum(v for v in metric_value.values() if isinstance(v, int))
-        except MetaAPIError as exc:
-            errors.append(f"post insights: {exc}")
+                elif metric == "post_reactions_like_total" and likes_count is None:
+                    likes_count = metric_value
+                elif metric == "post_activity_by_action_type" and comments_count is None and isinstance(metric_value, dict):
+                    comments_count = metric_value.get("comment")
+            except MetaAPIError as exc:
+                errors.append(f"{metric}: {exc}")
 
         stats_error = None
         if likes_count is None and comments_count is None and views_count is None:
             stats_error = " | ".join(errors) if errors else "Meta did not return post engagement metrics."
+            try:
+                token_debug = self.debug_token(page_access_token).get("data", {})
+                granted_scopes = set(token_debug.get("scopes") or [])
+                required_scopes = {"pages_read_engagement", "pages_read_user_content", "read_insights"}
+                missing_scopes = sorted(required_scopes - granted_scopes)
+                if missing_scopes:
+                    stats_error = f"{stats_error} | missing_scopes: {', '.join(missing_scopes)}"
+            except MetaAPIError:
+                # Keep original stats_error if token debug fails.
+                pass
 
         return {
             "total_likes": likes_count,
