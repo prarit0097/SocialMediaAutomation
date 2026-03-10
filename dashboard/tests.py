@@ -1,6 +1,7 @@
-﻿from unittest.mock import patch
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import Client, TestCase
 
 
@@ -20,9 +21,7 @@ class DashboardAuthTests(TestCase):
         user_model.objects.create_user(username="admin", password="pass12345")
         self.client.login(username="admin", password="pass12345")
 
-        session = self.client.session
-        session["meta_oauth_state"] = "state123"
-        session.save()
+        cache.set("meta_oauth_state:state123", "1", timeout=600)
 
         mock_exchange.return_value = {"access_token": "user-token"}
         mock_pages.return_value = [

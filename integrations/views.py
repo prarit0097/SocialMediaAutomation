@@ -2,9 +2,10 @@ import logging
 import secrets
 
 from django.contrib.auth.decorators import login_required
+from django.core.cache import cache
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect
-from django.urls import reverse
+from django.conf import settings
 from django.views.decorators.http import require_GET
 
 from core.services.meta_client import MetaClient
@@ -19,9 +20,8 @@ logger = logging.getLogger("integrations")
 @login_required
 def meta_start(request: HttpRequest) -> JsonResponse:
     state = secrets.token_urlsafe(24)
-    request.session["meta_oauth_state"] = state
-    redirect_uri = request.build_absolute_uri(reverse("meta_callback"))
-    request.session["meta_oauth_redirect_uri"] = redirect_uri
+    cache.set(f"meta_oauth_state:{state}", "1", timeout=600)
+    redirect_uri = settings.META_REDIRECT_URI
 
     client = MetaClient()
     return JsonResponse({"auth_url": client.oauth_url(state, redirect_uri=redirect_uri)})
@@ -31,14 +31,13 @@ def meta_start(request: HttpRequest) -> JsonResponse:
 def meta_callback(request: HttpRequest) -> HttpResponse:
     code = request.GET.get("code")
     state = request.GET.get("state")
-    expected_state = request.session.get("meta_oauth_state")
+    has_state = cache.get(f"meta_oauth_state:{state}") if state else None
 
-    if not code or not state or state != expected_state:
+    if not code or not state or not has_state:
         return JsonResponse({"error": "Invalid OAuth callback parameters"}, status=400)
 
-    redirect_uri = request.session.get("meta_oauth_redirect_uri") or request.build_absolute_uri(reverse("meta_callback"))
-    request.session.pop("meta_oauth_state", None)
-    request.session.pop("meta_oauth_redirect_uri", None)
+    redirect_uri = settings.META_REDIRECT_URI
+    cache.delete(f"meta_oauth_state:{state}")
 
     client = MetaClient()
     token_data = client.exchange_code_for_token(code, redirect_uri=redirect_uri)
