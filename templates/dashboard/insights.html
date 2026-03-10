@@ -1,0 +1,12 @@
+﻿{% extends 'base.html' %}
+{% block content %}
+<section class="card">
+  <h1>Insights</h1>
+  <div class="inline-controls">
+    <input type="number" id="insightAccountId" placeholder="Account ID">
+    <button id="fetchInsightsBtn" class="btn">Fetch Cached/Latest</button>
+    <button id="refreshInsightsBtn" class="btn muted">Force Refresh</button>
+  </div>
+  <pre id="insightsOutput"></pre>
+</section>
+{% endblock %}

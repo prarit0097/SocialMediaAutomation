@@ -1,0 +1,21 @@
+﻿{% extends 'base.html' %}
+{% block content %}
+<section class="card">
+  <h1>Overview</h1>
+  <p>Use the navigation to connect accounts, schedule posts, and view insights.</p>
+  <div class="grid two">
+    <a class="tile" href="{% url 'dashboard:accounts' %}">
+      <h3>Connected Accounts</h3>
+      <p>Connect Meta and inspect linked FB/IG entities.</p>
+    </a>
+    <a class="tile" href="{% url 'dashboard:scheduler' %}">
+      <h3>Scheduler</h3>
+      <p>Create and monitor publishing jobs.</p>
+    </a>
+    <a class="tile" href="{% url 'dashboard:insights' %}">
+      <h3>Insights</h3>
+      <p>Fetch and review page/account metrics.</p>
+    </a>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,27 @@
+﻿{% extends 'base.html' %}
+{% block content %}
+<section class="card">
+  <h1>Schedule Posts</h1>
+  <form id="scheduleForm" class="form-grid">
+    {% csrf_token %}
+    <label>Account ID<input type="number" name="account_id" required></label>
+    <label>Platform
+      <select name="platform" required>
+        <option value="facebook">Facebook</option>
+        <option value="instagram">Instagram</option>
+      </select>
+    </label>
+    <label>Message<textarea name="message" rows="4"></textarea></label>
+    <label>Media URL (required for Instagram)<input type="url" name="media_url"></label>
+    <label>Scheduled For (UTC)<input type="datetime-local" name="scheduled_for" required></label>
+    <button type="submit">Schedule</button>
+  </form>
+  <p id="scheduleResult"></p>
+</section>
+
+<section class="card">
+  <h2>Scheduled Queue</h2>
+  <button id="refreshScheduledBtn" class="btn muted">Refresh</button>
+  <div id="scheduledTable" class="table-wrap"></div>
+</section>
+{% endblock %}

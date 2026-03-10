@@ -1,0 +1,11 @@
+﻿{% extends 'base.html' %}
+{% block content %}
+<section class="card compact">
+  <h1>Admin Login</h1>
+  <form method="post" class="form-grid">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Login</button>
+  </form>
+</section>
+{% endblock %}

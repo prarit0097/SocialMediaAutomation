@@ -1,0 +1,93 @@
+﻿import json
+import logging
+from datetime import datetime, timezone as dt_timezone
+
+from django.contrib.auth.decorators import login_required
+from django.http import HttpRequest, JsonResponse
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
+from django.views.decorators.http import require_GET, require_POST
+
+from integrations.models import ConnectedAccount
+
+from .models import ScheduledPost
+
+logger = logging.getLogger("publishing")
+
+
+def _bad_request(message: str, details: dict | None = None) -> JsonResponse:
+    body = {"error": message}
+    if details:
+        body["details"] = details
+    return JsonResponse(body, status=400)
+
+
+@require_POST
+@login_required
+def schedule_post(request: HttpRequest) -> JsonResponse:
+    try:
+        payload = json.loads(request.body.decode())
+    except json.JSONDecodeError:
+        return _bad_request("Invalid JSON body")
+
+    account_id = payload.get("account_id")
+    platform = payload.get("platform")
+    message = payload.get("message")
+    media_url = payload.get("media_url")
+    scheduled_for = payload.get("scheduled_for")
+
+    if not account_id or not platform or not scheduled_for:
+        return _bad_request("account_id, platform, and scheduled_for are required")
+
+    account = ConnectedAccount.objects.filter(id=account_id).first()
+    if not account:
+        return JsonResponse({"error": "Connected account not found"}, status=404)
+
+    dt = parse_datetime(scheduled_for)
+    if not isinstance(dt, datetime):
+        return _bad_request("scheduled_for must be valid ISO8601 datetime")
+    if timezone.is_naive(dt):
+        dt = timezone.make_aware(dt, timezone=dt_timezone.utc)
+
+    post = ScheduledPost(
+        account=account,
+        platform=platform,
+        message=message,
+        media_url=media_url,
+        scheduled_for=dt,
+    )
+
+    try:
+        post.save()
+    except Exception as exc:  # noqa: BLE001
+        return _bad_request("Validation failed", {"message": str(exc)})
+
+    logger.info(
+        "post scheduled id=%s platform=%s account_id=%s scheduled_for=%s",
+        post.id,
+        post.platform,
+        post.account_id,
+        post.scheduled_for,
+    )
+    return JsonResponse({"id": post.id, "status": post.status}, status=201)
+
+
+@require_GET
+@login_required
+def list_scheduled_posts(_request: HttpRequest) -> JsonResponse:
+    rows = list(
+        ScheduledPost.objects.select_related("account").values(
+            "id",
+            "platform",
+            "message",
+            "media_url",
+            "scheduled_for",
+            "status",
+            "error_message",
+            "external_post_id",
+            "account__page_name",
+        )
+    )
+    for row in rows:
+        row["page_name"] = row.pop("account__page_name")
+    return JsonResponse(rows, safe=False)

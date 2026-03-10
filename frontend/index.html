@@ -1,0 +1,61 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Social Media Automation</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>Social Media Automation Dashboard</h1>
+
+      <section class="card">
+        <h2>1) Connect Meta Accounts</h2>
+        <button id="connectBtn">Connect Facebook + Instagram</button>
+      </section>
+
+      <section class="card">
+        <h2>2) Connected Accounts</h2>
+        <button id="refreshAccountsBtn">Refresh Accounts</button>
+        <div id="accounts"></div>
+      </section>
+
+      <section class="card">
+        <h2>3) Schedule Post</h2>
+        <form id="scheduleForm">
+          <label>Account ID <input type="number" id="accountId" required /></label>
+          <label>
+            Platform
+            <select id="platform" required>
+              <option value="facebook">Facebook</option>
+              <option value="instagram">Instagram</option>
+            </select>
+          </label>
+          <label>Message <textarea id="message" rows="4"></textarea></label>
+          <label>Media URL (required for Instagram)<input type="url" id="mediaUrl" /></label>
+          <label>Scheduled For (UTC)<input type="datetime-local" id="scheduledFor" required /></label>
+          <button type="submit">Schedule</button>
+        </form>
+        <p id="scheduleResult"></p>
+      </section>
+
+      <section class="card">
+        <h2>4) Scheduled Posts</h2>
+        <button id="refreshScheduledBtn">Refresh Scheduled Posts</button>
+        <div id="scheduled"></div>
+      </section>
+
+      <section class="card">
+        <h2>5) Insights</h2>
+        <div class="insight-controls">
+          <input type="number" id="insightAccountId" placeholder="Account ID" />
+          <button id="fetchInsightsBtn">Fetch Insights</button>
+        </div>
+        <pre id="insights"></pre>
+      </section>
+    </main>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>
