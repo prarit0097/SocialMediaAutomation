@@ -99,6 +99,13 @@ button,
   cursor: pointer;
 }
 
+.retry-failed-btn {
+  width: auto;
+  padding: 6px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+}
+
 .btn.muted {
   background: var(--accent-2);
 }

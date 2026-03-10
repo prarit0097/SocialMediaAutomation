@@ -8,6 +8,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.http import require_GET, require_POST
 
+from core.constants import POST_STATUS_FAILED, POST_STATUS_PENDING
 from integrations.models import ConnectedAccount
 
 from .models import ScheduledPost
@@ -91,3 +92,39 @@ def list_scheduled_posts(_request: HttpRequest) -> JsonResponse:
     for row in rows:
         row["page_name"] = row.pop("account__page_name")
     return JsonResponse(rows, safe=False)
+
+
+@require_POST
+@login_required
+def retry_failed_post(request: HttpRequest, post_id: int) -> JsonResponse:
+    post = ScheduledPost.objects.filter(id=post_id).first()
+    if not post:
+        return JsonResponse({"error": "Scheduled post not found"}, status=404)
+
+    if post.status != POST_STATUS_FAILED:
+        return _bad_request("Only failed posts can be retried")
+
+    retry_time = timezone.now()
+    try:
+        payload = json.loads(request.body.decode() or "{}")
+    except json.JSONDecodeError:
+        return _bad_request("Invalid JSON body")
+
+    requested_time = payload.get("scheduled_for")
+    if requested_time:
+        dt = parse_datetime(requested_time)
+        if not isinstance(dt, datetime):
+            return _bad_request("scheduled_for must be valid ISO8601 datetime")
+        if timezone.is_naive(dt):
+            dt = timezone.make_aware(dt, timezone=dt_timezone.utc)
+        retry_time = dt
+
+    post.status = POST_STATUS_PENDING
+    post.error_message = ""
+    post.external_post_id = ""
+    post.published_at = None
+    post.scheduled_for = retry_time
+    post.save(update_fields=["status", "error_message", "external_post_id", "published_at", "scheduled_for", "updated_at"])
+
+    logger.info("failed post retried id=%s by_user=%s scheduled_for=%s", post.id, request.user.id, post.scheduled_for)
+    return JsonResponse({"id": post.id, "status": post.status, "scheduled_for": post.scheduled_for.isoformat()})

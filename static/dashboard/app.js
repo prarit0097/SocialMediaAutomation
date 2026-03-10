@@ -37,6 +37,60 @@
     container.innerHTML = `<table>${head}${body}</table>`;
   }
 
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function renderScheduledTable(container, rows) {
+    if (!container) return;
+    if (!rows.length) {
+      container.innerHTML = "<p>No records found.</p>";
+      return;
+    }
+
+    const head = `
+      <tr>
+        <th>id</th>
+        <th>platform</th>
+        <th>message</th>
+        <th>media_url</th>
+        <th>scheduled_for</th>
+        <th>due_in</th>
+        <th>status</th>
+        <th>error_message</th>
+        <th>page_name</th>
+        <th>actions</th>
+      </tr>
+    `;
+
+    const body = rows
+      .map((row) => {
+        const canRetry = row.status === "failed";
+        return `
+          <tr>
+            <td>${escapeHtml(row.id)}</td>
+            <td>${escapeHtml(row.platform)}</td>
+            <td>${escapeHtml(row.message)}</td>
+            <td>${escapeHtml(row.media_url)}</td>
+            <td>${escapeHtml(row.scheduled_for)}</td>
+            <td>${escapeHtml(row.due_in)}</td>
+            <td>${escapeHtml(row.status)}</td>
+            <td>${escapeHtml(row.error_message)}</td>
+            <td>${escapeHtml(row.page_name)}</td>
+            <td>${canRetry ? `<button class="btn retry-failed-btn" data-post-id="${row.id}">Retry Failed</button>` : "-"}</td>
+          </tr>
+        `;
+      })
+      .join("");
+
+    container.innerHTML = `<table>${head}${body}</table>`;
+  }
+
   async function loadAccounts() {
     const table = document.getElementById("accountsTable");
     if (!table) return;
@@ -92,10 +146,22 @@
           due_in: formatDueIn(utcValue, row.status),
         };
       });
-      renderTable(table, rowsWithLocalTime);
+      renderScheduledTable(table, rowsWithLocalTime);
     } catch (err) {
       table.innerHTML = `<p>${err.message}</p>`;
     }
+  }
+
+  async function retryFailedPost(postId) {
+    await fetchJSON(`/api/posts/${postId}/retry/`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": csrfToken,
+      },
+      body: JSON.stringify({}),
+    });
+    await loadScheduledPosts();
   }
 
   const connectBtn = document.getElementById("connectMetaBtn");
@@ -116,6 +182,24 @@
   if (refreshScheduledBtn) {
     refreshScheduledBtn.addEventListener("click", loadScheduledPosts);
     loadScheduledPosts();
+  }
+  const scheduledTable = document.getElementById("scheduledTable");
+  if (scheduledTable) {
+    scheduledTable.addEventListener("click", async (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement) || !target.classList.contains("retry-failed-btn")) {
+        return;
+      }
+      const postId = Number(target.dataset.postId);
+      if (!postId) return;
+      const ok = window.confirm(`Retry failed post #${postId} now?`);
+      if (!ok) return;
+      try {
+        await retryFailedPost(postId);
+      } catch (err) {
+        window.alert(`Retry failed: ${err.message}`);
+      }
+    });
   }
 
   const scheduleForm = document.getElementById("scheduleForm");
