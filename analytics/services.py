@@ -1,6 +1,7 @@
 import logging
 
 from core.constants import FACEBOOK, POST_STATUS_PUBLISHED
+from core.exceptions import MetaAPIError
 from core.services.meta_client import MetaClient
 from integrations.models import ConnectedAccount
 from publishing.models import ScheduledPost
@@ -39,12 +40,22 @@ def _get_published_posts(account: ConnectedAccount) -> list[dict]:
                     post_id=row["external_post_id"],
                     page_access_token=account.access_token,
                 )
-            except Exception:  # noqa: BLE001
+            except MetaAPIError as exc:
                 logger.warning(
-                    "failed to fetch post stats account_id=%s post_id=%s",
+                    "failed to fetch post stats account_id=%s post_id=%s error=%s",
                     account.id,
                     row.get("external_post_id"),
+                    str(exc),
                 )
+                stats["stats_error"] = str(exc)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "failed to fetch post stats account_id=%s post_id=%s error=%s",
+                    account.id,
+                    row.get("external_post_id"),
+                    str(exc),
+                )
+                stats["stats_error"] = str(exc)
 
         enriched_rows.append(
             {
@@ -56,6 +67,7 @@ def _get_published_posts(account: ConnectedAccount) -> list[dict]:
                 "total_views": stats.get("total_views"),
                 "total_likes": stats.get("total_likes"),
                 "total_comments": stats.get("total_comments"),
+                "stats_error": stats.get("stats_error"),
             }
         )
 

@@ -4,7 +4,7 @@ import requests
 from django.conf import settings
 
 from core.constants import META_SCOPES
-from core.exceptions import MetaPermanentError, MetaTransientError
+from core.exceptions import MetaAPIError, MetaPermanentError, MetaTransientError
 
 
 class MetaClient:
@@ -149,17 +149,41 @@ class MetaClient:
         return data.get("data", [])
 
     def fetch_facebook_post_stats(self, post_id: str, page_access_token: str) -> dict:
-        post_data = self._get(
-            f"/{post_id}",
-            {
-                "access_token": page_access_token,
-                "fields": "reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0)",
-            },
-        )
-
-        likes_count = (post_data.get("reactions") or {}).get("summary", {}).get("total_count")
-        comments_count = (post_data.get("comments") or {}).get("summary", {}).get("total_count")
+        likes_count = None
+        comments_count = None
         views_count = None
+
+        # Most reliable for page posts across versions.
+        try:
+            engagement_data = self._get(
+                f"/{post_id}",
+                {
+                    "access_token": page_access_token,
+                    "fields": "engagement",
+                },
+            )
+            engagement = engagement_data.get("engagement") or {}
+            likes_count = engagement.get("reaction_count")
+            comments_count = engagement.get("comment_count")
+        except MetaAPIError:
+            pass
+
+        # Secondary fallback.
+        try:
+            post_data = self._get(
+                f"/{post_id}",
+                {
+                    "access_token": page_access_token,
+                    "fields": "reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0)",
+                },
+            )
+            if likes_count is None:
+                likes_count = (post_data.get("reactions") or {}).get("summary", {}).get("total_count")
+            if comments_count is None:
+                comments_count = (post_data.get("comments") or {}).get("summary", {}).get("total_count")
+        except MetaAPIError:
+            pass
+
         try:
             insight_data = self._get(
                 f"/{post_id}/insights",
@@ -182,8 +206,8 @@ class MetaClient:
                     comments_count = metric_value
                 elif name == "post_reactions_by_type_total" and likes_count is None and isinstance(metric_value, dict):
                     likes_count = sum(v for v in metric_value.values() if isinstance(v, int))
-        except MetaPermanentError:
-            views_count = None
+        except MetaAPIError:
+            pass
 
         return {
             "total_likes": likes_count,

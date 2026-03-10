@@ -195,6 +195,12 @@
       </tr>
     `;
 
+    function metricCell(value, err) {
+      if (value !== null && value !== undefined && value !== "") return String(value);
+      const title = err ? String(err).replace(/"/g, "&quot;") : "Metric unavailable";
+      return `<span title="${title}">-</span>`;
+    }
+
     const body = rows
       .map(
         (row) => `
@@ -202,9 +208,9 @@
             <td>${row.id ?? ""}</td>
             <td>${row.message ?? ""}</td>
             <td>${mediaPreviewHtml(row.media_url)}</td>
-            <td>${row.total_views ?? "-"}</td>
-            <td>${row.total_likes ?? "-"}</td>
-            <td>${row.total_comments ?? "-"}</td>
+            <td>${metricCell(row.total_views, row.stats_error)}</td>
+            <td>${metricCell(row.total_likes, row.stats_error)}</td>
+            <td>${metricCell(row.total_comments, row.stats_error)}</td>
             <td>${row.published_at ?? ""}</td>
             <td>${row.scheduled_for ?? ""}</td>
           </tr>
