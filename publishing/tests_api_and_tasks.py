@@ -40,6 +40,20 @@ class PublishingApiTests(TestCase):
         self.assertEqual(ScheduledPost.objects.count(), 1)
         self.assertEqual(ScheduledPost.objects.first().status, POST_STATUS_PENDING)
 
+    def test_schedule_post_rejects_account_platform_mismatch(self):
+        response = self.client.post(
+            reverse("schedule_post"),
+            data={
+                "account_id": self.account.id,
+                "platform": "instagram",
+                "message": "Hello",
+                "scheduled_for": (timezone.now() + timedelta(minutes=10)).isoformat(),
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "account_id does not belong to selected platform")
+
 
 class PublishingTaskTests(TestCase):
     def setUp(self):

@@ -21,6 +21,21 @@
     return data;
   }
 
+  function withButtonLoading(button, label, loadingLabel) {
+    if (!button) return async (fn) => fn();
+    const defaultLabel = label || button.textContent || "";
+    return async (fn) => {
+      button.disabled = true;
+      button.textContent = loadingLabel;
+      try {
+        return await fn();
+      } finally {
+        button.disabled = false;
+        button.textContent = defaultLabel;
+      }
+    };
+  }
+
   function renderTable(container, rows) {
     if (!container) return;
     if (!rows.length) {
@@ -166,21 +181,26 @@
 
   const connectBtn = document.getElementById("connectMetaBtn");
   if (connectBtn) {
+    const runWithConnectLoading = withButtonLoading(connectBtn, "Connect Facebook + Instagram", "Connecting...");
     connectBtn.addEventListener("click", async () => {
-      const data = await fetchJSON("/auth/meta/start");
-      window.location.href = data.auth_url;
+      await runWithConnectLoading(async () => {
+        const data = await fetchJSON("/auth/meta/start");
+        window.location.href = data.auth_url;
+      });
     });
   }
 
   const refreshAccountsBtn = document.getElementById("refreshAccountsBtn");
   if (refreshAccountsBtn) {
-    refreshAccountsBtn.addEventListener("click", loadAccounts);
+    const runWithRefreshAccountsLoading = withButtonLoading(refreshAccountsBtn, "Refresh List", "Refreshing...");
+    refreshAccountsBtn.addEventListener("click", () => runWithRefreshAccountsLoading(loadAccounts));
     loadAccounts();
   }
 
   const refreshScheduledBtn = document.getElementById("refreshScheduledBtn");
   if (refreshScheduledBtn) {
-    refreshScheduledBtn.addEventListener("click", loadScheduledPosts);
+    const runWithRefreshScheduleLoading = withButtonLoading(refreshScheduledBtn, "Refresh", "Refreshing...");
+    refreshScheduledBtn.addEventListener("click", () => runWithRefreshScheduleLoading(loadScheduledPosts));
     loadScheduledPosts();
   }
   const scheduledTable = document.getElementById("scheduledTable");
@@ -204,6 +224,8 @@
 
   const scheduleForm = document.getElementById("scheduleForm");
   if (scheduleForm) {
+    const scheduleSubmitBtn = scheduleForm.querySelector("button[type='submit']");
+    const runWithScheduleLoading = withButtonLoading(scheduleSubmitBtn, "Schedule Post", "Scheduling...");
     scheduleForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       const formData = new FormData(scheduleForm);
@@ -218,16 +240,18 @@
 
       const resultEl = document.getElementById("scheduleResult");
       try {
-        const data = await fetchJSON("/api/posts/schedule/", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-CSRFToken": csrfToken,
-          },
-          body: JSON.stringify(payload),
-        });
+        const data = await runWithScheduleLoading(() =>
+          fetchJSON("/api/posts/schedule/", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRFToken": csrfToken,
+            },
+            body: JSON.stringify(payload),
+          })
+        );
         resultEl.textContent = `Scheduled: #${data.id}`;
-        loadScheduledPosts();
+        await loadScheduledPosts();
       } catch (err) {
         resultEl.textContent = `Error: ${err.message}`;
       }
@@ -311,15 +335,15 @@
       .map(
         (row) => `
           <tr>
-            <td>${row.id ?? ""}</td>
-            <td>${row.message ?? ""}</td>
+            <td>${escapeHtml(row.id)}</td>
+            <td>${escapeHtml(row.message)}</td>
             <td>${mediaPreviewHtml(row.media_url)}</td>
             <td>${metricCell(row.total_views, row.reason)}</td>
             <td>${metricCell(row.total_likes, row.reason)}</td>
             <td>${metricCell(row.total_comments, row.reason)}</td>
-            <td>${row.reason ?? "-"}</td>
-            <td>${row.published_at ?? ""}</td>
-            <td>${row.scheduled_for ?? ""}</td>
+            <td>${escapeHtml(row.reason || "-")}</td>
+            <td>${escapeHtml(row.published_at)}</td>
+            <td>${escapeHtml(row.scheduled_for)}</td>
           </tr>
         `
       )
@@ -382,9 +406,11 @@
   }
 
   if (fetchInsightsBtn) {
-    fetchInsightsBtn.addEventListener("click", () => loadInsights(false));
+    const runWithFetchInsightsLoading = withButtonLoading(fetchInsightsBtn, "Fetch Cached/Latest", "Fetching...");
+    fetchInsightsBtn.addEventListener("click", () => runWithFetchInsightsLoading(() => loadInsights(false)));
   }
   if (refreshInsightsBtn) {
-    refreshInsightsBtn.addEventListener("click", () => loadInsights(true));
+    const runWithRefreshInsightsLoading = withButtonLoading(refreshInsightsBtn, "Force Refresh", "Refreshing...");
+    refreshInsightsBtn.addEventListener("click", () => runWithRefreshInsightsLoading(() => loadInsights(true)));
   }
 })();

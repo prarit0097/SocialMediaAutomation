@@ -29,6 +29,11 @@ def meta_start(request: HttpRequest) -> JsonResponse:
 
 @require_GET
 def meta_callback(request: HttpRequest) -> HttpResponse:
+    oauth_error = request.GET.get("error")
+    if oauth_error:
+        description = request.GET.get("error_description") or request.GET.get("error_reason") or oauth_error
+        return JsonResponse({"error": "Meta OAuth failed", "details": description}, status=400)
+
     code = request.GET.get("code")
     state = request.GET.get("state")
     has_state = cache.get(f"meta_oauth_state:{state}") if state else None

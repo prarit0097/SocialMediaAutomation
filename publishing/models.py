@@ -35,6 +35,9 @@ class ScheduledPost(models.Model):
         has_message = bool((self.message or "").strip())
         has_media = bool(self.media_url)
 
+        if self.account_id and self.account and self.platform != self.account.platform:
+            raise ValidationError({"platform": "Selected account and platform do not match."})
+
         if self.platform == FACEBOOK and not (has_message or has_media):
             raise ValidationError({"message": "Facebook posts require message or media_url."})
 

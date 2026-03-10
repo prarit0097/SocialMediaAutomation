@@ -8,7 +8,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.http import require_GET, require_POST
 
-from core.constants import POST_STATUS_FAILED, POST_STATUS_PENDING
+from core.constants import PLATFORM_CHOICES, POST_STATUS_FAILED, POST_STATUS_PENDING
 from integrations.models import ConnectedAccount
 
 from .models import ScheduledPost
@@ -40,9 +40,15 @@ def schedule_post(request: HttpRequest) -> JsonResponse:
     if not account_id or not platform or not scheduled_for:
         return _bad_request("account_id, platform, and scheduled_for are required")
 
+    valid_platforms = {choice[0] for choice in PLATFORM_CHOICES}
+    if platform not in valid_platforms:
+        return _bad_request("platform must be facebook or instagram")
+
     account = ConnectedAccount.objects.filter(id=account_id).first()
     if not account:
         return JsonResponse({"error": "Connected account not found"}, status=404)
+    if account.platform != platform:
+        return _bad_request("account_id does not belong to selected platform")
 
     dt = parse_datetime(scheduled_for)
     if not isinstance(dt, datetime):
@@ -88,6 +94,7 @@ def list_scheduled_posts(_request: HttpRequest) -> JsonResponse:
             "external_post_id",
             "account__page_name",
         )
+        .order_by("-scheduled_for", "-id")
     )
     for row in rows:
         row["page_name"] = row.pop("account__page_name")
