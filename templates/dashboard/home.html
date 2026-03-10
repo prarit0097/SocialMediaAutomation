@@ -1,20 +1,25 @@
-﻿{% extends 'base.html' %}
+{% extends 'base.html' %}
 {% block content %}
+<section class="card hero-card">
+  <p class="eyebrow">Operations Dashboard</p>
+  <h1>Manage Pages, Publishing, and Insights</h1>
+  <p class="hero-copy">Connect Meta pages, schedule content, and monitor growth from one workspace.</p>
+</section>
+
 <section class="card">
-  <h1>Overview</h1>
-  <p>Use the navigation to connect accounts, schedule posts, and view insights.</p>
+  <h2>Quick Actions</h2>
   <div class="grid two">
     <a class="tile" href="{% url 'dashboard:accounts' %}">
       <h3>Connected Accounts</h3>
-      <p>Connect Meta and inspect linked FB/IG entities.</p>
+      <p>Connect Facebook pages and linked Instagram accounts.</p>
     </a>
     <a class="tile" href="{% url 'dashboard:scheduler' %}">
       <h3>Scheduler</h3>
-      <p>Create and monitor publishing jobs.</p>
+      <p>Plan posts, monitor status, and retry failures quickly.</p>
     </a>
     <a class="tile" href="{% url 'dashboard:insights' %}">
       <h3>Insights</h3>
-      <p>Fetch and review page/account metrics.</p>
+      <p>Track follower growth and recent content performance.</p>
     </a>
   </div>
 </section>

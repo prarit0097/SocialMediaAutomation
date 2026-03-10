@@ -1,9 +1,16 @@
-﻿{% extends 'base.html' %}
+{% extends 'base.html' %}
 {% block content %}
-<section class="card">
+<section class="card hero-card">
+  <p class="eyebrow">Accounts</p>
   <h1>Connected Accounts</h1>
-  <button id="connectMetaBtn" class="btn">Connect Facebook + Instagram</button>
-  <button id="refreshAccountsBtn" class="btn muted">Refresh</button>
+  <p class="hero-copy">Link your Meta assets once and manage publishing from this control center.</p>
+</section>
+
+<section class="card">
+  <div class="section-actions">
+    <button id="connectMetaBtn" class="btn">Connect Facebook + Instagram</button>
+    <button id="refreshAccountsBtn" class="btn muted">Refresh List</button>
+  </div>
   <div id="accountsTable" class="table-wrap"></div>
 </section>
 {% endblock %}

@@ -1,9 +1,14 @@
 {% extends 'base.html' %}
 {% block content %}
-<section class="card">
+<section class="card hero-card">
+  <p class="eyebrow">Analytics</p>
   <h1>Insights</h1>
+  <p class="hero-copy">Review follower trends and latest page content performance in one place.</p>
+</section>
+
+<section class="card">
   <div class="inline-controls">
-    <input type="number" id="insightAccountId" placeholder="Account ID">
+    <input type="number" id="insightAccountId" placeholder="Enter Account ID">
     <button id="fetchInsightsBtn" class="btn">Fetch Cached/Latest</button>
     <button id="refreshInsightsBtn" class="btn muted">Force Refresh</button>
   </div>

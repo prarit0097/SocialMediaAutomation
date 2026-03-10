@@ -1,7 +1,9 @@
-﻿{% extends 'base.html' %}
+{% extends 'base.html' %}
 {% block content %}
-<section class="card compact">
+<section class="card compact login-card">
+  <p class="eyebrow">Internal Access</p>
   <h1>Admin Login</h1>
+  <p class="hero-copy">Sign in to manage connected pages, scheduling, and insights.</p>
   <form method="post" class="form-grid">
     {% csrf_token %}
     {{ form.as_p }}

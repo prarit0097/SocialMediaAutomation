@@ -1,7 +1,12 @@
-﻿{% extends 'base.html' %}
+{% extends 'base.html' %}
 {% block content %}
-<section class="card">
+<section class="card hero-card">
+  <p class="eyebrow">Publishing</p>
   <h1>Schedule Posts</h1>
+  <p class="hero-copy">Create timed publishing jobs for Facebook and Instagram with local-time scheduling.</p>
+</section>
+
+<section class="card">
   <form id="scheduleForm" class="form-grid">
     {% csrf_token %}
     <label>Account ID<input type="number" name="account_id" required></label>
@@ -14,15 +19,17 @@
     <label>Message<textarea name="message" rows="4"></textarea></label>
     <label>Media URL (required for Instagram)<input type="url" name="media_url"></label>
     <label>Scheduled For (Local Time)<input type="datetime-local" name="scheduled_for" required></label>
-    <small>Your browser local timezone is used. We store UTC internally.</small>
-    <button type="submit">Schedule</button>
+    <small>Your browser timezone is used. We store UTC internally.</small>
+    <button type="submit">Schedule Post</button>
   </form>
   <p id="scheduleResult"></p>
 </section>
 
 <section class="card">
-  <h2>Scheduled Queue</h2>
-  <button id="refreshScheduledBtn" class="btn muted">Refresh</button>
+  <div class="section-head">
+    <h2>Scheduled Queue</h2>
+    <button id="refreshScheduledBtn" class="btn muted">Refresh</button>
+  </div>
   <div id="scheduledTable" class="table-wrap"></div>
 </section>
 {% endblock %}
