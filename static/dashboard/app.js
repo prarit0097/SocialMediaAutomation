@@ -53,6 +53,24 @@
     if (!table) return;
     try {
       const rows = await fetchJSON("/api/posts/scheduled/");
+      const now = new Date();
+
+      function formatDueIn(utcValue, status) {
+        if (!utcValue) return "-";
+        const target = new Date(utcValue);
+        if (Number.isNaN(target.getTime())) return "-";
+
+        const diffMs = target.getTime() - now.getTime();
+        if (status !== "pending") return "-";
+        if (diffMs <= 0) return "Due now";
+
+        const totalMinutes = Math.ceil(diffMs / 60000);
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        if (hours <= 0) return `${minutes} min`;
+        return `${hours}h ${minutes}m`;
+      }
+
       const rowsWithLocalTime = rows.map((row) => {
         const utcValue = row.scheduled_for;
         const localValue = utcValue
@@ -71,6 +89,7 @@
           ...row,
           scheduled_for: localValue,
           scheduled_for_utc: utcValue,
+          due_in: formatDueIn(utcValue, row.status),
         };
       });
       renderTable(table, rowsWithLocalTime);
