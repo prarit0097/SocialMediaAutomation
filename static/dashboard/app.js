@@ -55,10 +55,22 @@
       const rows = await fetchJSON("/api/posts/scheduled/");
       const rowsWithLocalTime = rows.map((row) => {
         const utcValue = row.scheduled_for;
-        const localValue = utcValue ? new Date(utcValue).toLocaleString() : "";
+        const localValue = utcValue
+          ? new Date(utcValue).toLocaleString("en-IN", {
+              timeZone: "Asia/Kolkata",
+              day: "2-digit",
+              month: "2-digit",
+              year: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+              hour12: true,
+            })
+          : "";
         return {
           ...row,
-          scheduled_for_local: localValue,
+          scheduled_for: localValue,
+          scheduled_for_utc: utcValue,
         };
       });
       renderTable(table, rowsWithLocalTime);
