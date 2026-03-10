@@ -65,6 +65,7 @@ class MetaClient:
         payload = {
             "access_token": page_access_token,
             "url": image_url,
+            "published": "true",
         }
         if caption:
             payload["caption"] = caption
