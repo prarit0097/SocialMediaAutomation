@@ -37,14 +37,40 @@ class MetaClient:
         )
 
     def get_managed_pages(self, user_access_token: str) -> list[dict]:
-        data = self._get(
-            "/me/accounts",
-            {
-                "access_token": user_access_token,
-                "fields": "id,name,access_token,instagram_business_account",
-            },
-        )
-        return data.get("data", [])
+        pages: list[dict] = []
+        params = {
+            "access_token": user_access_token,
+            "fields": "id,name,access_token,instagram_business_account",
+            "limit": 100,
+        }
+        response = self._get("/me/accounts", params)
+        pages.extend(response.get("data", []))
+
+        next_url = (response.get("paging") or {}).get("next")
+        while next_url:
+            response = self._get_by_url(next_url)
+            pages.extend(response.get("data", []))
+            next_url = (response.get("paging") or {}).get("next")
+
+        return pages
+
+    def fetch_facebook_published_posts(self, page_id: str, page_access_token: str, limit: int = 50) -> list[dict]:
+        posts: list[dict] = []
+        params = {
+            "access_token": page_access_token,
+            "fields": "id,message,created_time,permalink_url,full_picture,attachments{media_type,media,url,subattachments}",
+            "limit": min(limit, 100),
+        }
+        response = self._get(f"/{page_id}/published_posts", params)
+        posts.extend(response.get("data", []))
+
+        next_url = (response.get("paging") or {}).get("next")
+        while next_url and len(posts) < limit:
+            response = self._get_by_url(next_url)
+            posts.extend(response.get("data", []))
+            next_url = (response.get("paging") or {}).get("next")
+
+        return posts[:limit]
 
     def publish_facebook_post(self, page_id: str, page_access_token: str, message: str) -> dict:
         return self._post(
@@ -257,6 +283,10 @@ class MetaClient:
 
     def _get(self, path: str, params: dict) -> dict:
         response = requests.get(f"{self.base_url}{path}", params=params, timeout=20)
+        return self._handle_response(response)
+
+    def _get_by_url(self, url: str) -> dict:
+        response = requests.get(url, timeout=20)
         return self._handle_response(response)
 
     def _post(self, path: str, data: dict) -> dict:

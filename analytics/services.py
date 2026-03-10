@@ -26,12 +26,50 @@ def _first_metric_value(insights: list[dict], names: list[str]):
 
 
 def _get_published_posts(account: ConnectedAccount) -> list[dict]:
+    client = MetaClient()
+
+    if account.platform == FACEBOOK:
+        try:
+            page_posts = client.fetch_facebook_published_posts(
+                page_id=account.page_id,
+                page_access_token=account.access_token,
+                limit=50,
+            )
+            enriched_rows = []
+            for post in page_posts:
+                attachment_data = ((post.get("attachments") or {}).get("data") or [{}])[0]
+                subattachments = ((attachment_data.get("subattachments") or {}).get("data") or [{}])[0]
+                media_url = (
+                    post.get("full_picture")
+                    or (attachment_data.get("media") or {}).get("image", {}).get("src")
+                    or (subattachments.get("media") or {}).get("image", {}).get("src")
+                    or attachment_data.get("url")
+                )
+                enriched_rows.append(
+                    {
+                        "id": post.get("id"),
+                        "message": post.get("message"),
+                        "media_url": media_url,
+                        "published_at": post.get("created_time"),
+                        "scheduled_for": None,
+                        "total_views": None,
+                        "total_likes": None,
+                        "total_comments": None,
+                        "reason": None,
+                    }
+                )
+            return enriched_rows
+        except MetaAPIError as exc:
+            logger.warning("failed to fetch facebook page posts account_id=%s error=%s", account.id, str(exc))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("failed to fetch facebook page posts account_id=%s error=%s", account.id, str(exc))
+
+    # Fallback to posts scheduled through this app.
     rows = list(
         ScheduledPost.objects.filter(account=account, status=POST_STATUS_PUBLISHED)
         .values("id", "message", "media_url", "external_post_id", "published_at", "scheduled_for")
         .order_by("-published_at", "-id")[:50]
     )
-    client = MetaClient()
     enriched_rows = []
     for row in rows:
         stats = {
