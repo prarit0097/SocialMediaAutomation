@@ -152,6 +152,7 @@ class MetaClient:
         likes_count = None
         comments_count = None
         views_count = None
+        errors: list[str] = []
 
         # Most reliable for page posts across versions.
         try:
@@ -165,8 +166,8 @@ class MetaClient:
             engagement = engagement_data.get("engagement") or {}
             likes_count = engagement.get("reaction_count")
             comments_count = engagement.get("comment_count")
-        except MetaAPIError:
-            pass
+        except MetaAPIError as exc:
+            errors.append(f"engagement: {exc}")
 
         # Secondary fallback.
         try:
@@ -181,8 +182,8 @@ class MetaClient:
                 likes_count = (post_data.get("reactions") or {}).get("summary", {}).get("total_count")
             if comments_count is None:
                 comments_count = (post_data.get("comments") or {}).get("summary", {}).get("total_count")
-        except MetaAPIError:
-            pass
+        except MetaAPIError as exc:
+            errors.append(f"reactions/comments: {exc}")
 
         try:
             insight_data = self._get(
@@ -206,13 +207,18 @@ class MetaClient:
                     comments_count = metric_value
                 elif name == "post_reactions_by_type_total" and likes_count is None and isinstance(metric_value, dict):
                     likes_count = sum(v for v in metric_value.values() if isinstance(v, int))
-        except MetaAPIError:
-            pass
+        except MetaAPIError as exc:
+            errors.append(f"post insights: {exc}")
+
+        stats_error = None
+        if likes_count is None and comments_count is None and views_count is None:
+            stats_error = " | ".join(errors) if errors else "Meta did not return post engagement metrics."
 
         return {
             "total_likes": likes_count,
             "total_comments": comments_count,
             "total_views": views_count,
+            "stats_error": stats_error,
         }
 
     def debug_token(self, input_token: str) -> dict:
