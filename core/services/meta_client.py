@@ -273,7 +273,23 @@ class MetaClient:
         except ValueError:
             payload = {"raw": response.text}
 
-        message = payload.get("error", {}).get("message", "Meta API request failed")
+        error = payload.get("error", {})
+        message = error.get("message", "Meta API request failed")
+        code = error.get("code")
+        subcode = error.get("error_subcode")
+        user_msg = error.get("error_user_msg")
+        user_title = error.get("error_user_title")
+        details = []
+        if code is not None:
+            details.append(f"code={code}")
+        if subcode is not None:
+            details.append(f"subcode={subcode}")
+        if user_title:
+            details.append(f"title={user_title}")
+        if user_msg:
+            details.append(f"user_msg={user_msg}")
+        if details:
+            message = f"{message} ({', '.join(details)})"
         if response.status_code >= 500 or response.status_code == 429:
             raise MetaTransientError(message, status_code=response.status_code, payload=payload)
 
