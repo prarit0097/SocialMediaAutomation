@@ -11,11 +11,12 @@ class MetaClient:
     def __init__(self):
         self.base_url = f"https://graph.facebook.com/{settings.META_GRAPH_VERSION}"
 
-    def oauth_url(self, state: str) -> str:
+    def oauth_url(self, state: str, redirect_uri: str | None = None) -> str:
+        target_redirect_uri = redirect_uri or settings.META_REDIRECT_URI
         params = urlencode(
             {
                 "client_id": settings.META_APP_ID,
-                "redirect_uri": settings.META_REDIRECT_URI,
+                "redirect_uri": target_redirect_uri,
                 "state": state,
                 "scope": ",".join(META_SCOPES),
                 "response_type": "code",
@@ -23,13 +24,14 @@ class MetaClient:
         )
         return f"https://www.facebook.com/{settings.META_GRAPH_VERSION}/dialog/oauth?{params}"
 
-    def exchange_code_for_token(self, code: str) -> dict:
+    def exchange_code_for_token(self, code: str, redirect_uri: str | None = None) -> dict:
+        target_redirect_uri = redirect_uri or settings.META_REDIRECT_URI
         return self._get(
             "/oauth/access_token",
             {
                 "client_id": settings.META_APP_ID,
                 "client_secret": settings.META_APP_SECRET,
-                "redirect_uri": settings.META_REDIRECT_URI,
+                "redirect_uri": target_redirect_uri,
                 "code": code,
             },
         )
