@@ -53,7 +53,15 @@
     if (!table) return;
     try {
       const rows = await fetchJSON("/api/posts/scheduled/");
-      renderTable(table, rows);
+      const rowsWithLocalTime = rows.map((row) => {
+        const utcValue = row.scheduled_for;
+        const localValue = utcValue ? new Date(utcValue).toLocaleString() : "";
+        return {
+          ...row,
+          scheduled_for_local: localValue,
+        };
+      });
+      renderTable(table, rowsWithLocalTime);
     } catch (err) {
       table.innerHTML = `<p>${err.message}</p>`;
     }

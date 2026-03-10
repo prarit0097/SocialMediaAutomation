@@ -13,7 +13,8 @@
     </label>
     <label>Message<textarea name="message" rows="4"></textarea></label>
     <label>Media URL (required for Instagram)<input type="url" name="media_url"></label>
-    <label>Scheduled For (UTC)<input type="datetime-local" name="scheduled_for" required></label>
+    <label>Scheduled For (Local Time)<input type="datetime-local" name="scheduled_for" required></label>
+    <small>Your browser local timezone is used. We store UTC internally.</small>
     <button type="submit">Schedule</button>
   </form>
   <p id="scheduleResult"></p>
