@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
@@ -9,7 +9,7 @@ from core.exceptions import MetaAPIError
 from integrations.models import ConnectedAccount
 
 from .models import InsightSnapshot
-from .services import fetch_and_store_insights
+from .services import build_insight_response, fetch_and_store_insights
 
 logger = logging.getLogger("analytics")
 
@@ -44,15 +44,15 @@ def account_insights(request: HttpRequest, account_id: int) -> JsonResponse:
 
     latest = InsightSnapshot.objects.filter(account=account).order_by("-fetched_at").first()
     if latest:
-        return JsonResponse(
-            {
-                "platform": latest.platform,
-                "insights": latest.payload.get("insights", []),
-                "snapshot_id": latest.id,
-                "fetched_at": latest.fetched_at.isoformat(),
-                "cached": True,
-            }
+        data = build_insight_response(
+            account=account,
+            platform=latest.platform,
+            insights=latest.payload.get("insights", []),
+            snapshot_id=latest.id,
+            fetched_at=latest.fetched_at,
+            cached=True,
         )
+        return JsonResponse(data)
 
     try:
         data = fetch_and_store_insights(account)
@@ -65,5 +65,4 @@ def account_insights(request: HttpRequest, account_id: int) -> JsonResponse:
             },
             status=502,
         )
-    data["cached"] = False
     return JsonResponse(data)

@@ -135,6 +135,49 @@ pre {
   overflow-x: auto;
 }
 
+.insight-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.insight-stat-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.insight-stat-card h3 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.insight-stat-card p {
+  margin: 8px 0 0;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.meta-note {
+  margin: 12px 0 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.nested-card {
+  margin-top: 12px;
+  background: #fffcf7;
+}
+
+.error-text {
+  margin-top: 10px;
+  color: #9d2b16;
+  font-weight: 600;
+}
+
 @media (max-width: 760px) {
   .grid.two {
     grid-template-columns: 1fr;
@@ -148,5 +191,9 @@ pre {
     flex-direction: column;
     gap: 10px;
     align-items: flex-start;
+  }
+
+  .insight-summary-grid {
+    grid-template-columns: 1fr;
   }
 }

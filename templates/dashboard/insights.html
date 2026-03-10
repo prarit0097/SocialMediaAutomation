@@ -1,4 +1,4 @@
-﻿{% extends 'base.html' %}
+{% extends 'base.html' %}
 {% block content %}
 <section class="card">
   <h1>Insights</h1>
@@ -7,6 +7,34 @@
     <button id="fetchInsightsBtn" class="btn">Fetch Cached/Latest</button>
     <button id="refreshInsightsBtn" class="btn muted">Force Refresh</button>
   </div>
-  <pre id="insightsOutput"></pre>
+
+  <div id="insightError" class="error-text"></div>
+
+  <div class="insight-summary-grid" id="insightSummaryGrid">
+    <article class="insight-stat-card">
+      <h3>Total Followers</h3>
+      <p id="totalFollowers">-</p>
+    </article>
+    <article class="insight-stat-card">
+      <h3>Total Following</h3>
+      <p id="totalFollowing">-</p>
+    </article>
+    <article class="insight-stat-card">
+      <h3>Total Post Share</h3>
+      <p id="totalPostShare">-</p>
+    </article>
+  </div>
+
+  <p class="meta-note" id="insightMeta"></p>
+
+  <section class="card nested-card">
+    <h2>Published Posts</h2>
+    <div class="table-wrap" id="insightPostsTable"></div>
+  </section>
+
+  <section class="card nested-card">
+    <h2>Raw Metrics</h2>
+    <div class="table-wrap" id="insightMetricsTable"></div>
+  </section>
 </section>
 {% endblock %}

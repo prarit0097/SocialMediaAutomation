@@ -29,6 +29,8 @@ class AnalyticsApiTests(TestCase):
         body = response.json()
         self.assertEqual(body["platform"], FACEBOOK)
         self.assertIn("insights", body)
+        self.assertIn("summary", body)
+        self.assertIn("published_posts", body)
 
     @patch("analytics.services.MetaClient.fetch_facebook_insights")
     def test_fetch_insights_meta_error_returns_json(self, mock_fetch):
