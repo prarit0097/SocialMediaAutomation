@@ -95,15 +95,47 @@ class MetaClient:
         )
 
     def fetch_facebook_insights(self, page_id: str, page_access_token: str) -> list[dict]:
-        data = self._get(
-            f"/{page_id}/insights",
+        metrics = [
+            "page_impressions",
+            "page_reach",
+            "page_engaged_users",
+        ]
+        insights: list[dict] = []
+
+        for metric in metrics:
+            try:
+                data = self._get(
+                    f"/{page_id}/insights",
+                    {
+                        "access_token": page_access_token,
+                        "metric": metric,
+                        "period": "day",
+                    },
+                )
+                insights.extend(data.get("data", []))
+            except MetaPermanentError as exc:
+                message = str(exc).lower()
+                if "valid insights metric" in message:
+                    continue
+                raise
+
+        if insights:
+            return insights
+
+        # Fallback when metric-level insights are unavailable for the page/token.
+        page_data = self._get(
+            f"/{page_id}",
             {
                 "access_token": page_access_token,
-                "metric": "page_impressions,page_engaged_users,page_post_engagements",
-                "period": "day",
+                "fields": "fan_count,followers_count",
             },
         )
-        return data.get("data", [])
+        fallback = []
+        if "fan_count" in page_data:
+            fallback.append({"name": "fan_count", "values": [{"value": page_data.get("fan_count")}]})
+        if "followers_count" in page_data:
+            fallback.append({"name": "followers_count", "values": [{"value": page_data.get("followers_count")}]})
+        return fallback
 
     def fetch_instagram_insights(self, ig_user_id: str, page_access_token: str) -> list[dict]:
         data = self._get(

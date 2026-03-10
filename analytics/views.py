@@ -5,6 +5,7 @@ from django.core.cache import cache
 from django.http import HttpRequest, JsonResponse
 from django.views.decorators.http import require_GET
 
+from core.exceptions import MetaAPIError
 from integrations.models import ConnectedAccount
 
 from .models import InsightSnapshot
@@ -27,7 +28,17 @@ def account_insights(request: HttpRequest, account_id: int) -> JsonResponse:
         if not cache.add(throttle_key, 1, timeout=30):
             return JsonResponse({"error": "Too many refresh requests"}, status=429)
 
-        data = fetch_and_store_insights(account)
+        try:
+            data = fetch_and_store_insights(account)
+        except MetaAPIError as exc:
+            logger.warning("insights fetch failed account_id=%s error=%s", account_id, exc)
+            return JsonResponse(
+                {
+                    "error": "Failed to fetch insights from Meta",
+                    "details": str(exc),
+                },
+                status=502,
+            )
         logger.info("insights refreshed account_id=%s user_id=%s", account_id, request.user.id)
         return JsonResponse(data)
 
@@ -43,6 +54,16 @@ def account_insights(request: HttpRequest, account_id: int) -> JsonResponse:
             }
         )
 
-    data = fetch_and_store_insights(account)
+    try:
+        data = fetch_and_store_insights(account)
+    except MetaAPIError as exc:
+        logger.warning("insights fetch failed account_id=%s error=%s", account_id, exc)
+        return JsonResponse(
+            {
+                "error": "Failed to fetch insights from Meta",
+                "details": str(exc),
+            },
+            status=502,
+        )
     data["cached"] = False
     return JsonResponse(data)
