@@ -32,8 +32,11 @@ class ScheduledPost(models.Model):
         ordering = ["-scheduled_for"]
 
     def clean(self):
-        if self.platform == FACEBOOK and not (self.message or "").strip():
-            raise ValidationError({"message": "Facebook posts require a non-empty message."})
+        has_message = bool((self.message or "").strip())
+        has_media = bool(self.media_url)
+
+        if self.platform == FACEBOOK and not (has_message or has_media):
+            raise ValidationError({"message": "Facebook posts require message or media_url."})
 
         if self.platform == INSTAGRAM and not self.media_url:
             raise ValidationError({"media_url": "Instagram posts require media_url."})

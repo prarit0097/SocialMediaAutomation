@@ -23,7 +23,7 @@ class ScheduledPostModelTests(TestCase):
             ig_user_id="2",
         )
 
-    def test_facebook_requires_message(self):
+    def test_facebook_requires_message_or_media(self):
         post = ScheduledPost(
             account=self.fb_account,
             platform=FACEBOOK,
@@ -32,6 +32,16 @@ class ScheduledPostModelTests(TestCase):
         )
         with self.assertRaises(ValidationError):
             post.full_clean()
+
+    def test_facebook_allows_media_without_message(self):
+        post = ScheduledPost(
+            account=self.fb_account,
+            platform=FACEBOOK,
+            message="",
+            media_url="https://example.com/image.jpg",
+            scheduled_for="2026-03-10T00:00:00Z",
+        )
+        post.full_clean()
 
     def test_instagram_requires_media_url(self):
         post = ScheduledPost(

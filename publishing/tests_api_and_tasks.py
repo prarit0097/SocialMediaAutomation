@@ -9,6 +9,7 @@ from django.utils import timezone
 from core.constants import FACEBOOK, POST_STATUS_PENDING, POST_STATUS_PUBLISHED
 from integrations.models import ConnectedAccount
 from publishing.models import ScheduledPost
+from publishing.services import publish_scheduled_post
 from publishing.tasks import publish_post_task
 
 
@@ -62,3 +63,27 @@ class PublishingTaskTests(TestCase):
         self.post.refresh_from_db()
         self.assertEqual(self.post.status, POST_STATUS_PUBLISHED)
         self.assertEqual(self.post.external_post_id, "meta-post-id")
+
+
+class PublishingServiceTests(TestCase):
+    def setUp(self):
+        self.account = ConnectedAccount.objects.create(
+            platform=FACEBOOK,
+            page_id="123",
+            page_name="FB Page",
+            access_token="token",
+        )
+
+    @patch("publishing.services.MetaClient.publish_facebook_photo", return_value={"post_id": "photo-post-id"})
+    def test_facebook_media_uses_photo_endpoint(self, mock_publish_photo):
+        post = ScheduledPost.objects.create(
+            account=self.account,
+            platform=FACEBOOK,
+            message="With image",
+            media_url="https://example.com/a.jpg",
+            scheduled_for=timezone.now(),
+            status="processing",
+        )
+        result = publish_scheduled_post(post)
+        self.assertEqual(result, "photo-post-id")
+        mock_publish_photo.assert_called_once()

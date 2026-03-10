@@ -7,6 +7,15 @@ def publish_scheduled_post(post):
     account = post.account
 
     if post.platform == FACEBOOK:
+        if post.media_url:
+            result = client.publish_facebook_photo(
+                page_id=account.page_id,
+                page_access_token=account.access_token,
+                image_url=post.media_url,
+                caption=(post.message or "").strip() or None,
+            )
+            return result.get("post_id") or result.get("id")
+
         result = client.publish_facebook_post(
             page_id=account.page_id,
             page_access_token=account.access_token,

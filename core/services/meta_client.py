@@ -55,6 +55,25 @@ class MetaClient:
             },
         )
 
+    def publish_facebook_photo(
+        self,
+        page_id: str,
+        page_access_token: str,
+        image_url: str,
+        caption: str | None = None,
+    ) -> dict:
+        payload = {
+            "access_token": page_access_token,
+            "url": image_url,
+        }
+        if caption:
+            payload["caption"] = caption
+
+        return self._post(
+            f"/{page_id}/photos",
+            payload,
+        )
+
     def create_instagram_media(self, ig_user_id: str, page_access_token: str, image_url: str, caption: str) -> dict:
         return self._post(
             f"/{ig_user_id}/media",
