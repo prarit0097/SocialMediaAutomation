@@ -12,11 +12,16 @@ logger = logging.getLogger("analytics")
 
 
 def _first_metric_value(insights: list[dict], names: list[str]):
-    for metric in insights:
-        if metric.get("name") in names:
+    # Respect priority order from `names` (e.g. followers_count before fan_count).
+    for target_name in names:
+        for metric in insights:
+            if metric.get("name") != target_name:
+                continue
             values = metric.get("values") or []
             if values and isinstance(values[0], dict):
-                return values[0].get("value")
+                value = values[0].get("value")
+                if value is not None:
+                    return value
     return None
 
 
