@@ -470,4 +470,8 @@
     const runWithRefreshInsightsLoading = withButtonLoading(refreshInsightsBtn, "Force Refresh", "Refreshing...");
     refreshInsightsBtn.addEventListener("click", () => runWithRefreshInsightsLoading(() => loadInsights(true)));
   }
+
+  if (insightAccountId && Number(insightAccountId.value)) {
+    loadInsights(false);
+  }
 })();

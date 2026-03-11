@@ -44,14 +44,20 @@ def account_insights(request: HttpRequest, account_id: int) -> JsonResponse:
 
     latest = InsightSnapshot.objects.filter(account=account).order_by("-fetched_at").first()
     if latest:
+        payload = latest.payload or {}
+        published_posts = payload.get("published_posts") if "published_posts" in payload else None
+        # Backward compatibility for older snapshots that stored an empty
+        # published_posts list: recompute from current source on read.
+        if published_posts == []:
+            published_posts = None
         data = build_insight_response(
             account=account,
             platform=latest.platform,
-            insights=latest.payload.get("insights", []),
+            insights=payload.get("insights", []),
             snapshot_id=latest.id,
             fetched_at=latest.fetched_at,
             cached=True,
-            published_posts=latest.payload.get("published_posts", []),
+            published_posts=published_posts,
         )
         return JsonResponse(data)
 
