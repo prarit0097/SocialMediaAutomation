@@ -119,9 +119,11 @@
       if (syncStatus) {
         const syncedAt = status.synced_at ? toIndianDateTime(status.synced_at) : "N/A";
         const metaPages = status.meta_pages_synced ?? "N/A";
+        const targetIds = status.token_target_ids_count ?? "N/A";
         const fbTotal = status.facebook_connected_total ?? rows.filter((r) => r.platform === "facebook").length;
         const igTotal = status.instagram_connected_total ?? rows.filter((r) => r.platform === "instagram").length;
-        syncStatus.textContent = `Last Sync: ${syncedAt} | Meta Pages Synced: ${metaPages} | Connected FB: ${fbTotal} | Connected IG: ${igTotal}`;
+        const warning = status.warning ? ` | Warning: ${status.warning}` : "";
+        syncStatus.textContent = `Last Sync: ${syncedAt} | Meta Pages Synced: ${metaPages} | Token Target IDs: ${targetIds} | Connected FB: ${fbTotal} | Connected IG: ${igTotal}${warning}`;
       }
     } catch (err) {
       table.innerHTML = `<p>${err.message}</p>`;

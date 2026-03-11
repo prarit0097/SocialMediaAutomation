@@ -20,6 +20,7 @@ class MetaClient:
                 "state": state,
                 "scope": ",".join(META_SCOPES),
                 "response_type": "code",
+                "auth_type": "rerequest",
             }
         )
         return f"https://www.facebook.com/{settings.META_GRAPH_VERSION}/dialog/oauth?{params}"

@@ -9,6 +9,7 @@ from django.conf import settings
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 
+from core.exceptions import MetaAPIError
 from core.services.meta_client import MetaClient
 
 from .models import ConnectedAccount
@@ -51,6 +52,23 @@ def meta_callback(request: HttpRequest) -> HttpResponse:
     pages = client.get_managed_pages(token_data["access_token"])
     upsert_connected_accounts(pages)
 
+    target_ids_count = None
+    sync_warning = None
+    if pages:
+        try:
+            debug_data = client.debug_token(pages[0]["access_token"]).get("data", {})
+            target_ids: set[str] = set()
+            for scope_item in (debug_data.get("granular_scopes") or []):
+                for target_id in (scope_item.get("target_ids") or []):
+                    target_ids.add(str(target_id))
+            target_ids_count = len(target_ids)
+            if target_ids_count and len(pages) < target_ids_count:
+                sync_warning = (
+                    "Meta returned fewer pages than token target_ids. Reconnect and allow access to all pages."
+                )
+        except MetaAPIError:
+            target_ids_count = None
+
     if user_id:
         cache.set(
             f"meta_last_sync:{user_id}",
@@ -58,6 +76,8 @@ def meta_callback(request: HttpRequest) -> HttpResponse:
                 "meta_pages_synced": len(pages),
                 "facebook_connected_total": ConnectedAccount.objects.filter(platform="facebook").count(),
                 "instagram_connected_total": ConnectedAccount.objects.filter(platform="instagram").count(),
+                "token_target_ids_count": target_ids_count,
+                "warning": sync_warning,
                 "synced_at": timezone.now().isoformat(),
             },
             timeout=60 * 60 * 12,
@@ -93,6 +113,8 @@ def accounts_sync_status(request: HttpRequest) -> JsonResponse:
             "meta_pages_synced": None,
             "facebook_connected_total": ConnectedAccount.objects.filter(platform="facebook").count(),
             "instagram_connected_total": ConnectedAccount.objects.filter(platform="instagram").count(),
+            "token_target_ids_count": None,
+            "warning": None,
             "synced_at": None,
         }
     return JsonResponse(data)

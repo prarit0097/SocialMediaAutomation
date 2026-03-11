@@ -42,6 +42,8 @@ class IntegrationsViewTests(TestCase):
                 "meta_pages_synced": 41,
                 "facebook_connected_total": 10,
                 "instagram_connected_total": 2,
+                "token_target_ids_count": 41,
+                "warning": "Meta returned fewer pages than token target_ids.",
                 "synced_at": "2026-03-11T04:00:00+00:00",
             },
             timeout=60,
@@ -51,3 +53,4 @@ class IntegrationsViewTests(TestCase):
         payload = response.json()
         self.assertEqual(payload["meta_pages_synced"], 41)
         self.assertEqual(payload["facebook_connected_total"], 10)
+        self.assertEqual(payload["token_target_ids_count"], 41)
