@@ -8,6 +8,7 @@ from integrations.models import ConnectedAccount
 
 class IntegrationsViewTests(TestCase):
     def setUp(self):
+        cache.clear()
         self.client = Client()
         user_model = get_user_model()
         self.user = user_model.objects.create_user(username="admin", password="pass12345")
@@ -89,3 +90,37 @@ class IntegrationsViewTests(TestCase):
         reasons = {row["page_id"]: row.get("reason", "") for row in payload["rows"]}
         self.assertIn("token", reasons["10"].lower())
         self.assertTrue(len(reasons["20"]) > 0)
+
+    @patch("integrations.views.MetaClient._get")
+    @patch("integrations.views.MetaClient.debug_token")
+    def test_meta_pages_catalog_auto_syncs_connectable_facebook_page(self, mock_debug_token, mock_get):
+        ConnectedAccount.objects.create(
+            platform="facebook",
+            page_id="10",
+            page_name="Connected Page",
+            access_token="token",
+        )
+        mock_debug_token.return_value = {
+            "data": {
+                "granular_scopes": [
+                    {"scope": "pages_show_list", "target_ids": ["10", "58"]},
+                ]
+            }
+        }
+        mock_get.return_value = {
+            "id": "58",
+            "name": "Riya Arora",
+            "access_token": "page-token-58",
+            "picture": {"data": {"url": "https://example.com/pic.jpg"}},
+        }
+
+        response = self.client.get("/api/accounts/meta-pages/?refresh=1")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        by_id = {row["page_id"]: row for row in payload["rows"]}
+        self.assertEqual(by_id["58"]["status"], "connected")
+        self.assertEqual(by_id["58"]["connectability"], "connected")
+        self.assertIn("synced", by_id["58"]["reason"].lower())
+
+        synced = ConnectedAccount.objects.get(platform="facebook", page_id="58")
+        self.assertEqual(synced.page_name, "Riya Arora")

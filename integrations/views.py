@@ -212,15 +212,25 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                         f"/{target_id}",
                         {
                             "access_token": detail_token,
-                            "fields": "id,name,access_token,picture",
+                            "fields": "id,name,access_token,picture,instagram_business_account",
                         },
                     )
                     page_name = page_data.get("name")
                     picture_data = page_data.get("picture") or {}
                     profile_picture_url = (picture_data.get("data") or {}).get("url")
                     if page_data.get("access_token"):
-                        reason = "Page token is available from page node; reconnect to sync it in app."
-                        connectability = "connectable"
+                        # Auto-sync connectable Facebook pages discovered in token target_ids.
+                        ConnectedAccount.objects.update_or_create(
+                            platform="facebook",
+                            page_id=target_id,
+                            defaults={
+                                "page_name": page_name or "(name unavailable)",
+                                "access_token": page_data.get("access_token"),
+                                "ig_user_id": (page_data.get("instagram_business_account") or {}).get("id"),
+                            },
+                        )
+                        reason = "Page token was available from page node and has been synced in app."
+                        connectability = "connected"
                     else:
                         reason = (
                             "Meta did not return page access token for this page. "
@@ -273,11 +283,12 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                         )
                 connectability = "not_connectable"
 
+            status = "connected" if connectability == "connected" else "catalog-only"
             rows.append(
                 {
                     "page_id": target_id,
                     "page_name": page_name or "(name unavailable)",
-                    "status": "catalog-only",
+                    "status": status,
                     "connectability": connectability,
                     "reason": reason,
                     "platform": platform,
