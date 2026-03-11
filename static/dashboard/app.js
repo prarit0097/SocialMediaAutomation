@@ -108,12 +108,24 @@
 
   async function loadAccounts() {
     const table = document.getElementById("accountsTable");
+    const syncStatus = document.getElementById("accountSyncStatus");
     if (!table) return;
     try {
-      const rows = await fetchJSON("/api/accounts/");
+      const [rows, status] = await Promise.all([
+        fetchJSON("/api/accounts/"),
+        fetchJSON("/api/accounts/sync-status/"),
+      ]);
       renderTable(table, rows);
+      if (syncStatus) {
+        const syncedAt = status.synced_at ? toIndianDateTime(status.synced_at) : "N/A";
+        const metaPages = status.meta_pages_synced ?? "N/A";
+        const fbTotal = status.facebook_connected_total ?? rows.filter((r) => r.platform === "facebook").length;
+        const igTotal = status.instagram_connected_total ?? rows.filter((r) => r.platform === "instagram").length;
+        syncStatus.textContent = `Last Sync: ${syncedAt} | Meta Pages Synced: ${metaPages} | Connected FB: ${fbTotal} | Connected IG: ${igTotal}`;
+      }
     } catch (err) {
       table.innerHTML = `<p>${err.message}</p>`;
+      if (syncStatus) syncStatus.textContent = "";
     }
   }
 

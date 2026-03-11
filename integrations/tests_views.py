@@ -1,5 +1,8 @@
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import Client, TestCase
+
+from integrations.models import ConnectedAccount
 
 
 class IntegrationsViewTests(TestCase):
@@ -18,3 +21,33 @@ class IntegrationsViewTests(TestCase):
         body = response.json()
         self.assertEqual(body["error"], "Meta OAuth failed")
         self.assertIn("User denied permission", body["details"])
+
+    def test_accounts_sync_status_default_payload(self):
+        ConnectedAccount.objects.create(
+            platform="facebook",
+            page_id="1",
+            page_name="Page 1",
+            access_token="token",
+        )
+        response = self.client.get("/api/accounts/sync-status/")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIsNone(payload["meta_pages_synced"])
+        self.assertEqual(payload["facebook_connected_total"], 1)
+
+    def test_accounts_sync_status_reads_cached_sync(self):
+        cache.set(
+            f"meta_last_sync:{self.user.id}",
+            {
+                "meta_pages_synced": 41,
+                "facebook_connected_total": 10,
+                "instagram_connected_total": 2,
+                "synced_at": "2026-03-11T04:00:00+00:00",
+            },
+            timeout=60,
+        )
+        response = self.client.get("/api/accounts/sync-status/")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["meta_pages_synced"], 41)
+        self.assertEqual(payload["facebook_connected_total"], 10)
