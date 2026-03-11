@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.db.utils import OperationalError
 from django.test import Client, TestCase
 from unittest.mock import patch
 
@@ -124,3 +125,70 @@ class IntegrationsViewTests(TestCase):
 
         synced = ConnectedAccount.objects.get(platform="facebook", page_id="58")
         self.assertEqual(synced.page_name, "Riya Arora")
+
+    @patch("integrations.views.MetaClient._get")
+    @patch("integrations.views.MetaClient.debug_token")
+    def test_meta_pages_catalog_auto_syncs_connectable_instagram_profile(self, mock_debug_token, mock_get):
+        ConnectedAccount.objects.create(
+            platform="facebook",
+            page_id="10",
+            page_name="BodyByte",
+            access_token="token",
+            ig_user_id="17841479977081188",
+        )
+        mock_debug_token.return_value = {
+            "data": {
+                "granular_scopes": [
+                    {"scope": "pages_show_list", "target_ids": ["10", "17841479977081188"]},
+                ]
+            }
+        }
+        mock_get.return_value = {
+            "id": "17841479977081188",
+            "username": "bodybyte",
+            "profile_picture_url": "https://example.com/ig.jpg",
+        }
+
+        response = self.client.get("/api/accounts/meta-pages/?refresh=1")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        by_id = {row["page_id"]: row for row in payload["rows"]}
+        self.assertEqual(by_id["17841479977081188"]["status"], "connected")
+        self.assertEqual(by_id["17841479977081188"]["connectability"], "connected")
+
+        synced = ConnectedAccount.objects.get(platform="instagram", page_id="17841479977081188")
+        self.assertEqual(synced.page_name, "bodybyte (IG)")
+        self.assertEqual(synced.access_token, "token")
+
+    @patch("integrations.views.MetaClient._get")
+    @patch("integrations.views.MetaClient.debug_token")
+    def test_meta_pages_catalog_handles_sqlite_lock_gracefully(self, mock_debug_token, mock_get):
+        ConnectedAccount.objects.create(
+            platform="facebook",
+            page_id="10",
+            page_name="Connected Page",
+            access_token="token",
+        )
+        mock_debug_token.return_value = {
+            "data": {
+                "granular_scopes": [
+                    {"scope": "pages_show_list", "target_ids": ["10", "58"]},
+                ]
+            }
+        }
+        mock_get.return_value = {
+            "id": "58",
+            "name": "Riya Arora",
+            "access_token": "page-token-58",
+            "picture": {"data": {"url": "https://example.com/pic.jpg"}},
+        }
+
+        with patch.object(ConnectedAccount.objects, "update_or_create", side_effect=OperationalError("database is locked")):
+            response = self.client.get("/api/accounts/meta-pages/?refresh=1")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        by_id = {row["page_id"]: row for row in payload["rows"]}
+        self.assertEqual(by_id["58"]["status"], "catalog-only")
+        self.assertEqual(by_id["58"]["connectability"], "connectable")
+        self.assertIn("database is busy", by_id["58"]["reason"])

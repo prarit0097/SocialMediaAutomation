@@ -6,6 +6,7 @@ from django.core.cache import cache
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect
 from django.conf import settings
+from django.db.utils import OperationalError
 from django.db.models import Max
 from django.utils import timezone
 from django.views.decorators.http import require_GET
@@ -151,6 +152,11 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
 
     rows: list[dict] = []
     seen_ids: set[str] = set()
+    fb_by_ig_id = {
+        str(a.ig_user_id): a
+        for a in ConnectedAccount.objects.filter(platform="facebook")
+        if a.ig_user_id and a.access_token
+    }
 
     for account in accounts:
         page_id = str(account.page_id)
@@ -202,11 +208,32 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                     page_name = f"{username} (IG)" if username else None
                     profile_picture_url = page_data.get("profile_picture_url")
                     if username:
-                        reason = (
-                            "Instagram business account is visible but not connected in app. "
-                            "Reconnect to sync it."
-                        )
-                        connectability = "connectable"
+                        linked_fb = fb_by_ig_id.get(target_id)
+                        if linked_fb:
+                            try:
+                                ConnectedAccount.objects.update_or_create(
+                                    platform="instagram",
+                                    page_id=target_id,
+                                    defaults={
+                                        "page_name": page_name or f"{linked_fb.page_name} (IG)",
+                                        "ig_user_id": target_id,
+                                        "access_token": linked_fb.access_token,
+                                    },
+                                )
+                                reason = "Instagram profile is linked and has been synced in app."
+                                connectability = "connected"
+                            except OperationalError:
+                                reason = (
+                                    "Instagram profile is connectable but app database is busy. "
+                                    "Retry refresh in a few seconds."
+                                )
+                                connectability = "connectable"
+                        else:
+                            reason = (
+                                "Instagram business account is visible but not connected in app. "
+                                "Reconnect to sync it."
+                            )
+                            connectability = "connectable"
                 else:
                     page_data = client._get(
                         f"/{target_id}",
@@ -220,17 +247,33 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                     profile_picture_url = (picture_data.get("data") or {}).get("url")
                     if page_data.get("access_token"):
                         # Auto-sync connectable Facebook pages discovered in token target_ids.
-                        ConnectedAccount.objects.update_or_create(
-                            platform="facebook",
-                            page_id=target_id,
-                            defaults={
-                                "page_name": page_name or "(name unavailable)",
-                                "access_token": page_data.get("access_token"),
-                                "ig_user_id": (page_data.get("instagram_business_account") or {}).get("id"),
-                            },
-                        )
-                        reason = "Page token was available from page node and has been synced in app."
-                        connectability = "connected"
+                        try:
+                            ig_id = (page_data.get("instagram_business_account") or {}).get("id")
+                            ConnectedAccount.objects.update_or_create(
+                                platform="facebook",
+                                page_id=target_id,
+                                defaults={
+                                    "page_name": page_name or "(name unavailable)",
+                                    "access_token": page_data.get("access_token"),
+                                    "ig_user_id": ig_id,
+                                },
+                            )
+                            if ig_id:
+                                fb_by_ig_id[str(ig_id)] = ConnectedAccount(
+                                    platform="facebook",
+                                    page_id=target_id,
+                                    page_name=page_name or "(name unavailable)",
+                                    access_token=page_data.get("access_token"),
+                                    ig_user_id=ig_id,
+                                )
+                            reason = "Page token was available from page node and has been synced in app."
+                            connectability = "connected"
+                        except OperationalError:
+                            reason = (
+                                "Page token is available but app database is busy. "
+                                "Retry refresh in a few seconds."
+                            )
+                            connectability = "connectable"
                     else:
                         reason = (
                             "Meta did not return page access token for this page. "
