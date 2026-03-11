@@ -72,6 +72,11 @@ def meta_callback(request: HttpRequest) -> HttpResponse:
 
     if user_id:
         cache.set(
+            f"meta_user_access_token:{user_id}",
+            token_data["access_token"],
+            timeout=60 * 60 * 12,
+        )
+        cache.set(
             f"meta_last_sync:{user_id}",
             {
                 "meta_pages_synced": len(pages),
@@ -132,14 +137,15 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
     if cached:
         return JsonResponse(cached)
 
-    accounts = list(ConnectedAccount.objects.filter(platform="facebook").order_by("-updated_at"))
+    accounts = list(ConnectedAccount.objects.all().order_by("-updated_at"))
     if not accounts:
         payload = {"total_pages": 0, "connected_pages": 0, "rows": []}
         cache.set(cache_key, payload, timeout=300)
         return JsonResponse(payload)
 
-    seed_account = accounts[0]
+    seed_account = next((a for a in accounts if a.platform == "facebook"), accounts[0])
     connected_ids = {str(a.page_id) for a in accounts}
+    user_access_token = cache.get(f"meta_user_access_token:{request.user.id}")
     client = MetaClient()
 
     rows: list[dict] = []
@@ -157,6 +163,8 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                 "status": "connected",
                 "connectability": "connected",
                 "reason": "Page access token is synced in app.",
+                "platform": account.platform,
+                "ig_user_id": account.ig_user_id,
             }
         )
 
@@ -172,33 +180,59 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
         for target_id in target_ids:
             if target_id in seen_ids:
                 continue
+            is_ig_candidate = target_id.startswith("1784")
             page_name = None
-            reason = "Page is visible in token target_ids but not returned by /me/accounts."
+            platform = "instagram" if is_ig_candidate else "facebook"
+            reason = "Asset is visible in token target_ids but not returned by /me/accounts."
             connectability = "not_connectable"
             try:
-                page_data = client._get(
-                    f"/{target_id}",
-                    {
-                        "access_token": seed_account.access_token,
-                        "fields": "id,name,access_token",
-                    },
-                )
-                page_name = page_data.get("name")
-                if page_data.get("access_token"):
-                    reason = "Page token is available from page node; reconnect to sync it in app."
-                    connectability = "connectable"
-                else:
-                    reason = (
-                        "Meta did not return page access token for this page. "
-                        "Check page admin/task access and Business Integration page selection."
+                detail_token = user_access_token or seed_account.access_token
+                if is_ig_candidate:
+                    page_data = client._get(
+                        f"/{target_id}",
+                        {
+                            "access_token": detail_token,
+                            "fields": "id,username,profile_picture_url",
+                        },
                     )
-                    connectability = "not_connectable"
+                    username = page_data.get("username")
+                    page_name = f"{username} (IG)" if username else None
+                    if username:
+                        reason = (
+                            "Instagram business account is visible but not connected in app. "
+                            "Reconnect to sync it."
+                        )
+                        connectability = "connectable"
+                else:
+                    page_data = client._get(
+                        f"/{target_id}",
+                        {
+                            "access_token": detail_token,
+                            "fields": "id,name,access_token",
+                        },
+                    )
+                    page_name = page_data.get("name")
+                    if page_data.get("access_token"):
+                        reason = "Page token is available from page node; reconnect to sync it in app."
+                        connectability = "connectable"
+                    else:
+                        reason = (
+                            "Meta did not return page access token for this page. "
+                            "Check page admin/task access and Business Integration page selection."
+                        )
+                        connectability = "not_connectable"
             except MetaAPIError:
                 page_name = None
-                reason = (
-                    "Unable to read page details with current token. "
-                    "Check that this user has admin/full control on this page."
-                )
+                if is_ig_candidate:
+                    reason = (
+                        "Unable to read Instagram profile details with current token. "
+                        "Check IG business linking, app permissions, and Business Integration selection."
+                    )
+                else:
+                    reason = (
+                        "Unable to read page details with current token. "
+                        "Check that this user has admin/full control on this page."
+                    )
                 connectability = "not_connectable"
 
             rows.append(
@@ -208,6 +242,7 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                     "status": "catalog-only",
                     "connectability": connectability,
                     "reason": reason,
+                    "platform": platform,
                 }
             )
             seen_ids.add(target_id)
@@ -217,7 +252,7 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
     rows.sort(key=lambda r: (0 if r["status"] == "connected" else 1, (r.get("page_name") or "").lower()))
     payload = {
         "total_pages": len(rows),
-        "connected_pages": len(connected_ids),
+        "connected_pages": sum(1 for r in rows if r.get("status") == "connected"),
         "rows": rows,
     }
     cache.set(cache_key, payload, timeout=300)
