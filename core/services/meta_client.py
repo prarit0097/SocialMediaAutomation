@@ -199,23 +199,62 @@ class MetaClient:
             "views",
         ]
         insights: list[dict] = []
+        total_value_metrics = {
+            "profile_views",
+            "website_clicks",
+            "accounts_engaged",
+            "total_interactions",
+            "likes",
+            "comments",
+            "shares",
+            "saves",
+            "views",
+        }
+        lifetime_metrics = {
+            "profile_views",
+            "website_clicks",
+            "accounts_engaged",
+            "total_interactions",
+            "likes",
+            "comments",
+            "shares",
+            "saves",
+            "views",
+        }
 
         for metric in metrics:
-            try:
-                data = self._get(
-                    f"/{ig_user_id}/insights",
-                    {
-                        "access_token": page_access_token,
-                        "metric": metric,
-                        "period": "day",
-                    },
-                )
-                insights.extend(data.get("data", []))
-            except MetaPermanentError as exc:
-                message = str(exc).lower()
-                if "must be one of the following values" in message or "not available for this" in message:
-                    continue
-                raise
+            base_params = {
+                "access_token": page_access_token,
+                "metric": metric,
+            }
+            attempt_params = [
+                {**base_params, "period": "day"},
+            ]
+            if metric in total_value_metrics:
+                attempt_params.append({**base_params, "period": "day", "metric_type": "total_value"})
+                if metric in lifetime_metrics:
+                    attempt_params.append({**base_params, "period": "lifetime", "metric_type": "total_value"})
+                # Some Graph versions accept total_value metric_type without period.
+                attempt_params.append({**base_params, "metric_type": "total_value"})
+
+            last_message = ""
+            for params in attempt_params:
+                try:
+                    data = self._get(f"/{ig_user_id}/insights", params)
+                    insights.extend(data.get("data", []))
+                    last_message = ""
+                    break
+                except MetaPermanentError as exc:
+                    last_message = str(exc).lower()
+                    if (
+                        "must be one of the following values" in last_message
+                        or "not available for this" in last_message
+                        or "metric_type=total_value" in last_message
+                    ):
+                        continue
+                    raise
+            if last_message:
+                continue
 
         if insights:
             return insights
