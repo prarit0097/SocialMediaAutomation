@@ -37,6 +37,35 @@ def _get_published_posts(account: ConnectedAccount) -> list[dict]:
             )
             enriched_rows = []
             for post in page_posts:
+                stats = {
+                    "total_views": None,
+                    "total_likes": None,
+                    "total_comments": None,
+                    "stats_error": None,
+                }
+                if post.get("id"):
+                    try:
+                        stats = client.fetch_facebook_post_stats(
+                            post_id=post["id"],
+                            page_access_token=account.access_token,
+                        )
+                    except MetaAPIError as exc:
+                        logger.warning(
+                            "failed to fetch post stats account_id=%s post_id=%s error=%s",
+                            account.id,
+                            post.get("id"),
+                            str(exc),
+                        )
+                        stats["stats_error"] = str(exc)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning(
+                            "failed to fetch post stats account_id=%s post_id=%s error=%s",
+                            account.id,
+                            post.get("id"),
+                            str(exc),
+                        )
+                        stats["stats_error"] = str(exc)
+
                 attachment_data = ((post.get("attachments") or {}).get("data") or [{}])[0]
                 subattachments = ((attachment_data.get("subattachments") or {}).get("data") or [{}])[0]
                 media_url = (
@@ -52,10 +81,10 @@ def _get_published_posts(account: ConnectedAccount) -> list[dict]:
                         "media_url": media_url,
                         "published_at": post.get("created_time"),
                         "scheduled_for": None,
-                        "total_views": None,
-                        "total_likes": None,
-                        "total_comments": None,
-                        "reason": None,
+                        "total_views": stats.get("total_views"),
+                        "total_likes": stats.get("total_likes"),
+                        "total_comments": stats.get("total_comments"),
+                        "reason": stats.get("stats_error"),
                     }
                 )
             return enriched_rows
