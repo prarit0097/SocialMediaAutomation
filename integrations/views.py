@@ -123,8 +123,9 @@ def accounts_sync_status(request: HttpRequest) -> JsonResponse:
 @require_GET
 @login_required
 def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
+    force_refresh = request.GET.get("refresh") == "1"
     cache_key = f"meta_pages_catalog:{request.user.id}"
-    cached = cache.get(cache_key)
+    cached = None if force_refresh else cache.get(cache_key)
     if cached:
         return JsonResponse(cached)
 
@@ -151,6 +152,7 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                 "page_id": page_id,
                 "page_name": account.page_name,
                 "status": "connected",
+                "connectability": "connected",
                 "reason": "Page access token is synced in app.",
             }
         )
@@ -169,6 +171,7 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                 continue
             page_name = None
             reason = "Page is visible in token target_ids but not returned by /me/accounts."
+            connectability = "not_connectable"
             try:
                 page_data = client._get(
                     f"/{target_id}",
@@ -180,23 +183,27 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                 page_name = page_data.get("name")
                 if page_data.get("access_token"):
                     reason = "Page token is available from page node; reconnect to sync it in app."
+                    connectability = "connectable"
                 else:
                     reason = (
                         "Meta did not return page access token for this page. "
                         "Check page admin/task access and Business Integration page selection."
                     )
+                    connectability = "not_connectable"
             except MetaAPIError:
                 page_name = None
                 reason = (
                     "Unable to read page details with current token. "
                     "Check that this user has admin/full control on this page."
                 )
+                connectability = "not_connectable"
 
             rows.append(
                 {
                     "page_id": target_id,
                     "page_name": page_name or "(name unavailable)",
                     "status": "catalog-only",
+                    "connectability": connectability,
                     "reason": reason,
                 }
             )

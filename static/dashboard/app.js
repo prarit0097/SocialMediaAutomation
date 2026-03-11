@@ -106,17 +106,19 @@
     container.innerHTML = `<table>${head}${body}</table>`;
   }
 
-  async function loadAccounts() {
+  async function loadAccounts(options = {}) {
     const table = document.getElementById("accountsTable");
     const syncStatus = document.getElementById("accountSyncStatus");
     const catalogTable = document.getElementById("metaCatalogTable");
     const catalogStatus = document.getElementById("metaCatalogStatus");
+    const refreshCatalog = options.refreshCatalog === true;
     if (!table) return;
     try {
+      const catalogEndpoint = refreshCatalog ? "/api/accounts/meta-pages/?refresh=1" : "/api/accounts/meta-pages/";
       const [rows, status, catalog] = await Promise.all([
         fetchJSON("/api/accounts/"),
         fetchJSON("/api/accounts/sync-status/"),
-        fetchJSON("/api/accounts/meta-pages/"),
+        fetchJSON(catalogEndpoint),
       ]);
       renderTable(table, rows);
       if (syncStatus) {
@@ -134,9 +136,11 @@
       if (catalogStatus) {
         const connected = catalog.connected_pages ?? rows.filter((r) => r.platform === "facebook").length;
         const total = catalog.total_pages ?? connected;
+        const connectable = (catalog.rows || []).filter((r) => r.connectability === "connectable").length;
+        const notConnectable = (catalog.rows || []).filter((r) => r.connectability === "not_connectable").length;
         catalogStatus.textContent = `Catalog Total: ${total} | Connected in App: ${connected} | Catalog-only: ${
           Math.max(0, total - connected)
-        }`;
+        } | Connectable: ${connectable} | Not Connectable: ${notConnectable}`;
       }
     } catch (err) {
       table.innerHTML = `<p>${err.message}</p>`;
@@ -222,8 +226,19 @@
   const refreshAccountsBtn = document.getElementById("refreshAccountsBtn");
   if (refreshAccountsBtn) {
     const runWithRefreshAccountsLoading = withButtonLoading(refreshAccountsBtn, "Refresh List", "Refreshing...");
-    refreshAccountsBtn.addEventListener("click", () => runWithRefreshAccountsLoading(loadAccounts));
+    refreshAccountsBtn.addEventListener("click", () => runWithRefreshAccountsLoading(() => loadAccounts()));
     loadAccounts();
+  }
+  const checkConnectabilityBtn = document.getElementById("checkConnectabilityBtn");
+  if (checkConnectabilityBtn) {
+    const runWithConnectabilityLoading = withButtonLoading(
+      checkConnectabilityBtn,
+      "Check Connectability",
+      "Checking..."
+    );
+    checkConnectabilityBtn.addEventListener("click", () =>
+      runWithConnectabilityLoading(() => loadAccounts({ refreshCatalog: true }))
+    );
   }
 
   const refreshScheduledBtn = document.getElementById("refreshScheduledBtn");
