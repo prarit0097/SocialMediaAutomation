@@ -256,10 +256,7 @@ class MetaClient:
             if last_message:
                 continue
 
-        if insights:
-            return insights
-
-        # Fallback profile counters when insights endpoint is restricted.
+        # Always merge profile-level counters because follower_count is often day-delta style.
         profile_data = self._get(
             f"/{ig_user_id}",
             {
@@ -267,14 +264,42 @@ class MetaClient:
                 "fields": "followers_count,follows_count,media_count",
             },
         )
-        fallback = []
-        if "followers_count" in profile_data:
-            fallback.append({"name": "followers_count", "values": [{"value": profile_data.get("followers_count")}]})
-        if "follows_count" in profile_data:
-            fallback.append({"name": "follows_count", "values": [{"value": profile_data.get("follows_count")}]})
-        if "media_count" in profile_data:
-            fallback.append({"name": "media_count", "values": [{"value": profile_data.get("media_count")}]})
-        return fallback
+
+        def _append_counter_metric(metric_name: str, field_name: str) -> None:
+            if field_name not in profile_data:
+                return
+            if any(m.get("name") == metric_name for m in insights):
+                return
+            insights.append(
+                {
+                    "name": metric_name,
+                    "values": [{"value": profile_data.get(field_name)}],
+                    "period": "lifetime",
+                }
+            )
+
+        _append_counter_metric("followers_count", "followers_count")
+        _append_counter_metric("follows_count", "follows_count")
+        _append_counter_metric("media_count", "media_count")
+        return insights
+
+    def fetch_instagram_published_posts(self, ig_user_id: str, page_access_token: str, limit: int = 50) -> list[dict]:
+        media: list[dict] = []
+        params = {
+            "access_token": page_access_token,
+            "fields": "id,caption,media_type,media_url,thumbnail_url,timestamp,permalink,like_count,comments_count",
+            "limit": min(limit, 100),
+        }
+        response = self._get(f"/{ig_user_id}/media", params)
+        media.extend(response.get("data", []))
+
+        next_url = (response.get("paging") or {}).get("next")
+        while next_url and len(media) < limit:
+            response = self._get_by_url(next_url)
+            media.extend(response.get("data", []))
+            next_url = (response.get("paging") or {}).get("next")
+
+        return media[:limit]
 
     def fetch_facebook_post_stats(self, post_id: str, page_access_token: str) -> dict:
         likes_count = None

@@ -77,3 +77,34 @@ class AnalyticsApiTests(TestCase):
         platforms = {row["platform"] for row in body.get("published_posts", [])}
         self.assertIn("facebook", platforms)
         self.assertIn("instagram", platforms)
+
+    @patch("analytics.services._get_published_posts")
+    @patch("analytics.services.MetaClient.fetch_instagram_insights")
+    @patch("analytics.services.MetaClient.fetch_facebook_insights")
+    def test_instagram_summary_prefers_profile_level_followers_over_day_follower_count(
+        self,
+        mock_fetch_fb,
+        mock_fetch_ig,
+        mock_published_posts,
+    ):
+        self.account.ig_user_id = "178400001"
+        self.account.save(update_fields=["ig_user_id"])
+        ConnectedAccount.objects.create(
+            platform=INSTAGRAM,
+            page_id="178400001",
+            page_name="Page (IG)",
+            ig_user_id="178400001",
+            access_token="token",
+        )
+
+        mock_fetch_fb.return_value = [{"name": "followers_count", "values": [{"value": 100}]}]
+        mock_fetch_ig.return_value = [
+            {"name": "follower_count", "values": [{"value": 0}]},
+            {"name": "followers_count", "values": [{"value": 321}]},
+        ]
+        mock_published_posts.side_effect = [[], []]
+
+        response = self.client.get(f"/api/insights/{self.account.id}/")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["summary"]["instagram"]["total_followers"], 321)

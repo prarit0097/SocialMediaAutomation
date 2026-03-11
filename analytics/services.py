@@ -11,17 +11,31 @@ from .models import InsightSnapshot
 logger = logging.getLogger("analytics")
 
 
+def _metric_entry_value(metric: dict):
+    total_value = metric.get("total_value")
+    if isinstance(total_value, dict):
+        value = total_value.get("value")
+        if value is not None:
+            return value
+
+    values = metric.get("values") or []
+    if values and isinstance(values[-1], dict):
+        value = values[-1].get("value")
+        if value is not None:
+            return value
+
+    return None
+
+
 def _first_metric_value(insights: list[dict], names: list[str]):
     # Respect priority order from `names` (e.g. followers_count before fan_count).
     for target_name in names:
         for metric in insights:
             if metric.get("name") != target_name:
                 continue
-            values = metric.get("values") or []
-            if values and isinstance(values[0], dict):
-                value = values[0].get("value")
-                if value is not None:
-                    return value
+            value = _metric_entry_value(metric)
+            if value is not None:
+                return value
     return None
 
 
@@ -92,6 +106,32 @@ def _get_published_posts(account: ConnectedAccount, include_post_stats: bool = T
             logger.warning("failed to fetch facebook page posts account_id=%s error=%s", account.id, str(exc))
         except Exception as exc:  # noqa: BLE001
             logger.warning("failed to fetch facebook page posts account_id=%s error=%s", account.id, str(exc))
+    else:
+        try:
+            ig_user_id = account.ig_user_id or account.page_id
+            ig_posts = client.fetch_instagram_published_posts(
+                ig_user_id=ig_user_id,
+                page_access_token=account.access_token,
+                limit=50,
+            )
+            return [
+                {
+                    "id": post.get("id"),
+                    "message": post.get("caption"),
+                    "media_url": post.get("thumbnail_url") or post.get("media_url"),
+                    "published_at": post.get("timestamp"),
+                    "scheduled_for": None,
+                    "total_views": None,
+                    "total_likes": post.get("like_count"),
+                    "total_comments": post.get("comments_count"),
+                    "reason": None,
+                }
+                for post in ig_posts
+            ]
+        except MetaAPIError as exc:
+            logger.warning("failed to fetch instagram posts account_id=%s error=%s", account.id, str(exc))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("failed to fetch instagram posts account_id=%s error=%s", account.id, str(exc))
 
     # Fallback to posts scheduled through this app.
     rows = list(
@@ -158,8 +198,13 @@ def build_insight_response(
 ) -> dict:
     total_followers = _first_metric_value(insights, ["followers_count", "fan_count", "follower_count"])
     total_following = _first_metric_value(insights, ["follows_count", "following_count"])
+    total_media_count = _first_metric_value(insights, ["media_count"])
     if published_posts is None:
         published_posts = _get_published_posts(account, include_post_stats=include_generated_post_stats)
+
+    total_post_share = len(published_posts)
+    if platform == "instagram" and total_media_count is not None:
+        total_post_share = total_media_count
 
     return {
         "account_id": account.id,
@@ -170,7 +215,7 @@ def build_insight_response(
         "summary": {
             "total_followers": total_followers,
             "total_following": 0 if total_following is None else total_following,
-            "total_post_share": len(published_posts),
+            "total_post_share": total_post_share,
         },
         "published_posts": published_posts,
         "snapshot_id": snapshot_id,

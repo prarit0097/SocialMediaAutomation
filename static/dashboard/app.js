@@ -712,10 +712,20 @@
     }));
     renderPostsTable(insightPostsTable, publishedPosts);
 
+    function metricDisplayValue(metric) {
+      if (metric && metric.total_value && typeof metric.total_value === "object" && metric.total_value.value !== undefined) {
+        return metric.total_value.value;
+      }
+      if (metric && Array.isArray(metric.values) && metric.values.length && metric.values[0] && metric.values[0].value !== undefined) {
+        return metric.values[0].value;
+      }
+      return "";
+    }
+
     const metrics = (data.insights || []).map((metric) => {
       const row = {
         metric: metric.name,
-        value: metric.values && metric.values[0] ? metric.values[0].value : "",
+        value: metricDisplayValue(metric),
         title: metric.title || "",
         period: metric.period || "",
       };
