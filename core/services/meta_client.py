@@ -135,7 +135,8 @@ class MetaClient:
             "caption": caption,
         }
         if media_kind == "video":
-            payload["media_type"] = "VIDEO"
+            # IG Graph now requires REELS for feed video publishing.
+            payload["media_type"] = "REELS"
             payload["video_url"] = media_url
         else:
             payload["image_url"] = media_url
