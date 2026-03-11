@@ -106,6 +106,35 @@
     container.innerHTML = `<table>${head}${body}</table>`;
   }
 
+  function renderCatalogTable(container, rows) {
+    if (!container) return;
+    if (!rows.length) {
+      container.innerHTML = "<p>No records found.</p>";
+      return;
+    }
+
+    const headers = Object.keys(rows[0]);
+    const head = `<tr>${headers.map((h) => `<th>${h}</th>`).join("")}<th>insights</th></tr>`;
+    const body = rows
+      .map((row) => {
+        const connectability = String(row.connectability || "").toLowerCase();
+        const pageTokenStatus = String(row.page_token_status || row.connection_status || "").toLowerCase();
+        const insightsAvailable =
+          connectability === "connectable" && (pageTokenStatus === "connected" || pageTokenStatus === "synced");
+        const reason =
+          row.reason ||
+          "Meta did not return page access token. Connect this page in Business Integrations and reconnect.";
+        const badge = insightsAvailable
+          ? "<span class='status-badge ok'>Available</span>"
+          : `<span class='status-badge warn' title='${escapeHtml(reason)}'>Unavailable</span>`;
+
+        return `<tr>${headers.map((h) => `<td>${row[h] ?? ""}</td>`).join("")}<td>${badge}</td></tr>`;
+      })
+      .join("");
+
+    container.innerHTML = `<table>${head}${body}</table>`;
+  }
+
   async function loadAccounts(options = {}) {
     const table = document.getElementById("accountsTable");
     const syncStatus = document.getElementById("accountSyncStatus");
@@ -146,7 +175,7 @@
     if (catalogResult.status === "fulfilled") {
       const catalog = catalogResult.value;
       if (catalogTable) {
-        renderTable(catalogTable, catalog.rows || []);
+        renderCatalogTable(catalogTable, catalog.rows || []);
       }
       if (catalogStatus) {
         const connected = catalog.connected_pages ?? rows.filter((r) => r.platform === "facebook").length;

@@ -441,6 +441,27 @@ pre {
   font-size: 12px;
 }
 
+.status-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.status-badge.ok {
+  color: #0b4c35;
+  background: #dff5ea;
+  border: 1px solid #b6e2cc;
+}
+
+.status-badge.warn {
+  color: #7a3d00;
+  background: #fff0dc;
+  border: 1px solid #f2cf9a;
+}
+
 @keyframes rise-in {
   from {
     opacity: 0;
