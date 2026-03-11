@@ -151,6 +151,7 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                 "page_id": page_id,
                 "page_name": account.page_name,
                 "status": "connected",
+                "reason": "Page access token is synced in app.",
             }
         )
 
@@ -167,23 +168,36 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
             if target_id in seen_ids:
                 continue
             page_name = None
+            reason = "Page is visible in token target_ids but not returned by /me/accounts."
             try:
                 page_data = client._get(
                     f"/{target_id}",
                     {
                         "access_token": seed_account.access_token,
-                        "fields": "id,name",
+                        "fields": "id,name,access_token",
                     },
                 )
                 page_name = page_data.get("name")
+                if page_data.get("access_token"):
+                    reason = "Page token is available from page node; reconnect to sync it in app."
+                else:
+                    reason = (
+                        "Meta did not return page access token for this page. "
+                        "Check page admin/task access and Business Integration page selection."
+                    )
             except MetaAPIError:
                 page_name = None
+                reason = (
+                    "Unable to read page details with current token. "
+                    "Check that this user has admin/full control on this page."
+                )
 
             rows.append(
                 {
                     "page_id": target_id,
                     "page_name": page_name or "(name unavailable)",
                     "status": "catalog-only",
+                    "reason": reason,
                 }
             )
             seen_ids.add(target_id)

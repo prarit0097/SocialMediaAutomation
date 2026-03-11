@@ -82,3 +82,6 @@ class IntegrationsViewTests(TestCase):
         statuses = {row["page_id"]: row["status"] for row in payload["rows"]}
         self.assertEqual(statuses["10"], "connected")
         self.assertEqual(statuses["20"], "catalog-only")
+        reasons = {row["page_id"]: row.get("reason", "") for row in payload["rows"]}
+        self.assertIn("token", reasons["10"].lower())
+        self.assertTrue(len(reasons["20"]) > 0)
