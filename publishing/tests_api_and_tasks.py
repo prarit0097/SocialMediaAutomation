@@ -6,7 +6,7 @@ from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from core.constants import FACEBOOK, POST_STATUS_PENDING, POST_STATUS_PUBLISHED
+from core.constants import FACEBOOK, INSTAGRAM, POST_STATUS_PENDING, POST_STATUS_PUBLISHED
 from integrations.models import ConnectedAccount
 from publishing.models import ScheduledPost
 from publishing.services import publish_scheduled_post
@@ -22,6 +22,14 @@ class PublishingApiTests(TestCase):
             platform=FACEBOOK,
             page_id="123",
             page_name="FB Page",
+            ig_user_id="17890001",
+            access_token="token",
+        )
+        self.ig_account = ConnectedAccount.objects.create(
+            platform=INSTAGRAM,
+            page_id="17890001",
+            page_name="IG Page",
+            ig_user_id="17890001",
             access_token="token",
         )
 
@@ -53,6 +61,23 @@ class PublishingApiTests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["error"], "account_id does not belong to selected platform")
+
+    def test_schedule_post_both_creates_facebook_and_instagram_jobs(self):
+        response = self.client.post(
+            reverse("schedule_post"),
+            data={
+                "account_id": self.account.id,
+                "platform": "both",
+                "message": "Hello both",
+                "media_url": "https://example.com/a.jpg",
+                "scheduled_for": (timezone.now() + timedelta(minutes=10)).isoformat(),
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(ScheduledPost.objects.count(), 2)
+        created_platforms = set(ScheduledPost.objects.values_list("platform", flat=True))
+        self.assertEqual(created_platforms, {FACEBOOK, INSTAGRAM})
 
 
 class PublishingTaskTests(TestCase):

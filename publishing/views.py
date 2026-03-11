@@ -8,12 +8,13 @@ from urllib.parse import urljoin
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.core.files.storage import default_storage
+from django.db import transaction
 from django.http import HttpRequest, JsonResponse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.http import require_GET, require_POST
 
-from core.constants import PLATFORM_CHOICES, POST_STATUS_FAILED, POST_STATUS_PENDING
+from core.constants import FACEBOOK, INSTAGRAM, PLATFORM_CHOICES, POST_STATUS_FAILED, POST_STATUS_PENDING
 from integrations.models import ConnectedAccount
 
 from .models import ScheduledPost
@@ -52,6 +53,32 @@ def _upload_file_to_media(request: HttpRequest):
     return _build_public_media_url(request, relative_url), None
 
 
+def _resolve_dual_accounts(base_account: ConnectedAccount):
+    """
+    Resolve paired Facebook + Instagram connected accounts for one business entity.
+    """
+    fb_account = None
+    ig_account = None
+
+    if base_account.platform == FACEBOOK:
+        fb_account = base_account
+        if base_account.ig_user_id:
+            ig_account = ConnectedAccount.objects.filter(platform=INSTAGRAM, ig_user_id=base_account.ig_user_id).first()
+            if not ig_account:
+                ig_account = ConnectedAccount.objects.filter(platform=INSTAGRAM, page_id=base_account.ig_user_id).first()
+    elif base_account.platform == INSTAGRAM:
+        ig_account = base_account
+        fb_account = ConnectedAccount.objects.filter(platform=FACEBOOK, ig_user_id=base_account.page_id).first()
+
+    if not fb_account or not ig_account:
+        return None, None, (
+            "FB + Insta post requires linked connected accounts for both platforms. "
+            "Connect page again and ensure Instagram is linked to the selected Facebook Page."
+        )
+
+    return fb_account, ig_account, None
+
+
 @require_POST
 @login_required
 def schedule_post(request: HttpRequest) -> JsonResponse:
@@ -82,13 +109,13 @@ def schedule_post(request: HttpRequest) -> JsonResponse:
         return _bad_request("account_id, platform, and scheduled_for are required")
 
     valid_platforms = {choice[0] for choice in PLATFORM_CHOICES}
-    if platform not in valid_platforms:
-        return _bad_request("platform must be facebook or instagram")
+    if platform not in valid_platforms and platform != "both":
+        return _bad_request("platform must be facebook, instagram, or both")
 
     account = ConnectedAccount.objects.filter(id=account_id).first()
     if not account:
         return JsonResponse({"error": "Connected account not found"}, status=404)
-    if account.platform != platform:
+    if platform in valid_platforms and account.platform != platform:
         return _bad_request("account_id does not belong to selected platform")
 
     dt = parse_datetime(scheduled_for)
@@ -97,13 +124,56 @@ def schedule_post(request: HttpRequest) -> JsonResponse:
     if timezone.is_naive(dt):
         dt = timezone.make_aware(dt, timezone=dt_timezone.utc)
 
-    post = ScheduledPost(
-        account=account,
-        platform=platform,
-        message=message,
-        media_url=media_url,
-        scheduled_for=dt,
-    )
+    if platform == "both":
+        if not media_url:
+            return _bad_request("media_url or media_file is required when platform is both")
+        fb_account, ig_account, resolve_error = _resolve_dual_accounts(account)
+        if resolve_error:
+            return _bad_request(resolve_error)
+
+        targets = [
+            (fb_account, FACEBOOK),
+            (ig_account, INSTAGRAM),
+        ]
+
+        created_posts = []
+        try:
+            with transaction.atomic():
+                for target_account, target_platform in targets:
+                    post = ScheduledPost(
+                        account=target_account,
+                        platform=target_platform,
+                        message=message,
+                        media_url=media_url,
+                        scheduled_for=dt,
+                    )
+                    post.save()
+                    created_posts.append(post)
+                    logger.info(
+                        "post scheduled id=%s platform=%s account_id=%s scheduled_for=%s",
+                        post.id,
+                        post.platform,
+                        post.account_id,
+                        post.scheduled_for,
+                    )
+        except Exception as exc:  # noqa: BLE001
+            return _bad_request("Validation failed", {"message": str(exc)})
+
+        return JsonResponse(
+            {
+                "ids": [p.id for p in created_posts],
+                "status": POST_STATUS_PENDING,
+                "media_url": media_url,
+                "created": len(created_posts),
+                "posts": [
+                    {"id": p.id, "platform": p.platform, "account_id": p.account_id, "page_name": p.account.page_name}
+                    for p in created_posts
+                ],
+            },
+            status=201,
+        )
+
+    post = ScheduledPost(account=account, platform=platform, message=message, media_url=media_url, scheduled_for=dt)
 
     try:
         post.save()

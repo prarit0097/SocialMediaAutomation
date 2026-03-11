@@ -506,7 +506,12 @@
             body: payload,
           })
         );
-        resultEl.textContent = `Scheduled: #${data.id}`;
+        if (Array.isArray(data.posts) && data.posts.length) {
+          const summary = data.posts.map((p) => `#${p.id} (${p.platform})`).join(", ");
+          resultEl.textContent = `Scheduled: ${summary}`;
+        } else {
+          resultEl.textContent = `Scheduled: #${data.id}`;
+        }
         await loadScheduledPosts();
       } catch (err) {
         resultEl.textContent = `Error: ${err.message}`;
