@@ -607,9 +607,13 @@
       return;
     }
 
+    const hasPlatform = rows.some((row) => row.platform);
+    const hasSourceName = rows.some((row) => row.source_page_name);
     const head = `
       <tr>
         <th>id</th>
+        ${hasPlatform ? "<th>platform</th>" : ""}
+        ${hasSourceName ? "<th>page</th>" : ""}
         <th>message</th>
         <th>media</th>
         <th>views</th>
@@ -632,6 +636,8 @@
         (row) => `
           <tr>
             <td>${escapeHtml(row.id)}</td>
+            ${hasPlatform ? `<td>${platformBadge(row.platform)}</td>` : ""}
+            ${hasSourceName ? `<td>${escapeHtml(row.source_page_name || "-")}</td>` : ""}
             <td>${escapeHtml(row.message)}</td>
             <td>${mediaPreviewHtml(row.media_url)}</td>
             <td>${metricCell(row.total_views, row.reason)}</td>
@@ -648,23 +654,52 @@
     container.innerHTML = `<table>${head}${body}</table>`;
   }
 
+  function combinedMetricText(fbValue, igValue) {
+    const fb = fbValue === null || fbValue === undefined || fbValue === "" ? "-" : String(fbValue);
+    const ig = igValue === null || igValue === undefined || igValue === "" ? "-" : String(igValue);
+    return `FB ${fb} | IG ${ig}`;
+  }
+
   function renderInsights(data) {
     if (!data) return;
     if (insightError) insightError.textContent = "";
 
     const summary = data.summary || {};
-    setInsightValue(totalFollowers, summary.total_followers);
-    setInsightValue(totalFollowing, summary.total_following);
-    setInsightValue(totalPostShare, summary.total_post_share);
+    if (data.combined) {
+      const fbSummary = summary.facebook || {};
+      const igSummary = summary.instagram || {};
+      if (totalFollowers) totalFollowers.textContent = combinedMetricText(fbSummary.total_followers, igSummary.total_followers);
+      if (totalFollowing) totalFollowing.textContent = combinedMetricText(fbSummary.total_following, igSummary.total_following);
+      if (totalPostShare) totalPostShare.textContent = combinedMetricText(fbSummary.total_post_share, igSummary.total_post_share);
+    } else {
+      setInsightValue(totalFollowers, summary.total_followers);
+      setInsightValue(totalFollowing, summary.total_following);
+      setInsightValue(totalPostShare, summary.total_post_share);
+    }
 
     if (insightMeta) {
       const fetchedAt = toIndianDateTime(data.fetched_at);
-      insightMeta.textContent = `Account ID: ${data.account_id || "-"} | Platform: ${
-        data.platform || "-"
-      } | Snapshot: ${data.snapshot_id || "-"} | Fetched: ${fetchedAt || "-"} | Cached: ${data.cached ? "Yes" : "No"}`;
+      if (data.combined && Array.isArray(data.accounts)) {
+        const ids = data.accounts.map((row) => `${row.platform}:${row.account_id}`).join(", ");
+        insightMeta.textContent = `Accounts: ${ids} | Platform: ${data.platform || "-"} | Snapshot: ${
+          data.snapshot_id || "-"
+        } | Fetched: ${fetchedAt || "-"} | Cached: ${data.cached ? "Yes" : "No"}`;
+      } else {
+        insightMeta.textContent = `Account ID: ${data.account_id || "-"} | Platform: ${
+          data.platform || "-"
+        } | Snapshot: ${data.snapshot_id || "-"} | Fetched: ${fetchedAt || "-"} | Cached: ${data.cached ? "Yes" : "No"}`;
+      }
     }
     if (insightPageHero && insightPageName) {
-      insightPageName.textContent = data.page_name || "-";
+      if (data.combined && Array.isArray(data.accounts)) {
+        const fbAccount = data.accounts.find((row) => row.platform === "facebook");
+        const igAccount = data.accounts.find((row) => row.platform === "instagram");
+        const fbName = fbAccount ? fbAccount.page_name : "-";
+        const igName = igAccount ? igAccount.page_name : "-";
+        insightPageName.textContent = `${fbName} + ${igName}`;
+      } else {
+        insightPageName.textContent = data.page_name || "-";
+      }
       insightPageHero.hidden = false;
     }
 
@@ -675,12 +710,16 @@
     }));
     renderPostsTable(insightPostsTable, publishedPosts);
 
-    const metrics = (data.insights || []).map((metric) => ({
-      metric: metric.name,
-      value: metric.values && metric.values[0] ? metric.values[0].value : "",
-      title: metric.title || "",
-      period: metric.period || "",
-    }));
+    const metrics = (data.insights || []).map((metric) => {
+      const row = {
+        metric: metric.name,
+        value: metric.values && metric.values[0] ? metric.values[0].value : "",
+        title: metric.title || "",
+        period: metric.period || "",
+      };
+      if (metric.platform) row.platform = metric.platform;
+      return row;
+    });
     renderTable(insightMetricsTable, metrics);
   }
 
