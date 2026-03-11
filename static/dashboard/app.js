@@ -113,23 +113,38 @@
     const catalogStatus = document.getElementById("metaCatalogStatus");
     const refreshCatalog = options.refreshCatalog === true;
     if (!table) return;
+    let rows = [];
     try {
-      const catalogEndpoint = refreshCatalog ? "/api/accounts/meta-pages/?refresh=1" : "/api/accounts/meta-pages/";
-      const [rows, status, catalog] = await Promise.all([
-        fetchJSON("/api/accounts/"),
-        fetchJSON("/api/accounts/sync-status/"),
-        fetchJSON(catalogEndpoint),
-      ]);
+      // Primary table should load fast and independently.
+      rows = await fetchJSON("/api/accounts/");
       renderTable(table, rows);
-      if (syncStatus) {
-        const syncedAt = status.synced_at ? toIndianDateTime(status.synced_at) : "N/A";
-        const metaPages = status.meta_pages_synced ?? "N/A";
-        const targetIds = status.token_target_ids_count ?? "N/A";
-        const fbTotal = status.facebook_connected_total ?? rows.filter((r) => r.platform === "facebook").length;
-        const igTotal = status.instagram_connected_total ?? rows.filter((r) => r.platform === "instagram").length;
-        const warning = status.warning ? ` | Warning: ${status.warning}` : "";
-        syncStatus.textContent = `Last Sync: ${syncedAt} | Meta Pages Synced: ${metaPages} | Token Target IDs: ${targetIds} | Connected FB: ${fbTotal} | Connected IG: ${igTotal}${warning}`;
-      }
+    } catch (err) {
+      table.innerHTML = `<p>${err.message}</p>`;
+      rows = [];
+    }
+
+    // Non-critical panels load in background; failures should not blank main table.
+    const catalogEndpoint = refreshCatalog ? "/api/accounts/meta-pages/?refresh=1" : "/api/accounts/meta-pages/";
+    const [statusResult, catalogResult] = await Promise.allSettled([
+      fetchJSON("/api/accounts/sync-status/"),
+      fetchJSON(catalogEndpoint),
+    ]);
+
+    if (statusResult.status === "fulfilled" && syncStatus) {
+      const status = statusResult.value;
+      const syncedAt = status.synced_at ? toIndianDateTime(status.synced_at) : "N/A";
+      const metaPages = status.meta_pages_synced ?? "N/A";
+      const targetIds = status.token_target_ids_count ?? "N/A";
+      const fbTotal = status.facebook_connected_total ?? rows.filter((r) => r.platform === "facebook").length;
+      const igTotal = status.instagram_connected_total ?? rows.filter((r) => r.platform === "instagram").length;
+      const warning = status.warning ? ` | Warning: ${status.warning}` : "";
+      syncStatus.textContent = `Last Sync: ${syncedAt} | Meta Pages Synced: ${metaPages} | Token Target IDs: ${targetIds} | Connected FB: ${fbTotal} | Connected IG: ${igTotal}${warning}`;
+    } else if (syncStatus) {
+      syncStatus.textContent = "Sync status unavailable right now.";
+    }
+
+    if (catalogResult.status === "fulfilled") {
+      const catalog = catalogResult.value;
       if (catalogTable) {
         renderTable(catalogTable, catalog.rows || []);
       }
@@ -142,10 +157,8 @@
           Math.max(0, total - connected)
         } | Connectable: ${connectable} | Not Connectable: ${notConnectable}`;
       }
-    } catch (err) {
-      table.innerHTML = `<p>${err.message}</p>`;
-      if (syncStatus) syncStatus.textContent = "";
-      if (catalogTable) catalogTable.innerHTML = "";
+    } else {
+      if (catalogTable) catalogTable.innerHTML = "<p>Catalog unavailable right now.</p>";
       if (catalogStatus) catalogStatus.textContent = "";
     }
   }
