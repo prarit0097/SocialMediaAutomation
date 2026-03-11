@@ -1,6 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import Client, TestCase
+from unittest.mock import patch
 
 from integrations.models import ConnectedAccount
 
@@ -54,3 +55,30 @@ class IntegrationsViewTests(TestCase):
         self.assertEqual(payload["meta_pages_synced"], 41)
         self.assertEqual(payload["facebook_connected_total"], 10)
         self.assertEqual(payload["token_target_ids_count"], 41)
+
+    @patch("integrations.views.MetaClient._get")
+    @patch("integrations.views.MetaClient.debug_token")
+    def test_meta_pages_catalog_includes_catalog_only_rows(self, mock_debug_token, mock_get):
+        ConnectedAccount.objects.create(
+            platform="facebook",
+            page_id="10",
+            page_name="Connected Page",
+            access_token="token",
+        )
+        mock_debug_token.return_value = {
+            "data": {
+                "granular_scopes": [
+                    {"scope": "pages_show_list", "target_ids": ["10", "20"]},
+                ]
+            }
+        }
+        mock_get.return_value = {"id": "20", "name": "Catalog Page"}
+
+        response = self.client.get("/api/accounts/meta-pages/")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["connected_pages"], 1)
+        self.assertEqual(payload["total_pages"], 2)
+        statuses = {row["page_id"]: row["status"] for row in payload["rows"]}
+        self.assertEqual(statuses["10"], "connected")
+        self.assertEqual(statuses["20"], "catalog-only")

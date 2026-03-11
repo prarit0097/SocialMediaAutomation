@@ -118,3 +118,83 @@ def accounts_sync_status(request: HttpRequest) -> JsonResponse:
             "synced_at": None,
         }
     return JsonResponse(data)
+
+
+@require_GET
+@login_required
+def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
+    cache_key = f"meta_pages_catalog:{request.user.id}"
+    cached = cache.get(cache_key)
+    if cached:
+        return JsonResponse(cached)
+
+    accounts = list(ConnectedAccount.objects.filter(platform="facebook").order_by("-updated_at"))
+    if not accounts:
+        payload = {"total_pages": 0, "connected_pages": 0, "rows": []}
+        cache.set(cache_key, payload, timeout=300)
+        return JsonResponse(payload)
+
+    seed_account = accounts[0]
+    connected_ids = {str(a.page_id) for a in accounts}
+    client = MetaClient()
+
+    rows: list[dict] = []
+    seen_ids: set[str] = set()
+
+    for account in accounts:
+        page_id = str(account.page_id)
+        if page_id in seen_ids:
+            continue
+        seen_ids.add(page_id)
+        rows.append(
+            {
+                "page_id": page_id,
+                "page_name": account.page_name,
+                "status": "connected",
+            }
+        )
+
+    try:
+        debug_data = client.debug_token(seed_account.access_token).get("data", {})
+        target_ids: list[str] = []
+        for scope_item in (debug_data.get("granular_scopes") or []):
+            for target_id in (scope_item.get("target_ids") or []):
+                sid = str(target_id)
+                if sid not in target_ids:
+                    target_ids.append(sid)
+
+        for target_id in target_ids:
+            if target_id in seen_ids:
+                continue
+            page_name = None
+            try:
+                page_data = client._get(
+                    f"/{target_id}",
+                    {
+                        "access_token": seed_account.access_token,
+                        "fields": "id,name",
+                    },
+                )
+                page_name = page_data.get("name")
+            except MetaAPIError:
+                page_name = None
+
+            rows.append(
+                {
+                    "page_id": target_id,
+                    "page_name": page_name or "(name unavailable)",
+                    "status": "catalog-only",
+                }
+            )
+            seen_ids.add(target_id)
+    except MetaAPIError:
+        pass
+
+    rows.sort(key=lambda r: (0 if r["status"] == "connected" else 1, (r.get("page_name") or "").lower()))
+    payload = {
+        "total_pages": len(rows),
+        "connected_pages": len(connected_ids),
+        "rows": rows,
+    }
+    cache.set(cache_key, payload, timeout=300)
+    return JsonResponse(payload)

@@ -109,11 +109,14 @@
   async function loadAccounts() {
     const table = document.getElementById("accountsTable");
     const syncStatus = document.getElementById("accountSyncStatus");
+    const catalogTable = document.getElementById("metaCatalogTable");
+    const catalogStatus = document.getElementById("metaCatalogStatus");
     if (!table) return;
     try {
-      const [rows, status] = await Promise.all([
+      const [rows, status, catalog] = await Promise.all([
         fetchJSON("/api/accounts/"),
         fetchJSON("/api/accounts/sync-status/"),
+        fetchJSON("/api/accounts/meta-pages/"),
       ]);
       renderTable(table, rows);
       if (syncStatus) {
@@ -125,9 +128,21 @@
         const warning = status.warning ? ` | Warning: ${status.warning}` : "";
         syncStatus.textContent = `Last Sync: ${syncedAt} | Meta Pages Synced: ${metaPages} | Token Target IDs: ${targetIds} | Connected FB: ${fbTotal} | Connected IG: ${igTotal}${warning}`;
       }
+      if (catalogTable) {
+        renderTable(catalogTable, catalog.rows || []);
+      }
+      if (catalogStatus) {
+        const connected = catalog.connected_pages ?? rows.filter((r) => r.platform === "facebook").length;
+        const total = catalog.total_pages ?? connected;
+        catalogStatus.textContent = `Catalog Total: ${total} | Connected in App: ${connected} | Catalog-only: ${
+          Math.max(0, total - connected)
+        }`;
+      }
     } catch (err) {
       table.innerHTML = `<p>${err.message}</p>`;
       if (syncStatus) syncStatus.textContent = "";
+      if (catalogTable) catalogTable.innerHTML = "";
+      if (catalogStatus) catalogStatus.textContent = "";
     }
   }
 
