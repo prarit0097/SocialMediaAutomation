@@ -58,6 +58,7 @@ def account_insights(request: HttpRequest, account_id: int) -> JsonResponse:
             fetched_at=latest.fetched_at,
             cached=True,
             published_posts=published_posts,
+            include_generated_post_stats=False,
         )
         return JsonResponse(data)
 

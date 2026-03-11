@@ -25,7 +25,7 @@ def _first_metric_value(insights: list[dict], names: list[str]):
     return None
 
 
-def _get_published_posts(account: ConnectedAccount) -> list[dict]:
+def _get_published_posts(account: ConnectedAccount, include_post_stats: bool = True) -> list[dict]:
     client = MetaClient()
 
     if account.platform == FACEBOOK:
@@ -43,7 +43,7 @@ def _get_published_posts(account: ConnectedAccount) -> list[dict]:
                     "total_comments": None,
                     "stats_error": None,
                 }
-                if post.get("id"):
+                if include_post_stats and post.get("id"):
                     try:
                         stats = client.fetch_facebook_post_stats(
                             post_id=post["id"],
@@ -154,11 +154,12 @@ def build_insight_response(
     fetched_at,
     cached: bool,
     published_posts: list[dict] | None = None,
+    include_generated_post_stats: bool = True,
 ) -> dict:
     total_followers = _first_metric_value(insights, ["followers_count", "fan_count", "follower_count"])
     total_following = _first_metric_value(insights, ["follows_count", "following_count"])
     if published_posts is None:
-        published_posts = _get_published_posts(account)
+        published_posts = _get_published_posts(account, include_post_stats=include_generated_post_stats)
 
     return {
         "account_id": account.id,
