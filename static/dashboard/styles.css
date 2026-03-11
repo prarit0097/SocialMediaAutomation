@@ -315,6 +315,11 @@ button:active,
   background: #fff;
 }
 
+#insightPostsTable {
+  max-height: 560px;
+  overflow: auto;
+}
+
 table {
   width: 100%;
   border-collapse: separate;
