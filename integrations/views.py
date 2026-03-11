@@ -146,6 +146,7 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
     seed_account = next((a for a in accounts if a.platform == "facebook"), accounts[0])
     connected_ids = {str(a.page_id) for a in accounts}
     user_access_token = cache.get(f"meta_user_access_token:{request.user.id}")
+    app_access_token = f"{settings.META_APP_ID}|{settings.META_APP_SECRET}"
     client = MetaClient()
 
     rows: list[dict] = []
@@ -165,6 +166,7 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                 "reason": "Page access token is synced in app.",
                 "platform": account.platform,
                 "ig_user_id": account.ig_user_id,
+                "profile_picture_url": None,
             }
         )
 
@@ -185,6 +187,7 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
             platform = "instagram" if is_ig_candidate else "facebook"
             reason = "Asset is visible in token target_ids but not returned by /me/accounts."
             connectability = "not_connectable"
+            profile_picture_url = None
             try:
                 detail_token = user_access_token or seed_account.access_token
                 if is_ig_candidate:
@@ -197,6 +200,7 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                     )
                     username = page_data.get("username")
                     page_name = f"{username} (IG)" if username else None
+                    profile_picture_url = page_data.get("profile_picture_url")
                     if username:
                         reason = (
                             "Instagram business account is visible but not connected in app. "
@@ -208,10 +212,12 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                         f"/{target_id}",
                         {
                             "access_token": detail_token,
-                            "fields": "id,name,access_token",
+                            "fields": "id,name,access_token,picture",
                         },
                     )
                     page_name = page_data.get("name")
+                    picture_data = page_data.get("picture") or {}
+                    profile_picture_url = (picture_data.get("data") or {}).get("url")
                     if page_data.get("access_token"):
                         reason = "Page token is available from page node; reconnect to sync it in app."
                         connectability = "connectable"
@@ -222,17 +228,49 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                         )
                         connectability = "not_connectable"
             except MetaAPIError:
-                page_name = None
-                if is_ig_candidate:
+                # Retry with app access token for best-effort name lookup on public assets.
+                try:
+                    if is_ig_candidate:
+                        page_data = client._get(
+                            f"/{target_id}",
+                            {
+                                "access_token": app_access_token,
+                                "fields": "id,username,profile_picture_url",
+                            },
+                        )
+                        username = page_data.get("username")
+                        page_name = f"{username} (IG)" if username else page_name
+                        profile_picture_url = page_data.get("profile_picture_url") or profile_picture_url
+                    else:
+                        page_data = client._get(
+                            f"/{target_id}",
+                            {
+                                "access_token": app_access_token,
+                                "fields": "id,name,picture",
+                            },
+                        )
+                        page_name = page_data.get("name") or page_name
+                        picture_data = page_data.get("picture") or {}
+                        profile_picture_url = (picture_data.get("data") or {}).get("url") or profile_picture_url
+                except MetaAPIError:
+                    pass
+
+                if page_name:
                     reason = (
-                        "Unable to read Instagram profile details with current token. "
-                        "Check IG business linking, app permissions, and Business Integration selection."
+                        "Name resolved via limited lookup, but page token is unavailable for full access. "
+                        "Grant admin/full control and reconnect in Business Integration."
                     )
                 else:
-                    reason = (
-                        "Unable to read page details with current token. "
-                        "Check that this user has admin/full control on this page."
-                    )
+                    if is_ig_candidate:
+                        reason = (
+                            "Unable to read Instagram profile details with current token. "
+                            "Check IG business linking, app permissions, and Business Integration selection."
+                        )
+                    else:
+                        reason = (
+                            "Unable to read page details with current token. "
+                            "Check that this user has admin/full control on this page."
+                        )
                 connectability = "not_connectable"
 
             rows.append(
@@ -243,6 +281,7 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                     "connectability": connectability,
                     "reason": reason,
                     "platform": platform,
+                    "profile_picture_url": profile_picture_url,
                 }
             )
             seen_ids.add(target_id)

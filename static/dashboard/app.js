@@ -86,6 +86,7 @@
     const pageId = avatarResolver ? avatarResolver(row) : row.page_id ? String(row.page_id) : "";
     const name = row.page_name || row.platform || "Account";
     const initials = escapeHtml(String(name).replace(/\s+/g, " ").trim().slice(0, 2).toUpperCase() || "NA");
+    const explicitImage = row.profile_picture_url ? String(row.profile_picture_url) : "";
     if (!pageId) {
       return `
         <span class="profile-cell">
@@ -94,7 +95,7 @@
         </span>
       `;
     }
-    const graphUrl = `https://graph.facebook.com/${encodeURIComponent(pageId)}/picture?type=normal`;
+    const graphUrl = explicitImage || `https://graph.facebook.com/${encodeURIComponent(pageId)}/picture?type=normal`;
     return `
       <span class="profile-cell">
         <span class="avatar-wrap">
