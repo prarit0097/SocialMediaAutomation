@@ -1,4 +1,6 @@
 ﻿(function () {
+  let cachedAccountsRows = [];
+
   function getCookie(name) {
     const value = `; ${document.cookie}`;
     const parts = value.split(`; ${name}=`);
@@ -50,6 +52,114 @@
       .join("");
 
     container.innerHTML = `<table>${head}${body}</table>`;
+  }
+
+  function platformBadge(platform) {
+    const value = String(platform || "").toLowerCase();
+    if (value === "instagram") return "<span class='platform-badge instagram'>Instagram</span>";
+    return "<span class='platform-badge facebook'>Facebook</span>";
+  }
+
+  function avatarHtml(row) {
+    const pageId = row.page_id ? String(row.page_id) : "";
+    const name = row.page_name || row.platform || "Account";
+    const initials = escapeHtml(String(name).replace(/\s+/g, " ").trim().slice(0, 2).toUpperCase() || "NA");
+    if (!pageId) {
+      return `
+        <span class="profile-cell">
+          <span class="avatar-wrap"><span class="avatar-fallback">${initials}</span></span>
+          <span class="profile-name">${escapeHtml(name)}</span>
+        </span>
+      `;
+    }
+    const graphUrl = `https://graph.facebook.com/${encodeURIComponent(pageId)}/picture?type=normal`;
+    return `
+      <span class="profile-cell">
+        <span class="avatar-wrap">
+          <img class="avatar-img" src="${graphUrl}" alt="${escapeHtml(name)}" loading="lazy"
+            onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-grid';" />
+          <span class="avatar-fallback" style="display:none;">${initials}</span>
+        </span>
+        <span class="profile-name">${escapeHtml(name)}</span>
+      </span>
+    `;
+  }
+
+  function applyAccountFilters(rows) {
+    const platformFilter = document.getElementById("accountsPlatformFilter");
+    const searchInput = document.getElementById("accountsSearchInput");
+    const filterValue = String(platformFilter?.value || "all").toLowerCase();
+    const query = String(searchInput?.value || "").trim().toLowerCase();
+    return rows.filter((row) => {
+      const platformOk = filterValue === "all" ? true : String(row.platform || "").toLowerCase() === filterValue;
+      if (!platformOk) return false;
+      if (!query) return true;
+      const bag = [row.id, row.platform, row.page_name, row.page_id, row.ig_user_id]
+        .map((v) => String(v ?? "").toLowerCase())
+        .join(" ");
+      return bag.includes(query);
+    });
+  }
+
+  function updateAccountsViewMeta(filteredRows, totalRows) {
+    const meta = document.getElementById("accountsViewMeta");
+    if (!meta) return;
+    const fb = filteredRows.filter((r) => String(r.platform).toLowerCase() === "facebook").length;
+    const ig = filteredRows.filter((r) => String(r.platform).toLowerCase() === "instagram").length;
+    meta.textContent = `Showing: ${filteredRows.length}/${totalRows} | Facebook: ${fb} | Instagram: ${ig}`;
+  }
+
+  function renderAccountsTable(container, rows, totalRows) {
+    if (!container) return;
+    if (!rows.length) {
+      container.innerHTML = "<p>No records found.</p>";
+      updateAccountsViewMeta([], totalRows || 0);
+      return;
+    }
+
+    const head = `
+      <tr>
+        <th>#</th>
+        <th>profile</th>
+        <th>account_id</th>
+        <th>platform</th>
+        <th>page_id</th>
+        <th>ig_user_id</th>
+        <th>created_at</th>
+        <th>updated_at</th>
+        <th>actions</th>
+      </tr>
+    `;
+
+    const body = rows
+      .map((row, index) => {
+        const createdAt = row.created_at ? toIndianDateTime(row.created_at) : "-";
+        const updatedAt = row.updated_at ? toIndianDateTime(row.updated_at) : "-";
+        const schedulerUrl = `/dashboard/scheduler/?account_id=${encodeURIComponent(row.id)}&platform=${encodeURIComponent(
+          row.platform || ""
+        )}`;
+        const insightsUrl = `/dashboard/insights/?account_id=${encodeURIComponent(row.id)}`;
+        return `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${avatarHtml(row)}</td>
+            <td>${escapeHtml(row.id)}</td>
+            <td>${platformBadge(row.platform)}</td>
+            <td>${escapeHtml(row.page_id)}</td>
+            <td>${escapeHtml(row.ig_user_id || "-")}</td>
+            <td>${escapeHtml(createdAt)}</td>
+            <td>${escapeHtml(updatedAt)}</td>
+            <td>
+              <a class="inline-link-btn" href="${schedulerUrl}">Schedule</a>
+              <a class="inline-link-btn muted" href="${insightsUrl}">Insights</a>
+            </td>
+          </tr>
+        `;
+      })
+      .join("");
+
+    container.innerHTML = `<table>${head}${body}</table>`;
+    updateAccountsViewMeta(rows, totalRows || rows.length);
   }
 
   function escapeHtml(value) {
@@ -106,21 +216,43 @@
     container.innerHTML = `<table>${head}${body}</table>`;
   }
 
-  function renderCatalogTable(container, rows) {
+  function guessCatalogPlatform(row, connectedRows) {
+    const pageId = String(row.page_id || "");
+    const matched = (connectedRows || []).find((item) => String(item.page_id || "") === pageId);
+    if (matched && matched.platform) return String(matched.platform).toLowerCase();
+    if (pageId.startsWith("1784")) return "instagram";
+    return "facebook";
+  }
+
+  function renderCatalogTable(container, rows, connectedRows) {
     if (!container) return;
     if (!rows.length) {
       container.innerHTML = "<p>No records found.</p>";
       return;
     }
 
-    const headers = Object.keys(rows[0]);
-    const head = `<tr>${headers.map((h) => `<th>${h}</th>`).join("")}<th>insights</th></tr>`;
+    const head = `
+      <tr>
+        <th>#</th>
+        <th>profile</th>
+        <th>platform</th>
+        <th>page_id</th>
+        <th>status</th>
+        <th>connectability</th>
+        <th>reason</th>
+        <th>insights</th>
+      </tr>
+    `;
     const body = rows
-      .map((row) => {
+      .map((row, index) => {
         const connectability = String(row.connectability || "").toLowerCase();
+        const status = String(row.status || "").toLowerCase();
         const pageTokenStatus = String(row.page_token_status || row.connection_status || "").toLowerCase();
+        const platform = guessCatalogPlatform(row, connectedRows);
         const insightsAvailable =
-          connectability === "connectable" && (pageTokenStatus === "connected" || pageTokenStatus === "synced");
+          status === "connected" ||
+          connectability === "connected" ||
+          (connectability === "connectable" && (pageTokenStatus === "connected" || pageTokenStatus === "synced"));
         const reason =
           row.reason ||
           "Meta did not return page access token. Connect this page in Business Integrations and reconnect.";
@@ -128,11 +260,29 @@
           ? "<span class='status-badge ok'>Available</span>"
           : `<span class='status-badge warn' title='${escapeHtml(reason)}'>Unavailable</span>`;
 
-        return `<tr>${headers.map((h) => `<td>${row[h] ?? ""}</td>`).join("")}<td>${badge}</td></tr>`;
+        return `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${avatarHtml({ page_id: row.page_id, page_name: row.page_name || "(name unavailable)", platform })}</td>
+            <td>${platformBadge(platform)}</td>
+            <td>${escapeHtml(row.page_id)}</td>
+            <td>${escapeHtml(row.status || "-")}</td>
+            <td>${escapeHtml(row.connectability || "-")}</td>
+            <td>${escapeHtml(reason)}</td>
+            <td>${badge}</td>
+          </tr>
+        `;
       })
       .join("");
 
     container.innerHTML = `<table>${head}${body}</table>`;
+  }
+
+  function renderAccountsFromCache() {
+    const table = document.getElementById("accountsTable");
+    if (!table) return;
+    const filtered = applyAccountFilters(cachedAccountsRows);
+    renderAccountsTable(table, filtered, cachedAccountsRows.length);
   }
 
   async function loadAccounts(options = {}) {
@@ -146,9 +296,11 @@
     try {
       // Primary table should load fast and independently.
       rows = await fetchJSON("/api/accounts/");
-      renderTable(table, rows);
+      cachedAccountsRows = rows;
+      renderAccountsFromCache();
     } catch (err) {
       table.innerHTML = `<p>${err.message}</p>`;
+      cachedAccountsRows = [];
       rows = [];
     }
 
@@ -175,7 +327,7 @@
     if (catalogResult.status === "fulfilled") {
       const catalog = catalogResult.value;
       if (catalogTable) {
-        renderCatalogTable(catalogTable, catalog.rows || []);
+        renderCatalogTable(catalogTable, catalog.rows || [], rows);
       }
       if (catalogStatus) {
         const connected = catalog.connected_pages ?? rows.filter((r) => r.platform === "facebook").length;
@@ -271,6 +423,14 @@
     refreshAccountsBtn.addEventListener("click", () => runWithRefreshAccountsLoading(() => loadAccounts()));
     loadAccounts();
   }
+  const accountsPlatformFilter = document.getElementById("accountsPlatformFilter");
+  const accountsSearchInput = document.getElementById("accountsSearchInput");
+  if (accountsPlatformFilter) {
+    accountsPlatformFilter.addEventListener("change", renderAccountsFromCache);
+  }
+  if (accountsSearchInput) {
+    accountsSearchInput.addEventListener("input", renderAccountsFromCache);
+  }
   const checkConnectabilityBtn = document.getElementById("checkConnectabilityBtn");
   if (checkConnectabilityBtn) {
     const runWithConnectabilityLoading = withButtonLoading(
@@ -310,6 +470,14 @@
 
   const scheduleForm = document.getElementById("scheduleForm");
   if (scheduleForm) {
+    const scheduleParams = new URLSearchParams(window.location.search);
+    const prefillAccountId = scheduleParams.get("account_id");
+    const prefillPlatform = scheduleParams.get("platform");
+    const accountIdInput = scheduleForm.querySelector("[name='account_id']");
+    const platformInput = scheduleForm.querySelector("[name='platform']");
+    if (accountIdInput && prefillAccountId) accountIdInput.value = prefillAccountId;
+    if (platformInput && prefillPlatform) platformInput.value = prefillPlatform;
+
     const scheduleSubmitBtn = scheduleForm.querySelector("button[type='submit']");
     const runWithScheduleLoading = withButtonLoading(scheduleSubmitBtn, "Schedule Post", "Scheduling...");
     scheduleForm.addEventListener("submit", async (event) => {
@@ -504,5 +672,14 @@
 
   if (insightAccountId && Number(insightAccountId.value)) {
     loadInsights(false);
+  }
+
+  if (insightAccountId) {
+    const insightParams = new URLSearchParams(window.location.search);
+    const prefillInsightAccountId = insightParams.get("account_id");
+    if (prefillInsightAccountId && !insightAccountId.value) {
+      insightAccountId.value = prefillInsightAccountId;
+      loadInsights(false);
+    }
   }
 })();

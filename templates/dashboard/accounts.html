@@ -11,6 +11,15 @@
     <button id="connectMetaBtn" class="btn">Connect Facebook + Instagram</button>
     <button id="refreshAccountsBtn" class="btn muted">Refresh List</button>
   </div>
+  <div class="accounts-toolbar">
+    <select id="accountsPlatformFilter" aria-label="Filter by platform">
+      <option value="all">All Platforms</option>
+      <option value="facebook">Facebook</option>
+      <option value="instagram">Instagram</option>
+    </select>
+    <input id="accountsSearchInput" type="text" placeholder="Search by name, id, page id..." aria-label="Search accounts">
+  </div>
+  <p id="accountsViewMeta" class="meta-note"></p>
   <p id="accountSyncStatus" class="meta-note"></p>
   <div id="accountsTable" class="table-wrap"></div>
 </section>
