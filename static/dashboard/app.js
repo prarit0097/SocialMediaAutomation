@@ -662,7 +662,9 @@
 
   function renderInsights(data) {
     if (!data) return;
-    if (insightError) insightError.textContent = "";
+    if (insightError) {
+      insightError.textContent = data.warning ? String(data.warning) : "";
+    }
 
     const summary = data.summary || {};
     if (data.combined) {

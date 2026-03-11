@@ -184,15 +184,58 @@ class MetaClient:
         return fallback
 
     def fetch_instagram_insights(self, ig_user_id: str, page_access_token: str) -> list[dict]:
-        data = self._get(
-            f"/{ig_user_id}/insights",
+        # Query metrics one-by-one so unsupported metrics do not fail the whole response.
+        metrics = [
+            "reach",
+            "follower_count",
+            "profile_views",
+            "website_clicks",
+            "accounts_engaged",
+            "total_interactions",
+            "likes",
+            "comments",
+            "shares",
+            "saves",
+            "views",
+        ]
+        insights: list[dict] = []
+
+        for metric in metrics:
+            try:
+                data = self._get(
+                    f"/{ig_user_id}/insights",
+                    {
+                        "access_token": page_access_token,
+                        "metric": metric,
+                        "period": "day",
+                    },
+                )
+                insights.extend(data.get("data", []))
+            except MetaPermanentError as exc:
+                message = str(exc).lower()
+                if "must be one of the following values" in message or "not available for this" in message:
+                    continue
+                raise
+
+        if insights:
+            return insights
+
+        # Fallback profile counters when insights endpoint is restricted.
+        profile_data = self._get(
+            f"/{ig_user_id}",
             {
                 "access_token": page_access_token,
-                "metric": "impressions,reach,profile_views,website_clicks",
-                "period": "day",
+                "fields": "followers_count,follows_count,media_count",
             },
         )
-        return data.get("data", [])
+        fallback = []
+        if "followers_count" in profile_data:
+            fallback.append({"name": "followers_count", "values": [{"value": profile_data.get("followers_count")}]})
+        if "follows_count" in profile_data:
+            fallback.append({"name": "follows_count", "values": [{"value": profile_data.get("follows_count")}]})
+        if "media_count" in profile_data:
+            fallback.append({"name": "media_count", "values": [{"value": profile_data.get("media_count")}]})
+        return fallback
 
     def fetch_facebook_post_stats(self, post_id: str, page_access_token: str) -> dict:
         likes_count = None

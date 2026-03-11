@@ -159,7 +159,13 @@ def account_insights(request: HttpRequest, account_id: int) -> JsonResponse:
         request, linked_account, force_refresh, f"{account_id}:{linked_account.id}"
     )
     if error_response:
-        return error_response
+        primary_data["combined_partial"] = True
+        try:
+            secondary_error = error_response.content.decode("utf-8")
+        except Exception:  # noqa: BLE001
+            secondary_error = "Linked account insights unavailable."
+        primary_data["warning"] = f"Linked {linked_account.platform} insights unavailable: {secondary_error}"
+        return JsonResponse(primary_data)
 
     combined = _build_combined_response(primary_data, secondary_data)
     return JsonResponse(combined)
