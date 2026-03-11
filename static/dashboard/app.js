@@ -315,14 +315,17 @@
     scheduleForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       const formData = new FormData(scheduleForm);
+      const payload = new FormData();
+      payload.append("account_id", String(Number(formData.get("account_id"))));
+      payload.append("platform", String(formData.get("platform") || ""));
+      payload.append("scheduled_for", new Date(formData.get("scheduled_for")).toISOString());
 
-      const payload = {
-        account_id: Number(formData.get("account_id")),
-        platform: formData.get("platform"),
-        message: formData.get("message") || undefined,
-        media_url: formData.get("media_url") || undefined,
-        scheduled_for: new Date(formData.get("scheduled_for")).toISOString(),
-      };
+      const message = formData.get("message");
+      const mediaUrl = formData.get("media_url");
+      const mediaFile = formData.get("media_file");
+      if (message) payload.append("message", String(message));
+      if (mediaUrl) payload.append("media_url", String(mediaUrl));
+      if (mediaFile instanceof File && mediaFile.size > 0) payload.append("media_file", mediaFile);
 
       const resultEl = document.getElementById("scheduleResult");
       try {
@@ -330,10 +333,9 @@
           fetchJSON("/api/posts/schedule/", {
             method: "POST",
             headers: {
-              "Content-Type": "application/json",
               "X-CSRFToken": csrfToken,
             },
-            body: JSON.stringify(payload),
+            body: payload,
           })
         );
         resultEl.textContent = `Scheduled: #${data.id}`;

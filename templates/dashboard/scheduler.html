@@ -18,8 +18,11 @@
     </label>
     <label>Message<textarea name="message" rows="4"></textarea></label>
     <label>Media URL (required for Instagram)<input type="url" name="media_url"></label>
+    <label>Or Upload Media (image/video)
+      <input type="file" name="media_file" accept="image/*,video/*">
+    </label>
     <label>Scheduled For (Local Time)<input type="datetime-local" name="scheduled_for" required></label>
-    <small>Your browser timezone is used. We store UTC internally.</small>
+    <small>Your browser timezone is used. We store UTC internally. If both URL and upload are provided, upload takes priority.</small>
     <button type="submit">Schedule Post</button>
   </form>
   <p id="scheduleResult"></p>

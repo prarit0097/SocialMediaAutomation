@@ -1,8 +1,13 @@
-﻿import json
+import json
 import logging
+import os
+import uuid
 from datetime import datetime, timezone as dt_timezone
+from urllib.parse import urljoin
 
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
+from django.core.files.storage import default_storage
 from django.http import HttpRequest, JsonResponse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -14,6 +19,7 @@ from integrations.models import ConnectedAccount
 from .models import ScheduledPost
 
 logger = logging.getLogger("publishing")
+ALLOWED_MEDIA_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".mov", ".webm", ".m4v"}
 
 
 def _bad_request(message: str, details: dict | None = None) -> JsonResponse:
@@ -23,19 +29,54 @@ def _bad_request(message: str, details: dict | None = None) -> JsonResponse:
     return JsonResponse(body, status=400)
 
 
+def _build_public_media_url(request: HttpRequest, relative_url: str) -> str:
+    if settings.PUBLIC_BASE_URL:
+        return urljoin(settings.PUBLIC_BASE_URL.rstrip("/") + "/", relative_url.lstrip("/"))
+    return request.build_absolute_uri(relative_url)
+
+
+def _upload_file_to_media(request: HttpRequest):
+    uploaded = request.FILES.get("media_file")
+    if not uploaded:
+        return None, None
+
+    ext = os.path.splitext(uploaded.name or "")[1].lower()
+    if ext not in ALLOWED_MEDIA_EXTENSIONS:
+        return None, f"Unsupported media file type: {ext or 'unknown'}"
+
+    stamp = timezone.now().strftime("%Y/%m/%d")
+    unique_name = f"{uuid.uuid4().hex}{ext}"
+    storage_path = f"scheduled_uploads/{stamp}/{unique_name}"
+    saved_path = default_storage.save(storage_path, uploaded)
+    relative_url = default_storage.url(saved_path)
+    return _build_public_media_url(request, relative_url), None
+
+
 @require_POST
 @login_required
 def schedule_post(request: HttpRequest) -> JsonResponse:
-    try:
-        payload = json.loads(request.body.decode())
-    except json.JSONDecodeError:
-        return _bad_request("Invalid JSON body")
-
-    account_id = payload.get("account_id")
-    platform = payload.get("platform")
-    message = payload.get("message")
-    media_url = payload.get("media_url")
-    scheduled_for = payload.get("scheduled_for")
+    is_json_request = request.content_type and request.content_type.startswith("application/json")
+    if is_json_request:
+        try:
+            payload = json.loads(request.body.decode())
+        except json.JSONDecodeError:
+            return _bad_request("Invalid JSON body")
+        account_id = payload.get("account_id")
+        platform = payload.get("platform")
+        message = payload.get("message")
+        media_url = payload.get("media_url")
+        scheduled_for = payload.get("scheduled_for")
+    else:
+        account_id = request.POST.get("account_id")
+        platform = request.POST.get("platform")
+        message = request.POST.get("message")
+        media_url = request.POST.get("media_url")
+        scheduled_for = request.POST.get("scheduled_for")
+        uploaded_media_url, upload_error = _upload_file_to_media(request)
+        if upload_error:
+            return _bad_request(upload_error)
+        if uploaded_media_url:
+            media_url = uploaded_media_url
 
     if not account_id or not platform or not scheduled_for:
         return _bad_request("account_id, platform, and scheduled_for are required")
@@ -76,7 +117,7 @@ def schedule_post(request: HttpRequest) -> JsonResponse:
         post.account_id,
         post.scheduled_for,
     )
-    return JsonResponse({"id": post.id, "status": post.status}, status=201)
+    return JsonResponse({"id": post.id, "status": post.status, "media_url": post.media_url}, status=201)
 
 
 @require_GET
