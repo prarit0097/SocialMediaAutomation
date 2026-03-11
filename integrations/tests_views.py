@@ -33,8 +33,9 @@ class IntegrationsViewTests(TestCase):
         response = self.client.get("/api/accounts/sync-status/")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertIsNone(payload["meta_pages_synced"])
+        self.assertEqual(payload["meta_pages_synced"], 1)
         self.assertEqual(payload["facebook_connected_total"], 1)
+        self.assertIsNotNone(payload["synced_at"])
 
     def test_accounts_sync_status_reads_cached_sync(self):
         cache.set(

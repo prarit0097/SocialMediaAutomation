@@ -60,8 +60,30 @@
     return "<span class='platform-badge facebook'>Facebook</span>";
   }
 
-  function avatarHtml(row) {
-    const pageId = row.page_id ? String(row.page_id) : "";
+  function buildAvatarResolver(rows) {
+    const facebookPageByIgId = new Map();
+    (rows || []).forEach((row) => {
+      const platform = String(row.platform || "").toLowerCase();
+      if (platform !== "facebook") return;
+      const fbPageId = row.page_id ? String(row.page_id) : "";
+      const igUserId = row.ig_user_id ? String(row.ig_user_id) : "";
+      if (fbPageId && igUserId) {
+        facebookPageByIgId.set(igUserId, fbPageId);
+      }
+    });
+    return (row) => {
+      const platform = String(row.platform || "").toLowerCase();
+      const pageId = row.page_id ? String(row.page_id) : "";
+      const igUserId = row.ig_user_id ? String(row.ig_user_id) : "";
+      if (platform === "instagram") {
+        return facebookPageByIgId.get(pageId) || facebookPageByIgId.get(igUserId) || pageId;
+      }
+      return pageId;
+    };
+  }
+
+  function avatarHtml(row, avatarResolver) {
+    const pageId = avatarResolver ? avatarResolver(row) : row.page_id ? String(row.page_id) : "";
     const name = row.page_name || row.platform || "Account";
     const initials = escapeHtml(String(name).replace(/\s+/g, " ").trim().slice(0, 2).toUpperCase() || "NA");
     if (!pageId) {
@@ -131,6 +153,7 @@
       </tr>
     `;
 
+    const avatarResolver = buildAvatarResolver(cachedAccountsRows);
     const body = rows
       .map((row, index) => {
         const createdAt = row.created_at ? toIndianDateTime(row.created_at) : "-";
@@ -142,7 +165,7 @@
         return `
           <tr>
             <td>${index + 1}</td>
-            <td>${avatarHtml(row)}</td>
+            <td>${avatarHtml(row, avatarResolver)}</td>
             <td>${escapeHtml(row.id)}</td>
             <td>${platformBadge(row.platform)}</td>
             <td>${escapeHtml(row.page_id)}</td>
@@ -231,6 +254,7 @@
       return;
     }
 
+    const avatarResolver = buildAvatarResolver(connectedRows || []);
     const head = `
       <tr>
         <th>#</th>
@@ -263,7 +287,10 @@
         return `
           <tr>
             <td>${index + 1}</td>
-            <td>${avatarHtml({ page_id: row.page_id, page_name: row.page_name || "(name unavailable)", platform })}</td>
+            <td>${avatarHtml(
+              { page_id: row.page_id, ig_user_id: row.ig_user_id, page_name: row.page_name || "(name unavailable)", platform },
+              avatarResolver
+            )}</td>
             <td>${platformBadge(platform)}</td>
             <td>${escapeHtml(row.page_id)}</td>
             <td>${escapeHtml(row.status || "-")}</td>
@@ -313,13 +340,20 @@
 
     if (statusResult.status === "fulfilled" && syncStatus) {
       const status = statusResult.value;
-      const syncedAt = status.synced_at ? toIndianDateTime(status.synced_at) : "N/A";
-      const metaPages = status.meta_pages_synced ?? "N/A";
-      const targetIds = status.token_target_ids_count ?? "N/A";
+      const syncedAt = status.synced_at ? toIndianDateTime(status.synced_at) : "Not synced yet";
+      const metaPages = status.meta_pages_synced ?? rows.filter((r) => r.platform === "facebook").length;
+      let targetIds = status.token_target_ids_count ?? null;
+      if (!targetIds && catalogResult.status === "fulfilled") {
+        targetIds = catalogResult.value.total_pages ?? null;
+      }
+      targetIds = targetIds ?? "Not available";
       const fbTotal = status.facebook_connected_total ?? rows.filter((r) => r.platform === "facebook").length;
       const igTotal = status.instagram_connected_total ?? rows.filter((r) => r.platform === "instagram").length;
+      const linkedIgFromFb = rows.filter(
+        (r) => String(r.platform || "").toLowerCase() === "facebook" && String(r.ig_user_id || "").trim()
+      ).length;
       const warning = status.warning ? ` | Warning: ${status.warning}` : "";
-      syncStatus.textContent = `Last Sync: ${syncedAt} | Meta Pages Synced: ${metaPages} | Token Target IDs: ${targetIds} | Connected FB: ${fbTotal} | Connected IG: ${igTotal}${warning}`;
+      syncStatus.textContent = `Last Sync: ${syncedAt} | Meta Pages Synced: ${metaPages} | Token Target IDs: ${targetIds} | Connected FB: ${fbTotal} | Connected IG: ${igTotal} | FB linked to IG: ${linkedIgFromFb}${warning}`;
     } else if (syncStatus) {
       syncStatus.textContent = "Sync status unavailable right now.";
     }

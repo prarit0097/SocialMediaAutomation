@@ -6,6 +6,7 @@ from django.core.cache import cache
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect
 from django.conf import settings
+from django.db.models import Max
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 
@@ -108,15 +109,17 @@ def list_accounts(_request: HttpRequest) -> JsonResponse:
 @login_required
 def accounts_sync_status(request: HttpRequest) -> JsonResponse:
     data = cache.get(f"meta_last_sync:{request.user.id}") or {}
-    if not data:
-        data = {
-            "meta_pages_synced": None,
-            "facebook_connected_total": ConnectedAccount.objects.filter(platform="facebook").count(),
-            "instagram_connected_total": ConnectedAccount.objects.filter(platform="instagram").count(),
-            "token_target_ids_count": None,
-            "warning": None,
-            "synced_at": None,
-        }
+    fb_total = ConnectedAccount.objects.filter(platform="facebook").count()
+    ig_total = ConnectedAccount.objects.filter(platform="instagram").count()
+    latest_updated = ConnectedAccount.objects.aggregate(latest=Max("updated_at")).get("latest")
+    data = {
+        "meta_pages_synced": data.get("meta_pages_synced") or fb_total,
+        "facebook_connected_total": data.get("facebook_connected_total") or fb_total,
+        "instagram_connected_total": data.get("instagram_connected_total") or ig_total,
+        "token_target_ids_count": data.get("token_target_ids_count") or None,
+        "warning": data.get("warning"),
+        "synced_at": data.get("synced_at") or (latest_updated.isoformat() if latest_updated else None),
+    }
     return JsonResponse(data)
 
 
