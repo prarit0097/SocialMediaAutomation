@@ -119,17 +119,27 @@ class MetaClient:
         return self._post(
             f"/{page_id}/videos",
             payload,
+            timeout=120,
         )
 
-    def create_instagram_media(self, ig_user_id: str, page_access_token: str, image_url: str, caption: str) -> dict:
-        return self._post(
-            f"/{ig_user_id}/media",
-            {
-                "access_token": page_access_token,
-                "image_url": image_url,
-                "caption": caption,
-            },
-        )
+    def create_instagram_media(
+        self,
+        ig_user_id: str,
+        page_access_token: str,
+        media_url: str,
+        caption: str,
+        media_kind: str = "image",
+    ) -> dict:
+        payload = {
+            "access_token": page_access_token,
+            "caption": caption,
+        }
+        if media_kind == "video":
+            payload["media_type"] = "VIDEO"
+            payload["video_url"] = media_url
+        else:
+            payload["image_url"] = media_url
+        return self._post(f"/{ig_user_id}/media", payload)
 
     def publish_instagram_media(self, ig_user_id: str, page_access_token: str, creation_id: str) -> dict:
         return self._post(
@@ -397,8 +407,8 @@ class MetaClient:
         response = requests.get(url, timeout=20)
         return self._handle_response(response)
 
-    def _post(self, path: str, data: dict) -> dict:
-        response = requests.post(f"{self.base_url}{path}", data=data, timeout=20)
+    def _post(self, path: str, data: dict, timeout: int = 60) -> dict:
+        response = requests.post(f"{self.base_url}{path}", data=data, timeout=timeout)
         return self._handle_response(response)
 
     def _handle_response(self, response: requests.Response) -> dict:

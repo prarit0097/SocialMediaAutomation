@@ -71,11 +71,17 @@ def publish_scheduled_post(post):
         logger.info("facebook text publish response post id=%s response=%s", post.id, result)
         return result.get("id")
 
+    ext = _media_extension(post.media_url or "")
+    media_kind = "video" if ext in VIDEO_EXTENSIONS else "image"
+    if ext and media_kind == "image" and ext not in IMAGE_EXTENSIONS:
+        raise MetaPermanentError(f"Unsupported Instagram media type: {ext}")
+
     creation = client.create_instagram_media(
         ig_user_id=account.ig_user_id or account.page_id,
         page_access_token=account.access_token,
-        image_url=post.media_url,
+        media_url=post.media_url,
         caption=post.message or "",
+        media_kind=media_kind,
     )
     publish_result = client.publish_instagram_media(
         ig_user_id=account.ig_user_id or account.page_id,

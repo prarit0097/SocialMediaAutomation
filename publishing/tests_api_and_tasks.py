@@ -112,6 +112,13 @@ class PublishingServiceTests(TestCase):
             page_name="FB Page",
             access_token="token",
         )
+        self.ig_account = ConnectedAccount.objects.create(
+            platform=INSTAGRAM,
+            page_id="17890001",
+            page_name="IG Page",
+            ig_user_id="17890001",
+            access_token="token",
+        )
 
     @patch("publishing.services.MetaClient.publish_facebook_photo", return_value={"post_id": "photo-post-id"})
     def test_facebook_media_uses_photo_endpoint(self, mock_publish_photo):
@@ -126,3 +133,37 @@ class PublishingServiceTests(TestCase):
         result = publish_scheduled_post(post)
         self.assertEqual(result, "photo-post-id")
         mock_publish_photo.assert_called_once()
+
+    @patch("publishing.services.MetaClient.publish_instagram_media", return_value={"id": "ig-post-id"})
+    @patch("publishing.services.MetaClient.create_instagram_media", return_value={"id": "ig-creation-id"})
+    def test_instagram_image_uses_image_media_kind(self, mock_create_media, _mock_publish_media):
+        post = ScheduledPost.objects.create(
+            account=self.ig_account,
+            platform=INSTAGRAM,
+            message="IG image",
+            media_url="https://example.com/a.jpg",
+            scheduled_for=timezone.now(),
+            status="processing",
+        )
+        publish_scheduled_post(post)
+        mock_create_media.assert_called_once()
+        kwargs = mock_create_media.call_args.kwargs
+        self.assertEqual(kwargs["media_kind"], "image")
+        self.assertEqual(kwargs["media_url"], "https://example.com/a.jpg")
+
+    @patch("publishing.services.MetaClient.publish_instagram_media", return_value={"id": "ig-post-id"})
+    @patch("publishing.services.MetaClient.create_instagram_media", return_value={"id": "ig-creation-id"})
+    def test_instagram_video_uses_video_media_kind(self, mock_create_media, _mock_publish_media):
+        post = ScheduledPost.objects.create(
+            account=self.ig_account,
+            platform=INSTAGRAM,
+            message="IG video",
+            media_url="https://example.com/a.mp4",
+            scheduled_for=timezone.now(),
+            status="processing",
+        )
+        publish_scheduled_post(post)
+        mock_create_media.assert_called_once()
+        kwargs = mock_create_media.call_args.kwargs
+        self.assertEqual(kwargs["media_kind"], "video")
+        self.assertEqual(kwargs["media_url"], "https://example.com/a.mp4")
