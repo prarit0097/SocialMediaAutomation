@@ -5,6 +5,7 @@ from django.http import JsonResponse
 from django.test import Client, TestCase
 
 from analytics.views import _extract_error_message
+from analytics.services import build_insight_response
 from core.constants import FACEBOOK, INSTAGRAM
 from core.exceptions import MetaPermanentError
 from core.services.meta_client import MetaClient
@@ -159,6 +160,23 @@ class AnalyticsApiTests(TestCase):
             message,
             "Public media URL is unavailable through ngrok right now. Restart ngrok and refresh again.",
         )
+
+    def test_facebook_total_following_does_not_reuse_fan_count(self):
+        data = build_insight_response(
+            account=self.account,
+            platform=FACEBOOK,
+            insights=[
+                {"name": "followers_count", "values": [{"value": 146234}]},
+                {"name": "fan_count", "values": [{"value": 146234}]},
+            ],
+            snapshot_id=1,
+            fetched_at=None,
+            cached=False,
+            published_posts=[],
+        )
+
+        self.assertEqual(data["summary"]["total_followers"], 146234)
+        self.assertEqual(data["summary"]["total_following"], 0)
 
 
 class MetaClientTests(TestCase):

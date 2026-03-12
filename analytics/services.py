@@ -241,11 +241,7 @@ def build_insight_response(
     fb_fan_count = _first_metric_value(insights, ["fan_count"])
     ig_followers = _first_metric_value(insights, ["followers_count", "follower_count"])
     total_followers = ig_followers if platform == "instagram" else (fb_followers if fb_followers is not None else fb_fan_count)
-    total_following = (
-        _first_metric_value(insights, ["follows_count", "following_count"])
-        if platform == "instagram"
-        else fb_fan_count
-    )
+    total_following = _first_metric_value(insights, ["follows_count", "following_count"]) if platform == "instagram" else 0
     total_media_count = _first_metric_value(insights, ["media_count"])
     if published_posts is None:
         published_posts = _get_published_posts(account, include_post_stats=include_generated_post_stats)
