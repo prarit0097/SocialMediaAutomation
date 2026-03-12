@@ -7,6 +7,7 @@ from core.media_views import serve_media
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("favicon.ico", RedirectView.as_view(url=f"{settings.STATIC_URL}favicon.svg", permanent=False)),
     path("", RedirectView.as_view(pattern_name="dashboard:home", permanent=False)),
     path("", include("accounts.urls")),
     path("auth/", include("integrations.auth_urls")),
