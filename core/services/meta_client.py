@@ -336,6 +336,7 @@ class MetaClient:
         comments_count = None
         views_count = None
         errors: list[str] = []
+        stats_timeout = 8
 
         try:
             media_data = self._get(
@@ -344,6 +345,7 @@ class MetaClient:
                     "access_token": page_access_token,
                     "fields": "like_count,comments_count",
                 },
+                timeout=stats_timeout,
             )
             likes_count = media_data.get("like_count")
             comments_count = media_data.get("comments_count")
@@ -371,7 +373,7 @@ class MetaClient:
             metric_value = None
             for params in params_list:
                 try:
-                    insight_data = self._get(f"/{media_id}/insights", params)
+                    insight_data = self._get(f"/{media_id}/insights", params, timeout=stats_timeout)
                     items = insight_data.get("data", [])
                     if not items:
                         continue
@@ -424,6 +426,7 @@ class MetaClient:
         comments_count = None
         views_count = None
         errors: list[str] = []
+        stats_timeout = 8
 
         # Secondary fallback.
         try:
@@ -433,6 +436,7 @@ class MetaClient:
                     "access_token": page_access_token,
                     "fields": "reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0)",
                 },
+                timeout=stats_timeout,
             )
             if likes_count is None:
                 likes_count = (post_data.get("reactions") or {}).get("summary", {}).get("total_count")
@@ -456,6 +460,7 @@ class MetaClient:
                         "access_token": page_access_token,
                         "metric": metric,
                     },
+                    timeout=stats_timeout,
                 )
                 insights = insight_data.get("data", [])
                 if not insights:
@@ -507,12 +512,12 @@ class MetaClient:
             },
         )
 
-    def _get(self, path: str, params: dict) -> dict:
-        response = requests.get(f"{self.base_url}{path}", params=params, timeout=20)
+    def _get(self, path: str, params: dict, timeout: int = 20) -> dict:
+        response = requests.get(f"{self.base_url}{path}", params=params, timeout=timeout)
         return self._handle_response(response)
 
-    def _get_by_url(self, url: str) -> dict:
-        response = requests.get(url, timeout=20)
+    def _get_by_url(self, url: str, timeout: int = 20) -> dict:
+        response = requests.get(url, timeout=timeout)
         return self._handle_response(response)
 
     def _post(self, path: str, data: dict, timeout: int = 60) -> dict:
