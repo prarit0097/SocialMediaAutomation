@@ -298,7 +298,7 @@ class MetaClient:
         media: list[dict] = []
         params = {
             "access_token": page_access_token,
-            "fields": "id,caption,media_type,media_url,thumbnail_url,timestamp,permalink,like_count,comments_count",
+            "fields": "id,caption,media_type,media_product_type,media_url,thumbnail_url,timestamp,permalink,like_count,comments_count",
             "limit": min(limit, 100),
         }
         response = self._get(f"/{ig_user_id}/media", params)
@@ -311,6 +311,94 @@ class MetaClient:
             next_url = (response.get("paging") or {}).get("next")
 
         return media[:limit]
+
+    def fetch_instagram_media_stats(self, media_id: str, page_access_token: str) -> dict:
+        likes_count = None
+        comments_count = None
+        views_count = None
+        errors: list[str] = []
+
+        try:
+            media_data = self._get(
+                f"/{media_id}",
+                {
+                    "access_token": page_access_token,
+                    "fields": "like_count,comments_count",
+                },
+            )
+            likes_count = media_data.get("like_count")
+            comments_count = media_data.get("comments_count")
+        except MetaAPIError as exc:
+            errors.append(f"media node: {exc}")
+
+        # Instagram media insights metrics vary by media type and API version.
+        # Query one-by-one with fallback params to maximize compatibility.
+        metrics = ["views", "impressions", "reach", "likes", "comments", "shares", "saved"]
+        total_value_metrics = {"views", "impressions", "reach", "likes", "comments", "shares", "saved"}
+
+        for metric in metrics:
+            params_list = [{"access_token": page_access_token, "metric": metric}]
+            if metric in total_value_metrics:
+                params_list.append({"access_token": page_access_token, "metric": metric, "metric_type": "total_value"})
+                params_list.append(
+                    {
+                        "access_token": page_access_token,
+                        "metric": metric,
+                        "period": "lifetime",
+                        "metric_type": "total_value",
+                    }
+                )
+
+            metric_value = None
+            for params in params_list:
+                try:
+                    insight_data = self._get(f"/{media_id}/insights", params)
+                    items = insight_data.get("data", [])
+                    if not items:
+                        continue
+                    item = items[0]
+                    if isinstance(item.get("total_value"), dict):
+                        metric_value = item["total_value"].get("value")
+                    if metric_value is None:
+                        values = item.get("values") or []
+                        if values and isinstance(values[0], dict):
+                            metric_value = values[0].get("value")
+                    if metric_value is not None:
+                        break
+                except MetaAPIError as exc:
+                    message = str(exc).lower()
+                    if (
+                        "must be one of the following values" in message
+                        or "not available for this media type" in message
+                        or "metric_type=total_value" in message
+                    ):
+                        continue
+                    errors.append(f"{metric}: {exc}")
+                    break
+
+            if metric_value is None:
+                continue
+
+            if metric == "views" and views_count is None:
+                views_count = metric_value
+            elif metric == "impressions" and views_count is None:
+                # Fallback so rows are not blank when `views` is unavailable.
+                views_count = metric_value
+            elif metric == "likes" and likes_count is None:
+                likes_count = metric_value
+            elif metric == "comments" and comments_count is None:
+                comments_count = metric_value
+
+        stats_error = None
+        if likes_count is None and comments_count is None and views_count is None and errors:
+            stats_error = " | ".join(errors)
+
+        return {
+            "total_likes": likes_count,
+            "total_comments": comments_count,
+            "total_views": views_count,
+            "stats_error": stats_error,
+        }
 
     def fetch_facebook_post_stats(self, post_id: str, page_access_token: str) -> dict:
         likes_count = None

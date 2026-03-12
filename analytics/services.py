@@ -114,20 +114,56 @@ def _get_published_posts(account: ConnectedAccount, include_post_stats: bool = T
                 page_access_token=account.access_token,
                 limit=50,
             )
-            return [
-                {
-                    "id": post.get("id"),
-                    "message": post.get("caption"),
-                    "media_url": post.get("thumbnail_url") or post.get("media_url"),
-                    "published_at": post.get("timestamp"),
-                    "scheduled_for": None,
+            enriched_rows = []
+            for post in ig_posts:
+                stats = {
                     "total_views": None,
                     "total_likes": post.get("like_count"),
                     "total_comments": post.get("comments_count"),
-                    "reason": None,
+                    "stats_error": None,
                 }
-                for post in ig_posts
-            ]
+                if include_post_stats and post.get("id"):
+                    try:
+                        stats = client.fetch_instagram_media_stats(
+                            media_id=post["id"],
+                            page_access_token=account.access_token,
+                        )
+                        # Keep already-fetched node counters if insights response omits them.
+                        if stats.get("total_likes") is None:
+                            stats["total_likes"] = post.get("like_count")
+                        if stats.get("total_comments") is None:
+                            stats["total_comments"] = post.get("comments_count")
+                    except MetaAPIError as exc:
+                        logger.warning(
+                            "failed to fetch instagram media stats account_id=%s media_id=%s error=%s",
+                            account.id,
+                            post.get("id"),
+                            str(exc),
+                        )
+                        stats["stats_error"] = str(exc)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning(
+                            "failed to fetch instagram media stats account_id=%s media_id=%s error=%s",
+                            account.id,
+                            post.get("id"),
+                            str(exc),
+                        )
+                        stats["stats_error"] = str(exc)
+
+                enriched_rows.append(
+                    {
+                        "id": post.get("id"),
+                        "message": post.get("caption"),
+                        "media_url": post.get("thumbnail_url") or post.get("media_url"),
+                        "published_at": post.get("timestamp"),
+                        "scheduled_for": None,
+                        "total_views": stats.get("total_views"),
+                        "total_likes": stats.get("total_likes"),
+                        "total_comments": stats.get("total_comments"),
+                        "reason": stats.get("stats_error"),
+                    }
+                )
+            return enriched_rows
         except MetaAPIError as exc:
             logger.warning("failed to fetch instagram posts account_id=%s error=%s", account.id, str(exc))
         except Exception as exc:  # noqa: BLE001
