@@ -1,6 +1,7 @@
 import logging
 import math
 from datetime import datetime, timedelta, timezone as dt_timezone
+import re
 
 from core.constants import FACEBOOK, POST_STATUS_PUBLISHED
 from core.exceptions import MetaAPIError
@@ -129,8 +130,10 @@ def _parse_metric_datetime(value):
     if isinstance(value, datetime):
         return value if value.tzinfo else value.replace(tzinfo=dt_timezone.utc)
     if isinstance(value, str):
+        normalized = value.strip()
+        normalized = re.sub(r"([+-]\d{2})(\d{2})$", r"\1:\2", normalized)
         try:
-            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            parsed = datetime.fromisoformat(normalized.replace("Z", "+00:00"))
         except ValueError:
             return None
         return parsed if parsed.tzinfo else parsed.replace(tzinfo=dt_timezone.utc)
@@ -173,10 +176,6 @@ def build_comparison_rows(accounts: list[dict], published_posts: list[dict]) -> 
     fb_recent_comments = _aggregate_recent_post_metric(published_posts, "facebook", "total_comments")
     fb_recent_shares = _aggregate_recent_post_metric(published_posts, "facebook", "total_shares")
 
-    fb_recent_interactions = None
-    if any(value is not None for value in (fb_recent_likes, fb_recent_comments, fb_recent_shares)):
-        fb_recent_interactions = (fb_recent_likes or 0) + (fb_recent_comments or 0) + (fb_recent_shares or 0)
-
     rows = [
         {
             "metric": "Total Followers",
@@ -210,17 +209,13 @@ def build_comparison_rows(accounts: list[dict], published_posts: list[dict]) -> 
         },
         {
             "metric": "Total Accounts Engaged",
-            "facebook": _metric_value(fb_insights, ["page_post_engagements"], strategy="sum"),
+            "facebook": _metric_value(fb_insights, ["page_engaged_users"], strategy="sum"),
             "instagram": _metric_value(ig_insights, ["accounts_engaged"], strategy="sum"),
             "window": "Last 7 days",
         },
         {
             "metric": "Total Interactions",
-            "facebook": (
-                fb_recent_interactions
-                if fb_recent_interactions is not None
-                else _metric_value(fb_insights, ["page_post_engagements"], strategy="sum")
-            ),
+            "facebook": _metric_value(fb_insights, ["page_post_engagements"], strategy="sum"),
             "instagram": _metric_value(ig_insights, ["total_interactions"], strategy="sum"),
             "window": "Last 7 days",
         },

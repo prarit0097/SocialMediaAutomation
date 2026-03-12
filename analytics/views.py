@@ -132,8 +132,9 @@ def _resolve_linked_account(account: ConnectedAccount):
 def _parse_iso(value: str | None):
     if not value:
         return None
+    normalized = re.sub(r"([+-]\d{2})(\d{2})$", r"\1:\2", value.strip())
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return datetime.fromisoformat(normalized.replace("Z", "+00:00"))
     except ValueError:
         return None
 

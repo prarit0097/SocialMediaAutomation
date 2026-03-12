@@ -5,7 +5,7 @@ from django.http import JsonResponse
 from django.test import Client, TestCase
 
 from analytics.views import _build_combined_response, _extract_error_message
-from analytics.services import build_comparison_rows, build_insight_response
+from analytics.services import _aggregate_recent_post_metric, build_comparison_rows, build_insight_response
 from core.constants import FACEBOOK, INSTAGRAM
 from core.exceptions import MetaPermanentError
 from core.services.meta_client import MetaClient
@@ -301,8 +301,8 @@ class AnalyticsApiTests(TestCase):
         self.assertEqual(indexed["Total Reach"]["facebook"], 300)
         self.assertEqual(indexed["Total Reach"]["instagram"], 15)
         self.assertEqual(indexed["Total Profile Views"]["facebook"], 20)
-        self.assertEqual(indexed["Total Accounts Engaged"]["facebook"], 50)
-        self.assertEqual(indexed["Total Interactions"]["facebook"], 18)
+        self.assertEqual(indexed["Total Accounts Engaged"]["facebook"], "N/A")
+        self.assertEqual(indexed["Total Interactions"]["facebook"], 50)
         self.assertEqual(indexed["Total Likes"]["facebook"], 18)
         self.assertEqual(indexed["Total Comments"]["facebook"], 4)
         self.assertEqual(indexed["Total Shares"]["facebook"], 5)
@@ -311,6 +311,26 @@ class AnalyticsApiTests(TestCase):
         self.assertEqual(indexed["Total Followers Count"]["facebook"], 2000)
         self.assertEqual(indexed["Total Follows Count"]["facebook"], 146000)
         self.assertEqual(indexed["Total Media Count"]["instagram"], 1106)
+
+    def test_aggregate_recent_post_metric_parses_utc_offset_without_colon(self):
+        total_comments = _aggregate_recent_post_metric(
+            [
+                {
+                    "platform": "facebook",
+                    "published_at": "2026-03-12T12:30:23+0000",
+                    "total_comments": 4,
+                },
+                {
+                    "platform": "facebook",
+                    "published_at": "2026-03-11T12:30:23+0000",
+                    "total_comments": 2,
+                },
+            ],
+            "facebook",
+            "total_comments",
+        )
+
+        self.assertEqual(total_comments, 6)
 
 
 class MetaClientTests(TestCase):
