@@ -18,9 +18,38 @@
     const data = contentType.includes("application/json") ? await response.json() : await response.text();
 
     if (!response.ok) {
-      throw new Error(typeof data === "string" ? data : JSON.stringify(data));
+      if (typeof data === "string") {
+        throw new Error(formatUiErrorMessage(data));
+      }
+      throw new Error(formatUiErrorMessage(data));
     }
     return data;
+  }
+
+  function formatUiErrorMessage(value) {
+    if (value && typeof value === "object") {
+      const details = value.details ? String(value.details) : "";
+      const error = value.error ? String(value.error) : "";
+      return sanitizeUiError(details || error || "Request failed.");
+    }
+    return sanitizeUiError(value);
+  }
+
+  function sanitizeUiError(value) {
+    const text = String(value || "").trim();
+    if (!text) return "Request failed.";
+    const compact = text.replace(/\s+/g, " ").trim();
+    const lowered = compact.toLowerCase();
+    if (lowered.includes("<!doctype html") || lowered.includes("<html") || lowered.includes("</html>")) {
+      if (lowered.includes("err_ngrok_3004")) {
+        return "Public media URL is unavailable through ngrok right now. Restart ngrok and refresh again.";
+      }
+      return "Upstream service returned an unreadable HTML error page.";
+    }
+    if (lowered.includes("err_ngrok_3004")) {
+      return "Public media URL is unavailable through ngrok right now. Restart ngrok and refresh again.";
+    }
+    return compact.length > 240 ? `${compact.slice(0, 237)}...` : compact;
   }
 
   function withButtonLoading(button, label, loadingLabel) {

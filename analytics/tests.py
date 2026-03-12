@@ -1,8 +1,10 @@
 ﻿from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.http import JsonResponse
 from django.test import Client, TestCase
 
+from analytics.views import _extract_error_message
 from core.constants import FACEBOOK, INSTAGRAM
 from core.exceptions import MetaPermanentError
 from integrations.models import ConnectedAccount
@@ -118,3 +120,18 @@ class AnalyticsApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body["summary"]["instagram"]["total_followers"], 321)
+
+    def test_extract_error_message_sanitizes_html_payloads(self):
+        response = JsonResponse(
+            {
+                "error": "Failed to fetch insights from Meta",
+                "details": "<!DOCTYPE html><html><body>ngrok gateway error ERR_NGROK_3004</body></html>",
+            },
+            status=502,
+        )
+
+        message = _extract_error_message(response, "Linked instagram insights unavailable.")
+        self.assertEqual(
+            message,
+            "Public media URL is unavailable through ngrok right now. Restart ngrok and refresh again.",
+        )

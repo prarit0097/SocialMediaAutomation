@@ -1,5 +1,6 @@
 import logging
 import json
+import re
 from datetime import datetime
 
 from django.contrib.auth.decorators import login_required
@@ -14,6 +15,26 @@ from .models import InsightSnapshot
 from .services import build_insight_response, fetch_and_store_insights
 
 logger = logging.getLogger("analytics")
+
+
+def _sanitize_error_text(value: str | None, fallback: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return fallback
+
+    compact = re.sub(r"\s+", " ", text)
+    lowered = compact.lower()
+    if "<!doctype html" in lowered or "<html" in lowered or "</html>" in lowered:
+        if "err_ngrok_3004" in lowered:
+            return "Public media URL is unavailable through ngrok right now. Restart ngrok and refresh again."
+        return fallback
+
+    if "err_ngrok_3004" in lowered:
+        return "Public media URL is unavailable through ngrok right now. Restart ngrok and refresh again."
+
+    if len(compact) > 240:
+        return f"{compact[:237]}..."
+    return compact
 
 
 def _extract_error_message(error_response: JsonResponse, fallback: str) -> str:
@@ -32,9 +53,9 @@ def _extract_error_message(error_response: JsonResponse, fallback: str) -> str:
         details = payload.get("details")
         error = payload.get("error")
         if details:
-            return str(details)
+            return _sanitize_error_text(details, fallback)
         if error:
-            return str(error)
+            return _sanitize_error_text(error, fallback)
     return fallback
 
 
@@ -55,7 +76,7 @@ def _load_single_account_insights(
             return None, JsonResponse(
                 {
                     "error": "Failed to fetch insights from Meta",
-                    "details": str(exc),
+                    "details": _sanitize_error_text(str(exc), "Meta temporarily returned an unreadable error response."),
                 },
                 status=502,
             )
@@ -88,7 +109,7 @@ def _load_single_account_insights(
         return None, JsonResponse(
             {
                 "error": "Failed to fetch insights from Meta",
-                "details": str(exc),
+                "details": _sanitize_error_text(str(exc), "Meta temporarily returned an unreadable error response."),
             },
             status=502,
         )
