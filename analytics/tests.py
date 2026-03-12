@@ -7,6 +7,7 @@ from django.test import Client, TestCase
 from analytics.views import _extract_error_message
 from core.constants import FACEBOOK, INSTAGRAM
 from core.exceptions import MetaPermanentError
+from core.services.meta_client import MetaClient
 from integrations.models import ConnectedAccount
 
 
@@ -158,3 +159,21 @@ class AnalyticsApiTests(TestCase):
             message,
             "Public media URL is unavailable through ngrok right now. Restart ngrok and refresh again.",
         )
+
+
+class MetaClientTests(TestCase):
+    @patch.object(MetaClient, "_get_by_url")
+    @patch.object(MetaClient, "_get")
+    def test_fetch_facebook_published_posts_count_counts_all_pages(self, mock_get, mock_get_by_url):
+        mock_get.return_value = {
+            "data": [{"id": "1"}, {"id": "2"}],
+            "paging": {"next": "https://graph.facebook.com/next-page"},
+        }
+        mock_get_by_url.return_value = {
+            "data": [{"id": "3"}, {"id": "4"}, {"id": "5"}],
+            "paging": {},
+        }
+
+        count = MetaClient().fetch_facebook_published_posts_count("page-1", "token")
+
+        self.assertEqual(count, 5)

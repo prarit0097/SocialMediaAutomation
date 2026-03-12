@@ -78,15 +78,19 @@ class MetaClient:
             f"/{page_id}/published_posts",
             {
                 "access_token": page_access_token,
-                "limit": 1,
-                "summary": "true",
+                "fields": "id",
+                "limit": 100,
             },
         )
-        summary = response.get("summary") or {}
-        total_count = summary.get("total_count")
-        if isinstance(total_count, int):
-            return total_count
-        return None
+        count = len(response.get("data", []))
+        next_url = (response.get("paging") or {}).get("next")
+
+        while next_url:
+            response = self._get_by_url(next_url)
+            count += len(response.get("data", []))
+            next_url = (response.get("paging") or {}).get("next")
+
+        return count
 
     def publish_facebook_post(self, page_id: str, page_access_token: str, message: str) -> dict:
         return self._post(
