@@ -49,7 +49,7 @@ class AnalyticsApiTests(TestCase):
         self.assertEqual(body["error"], "Failed to fetch insights from Meta")
 
     @patch("analytics.views.fetch_and_store_insights")
-    def test_force_refresh_uses_fast_path_without_post_stats(self, mock_fetch_and_store):
+    def test_force_refresh_uses_fast_path_with_limited_post_stats(self, mock_fetch_and_store):
         mock_fetch_and_store.return_value = {
             "account_id": self.account.id,
             "page_id": self.account.page_id,
@@ -67,8 +67,9 @@ class AnalyticsApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         mock_fetch_and_store.assert_called_once_with(
             self.account,
-            include_post_stats=False,
+            include_post_stats=True,
             post_limit=20,
+            post_stats_limit=5,
         )
 
     @patch("analytics.services._get_published_posts")

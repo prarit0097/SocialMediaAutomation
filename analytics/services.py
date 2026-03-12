@@ -43,6 +43,7 @@ def _get_published_posts(
     account: ConnectedAccount,
     include_post_stats: bool = True,
     limit: int = 50,
+    stats_limit: int | None = None,
 ) -> list[dict]:
     client = MetaClient()
 
@@ -54,14 +55,17 @@ def _get_published_posts(
                 limit=limit,
             )
             enriched_rows = []
-            for post in page_posts:
+            for index, post in enumerate(page_posts):
                 stats = {
                     "total_views": None,
                     "total_likes": None,
                     "total_comments": None,
                     "stats_error": None,
                 }
-                if include_post_stats and post.get("id"):
+                should_fetch_stats = include_post_stats and post.get("id")
+                if stats_limit is not None and index >= stats_limit:
+                    should_fetch_stats = False
+                if should_fetch_stats:
                     try:
                         stats = client.fetch_facebook_post_stats(
                             post_id=post["id"],
@@ -119,14 +123,17 @@ def _get_published_posts(
                 limit=limit,
             )
             enriched_rows = []
-            for post in ig_posts:
+            for index, post in enumerate(ig_posts):
                 stats = {
                     "total_views": None,
                     "total_likes": post.get("like_count"),
                     "total_comments": post.get("comments_count"),
                     "stats_error": None,
                 }
-                if include_post_stats and post.get("id"):
+                should_fetch_stats = include_post_stats and post.get("id")
+                if stats_limit is not None and index >= stats_limit:
+                    should_fetch_stats = False
+                if should_fetch_stats:
                     try:
                         stats = client.fetch_instagram_media_stats(
                             media_id=post["id"],
@@ -180,13 +187,16 @@ def _get_published_posts(
         .order_by("-published_at", "-id")[:limit]
     )
     enriched_rows = []
-    for row in rows:
+    for index, row in enumerate(rows):
         stats = {
             "total_views": None,
             "total_likes": None,
             "total_comments": None,
         }
-        if account.platform == FACEBOOK and row.get("external_post_id"):
+        should_fetch_stats = account.platform == FACEBOOK and row.get("external_post_id")
+        if stats_limit is not None and index >= stats_limit:
+            should_fetch_stats = False
+        if should_fetch_stats:
             try:
                 stats = client.fetch_facebook_post_stats(
                     post_id=row["external_post_id"],
@@ -272,6 +282,7 @@ def fetch_and_store_insights(
     account: ConnectedAccount,
     include_post_stats: bool = True,
     post_limit: int = 50,
+    post_stats_limit: int | None = None,
 ) -> dict:
     client = MetaClient()
     total_post_share_override = None
@@ -288,6 +299,7 @@ def fetch_and_store_insights(
         account,
         include_post_stats=include_post_stats,
         limit=post_limit,
+        stats_limit=post_stats_limit,
     )
     snapshot = InsightSnapshot.objects.create(
         account=account,

@@ -72,8 +72,9 @@ def _load_single_account_insights(
         try:
             data = fetch_and_store_insights(
                 account,
-                include_post_stats=False,
+                include_post_stats=True,
                 post_limit=20,
+                post_stats_limit=5,
             )
         except MetaAPIError as exc:
             logger.warning("insights fetch failed account_id=%s error=%s", account.id, exc)
