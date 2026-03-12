@@ -56,8 +56,81 @@
 
   function platformBadge(platform) {
     const value = String(platform || "").toLowerCase();
-    if (value === "instagram") return "<span class='platform-badge instagram'>Instagram</span>";
-    return "<span class='platform-badge facebook'>Facebook</span>";
+    if (value === "fb_ig") return "<span class='platform-badge both'>FB_IG</span>";
+    if (value === "ig" || value === "instagram") return "<span class='platform-badge instagram'>IG</span>";
+    return "<span class='platform-badge facebook'>FB</span>";
+  }
+
+  function cleanProfileName(value) {
+    const raw = String(value || "").trim();
+    const cleaned = raw.replace(/\s*\([^)]*\)\s*$/g, "").trim();
+    return cleaned || raw || "Account";
+  }
+
+  function mergeAccountRows(rows) {
+    const safeRows = Array.isArray(rows) ? [...rows] : [];
+    safeRows.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+
+    const igByPageId = new Map();
+    safeRows.forEach((row) => {
+      if (String(row.platform || "").toLowerCase() !== "instagram") return;
+      const key = String(row.page_id || "");
+      if (!key || igByPageId.has(key)) return;
+      igByPageId.set(key, row);
+    });
+
+    const usedIgIds = new Set();
+    const merged = [];
+
+    safeRows.forEach((row) => {
+      const platform = String(row.platform || "").toLowerCase();
+      if (platform !== "facebook") return;
+
+      const linkedIg = row.ig_user_id ? igByPageId.get(String(row.ig_user_id)) : null;
+      if (linkedIg) usedIgIds.add(Number(linkedIg.id));
+
+      const createdAt = linkedIg
+        ? (new Date(linkedIg.created_at) < new Date(row.created_at) ? linkedIg.created_at : row.created_at)
+        : row.created_at;
+      const updatedAt = linkedIg
+        ? (new Date(linkedIg.updated_at) > new Date(row.updated_at) ? linkedIg.updated_at : row.updated_at)
+        : row.updated_at;
+
+      merged.push({
+        profile_name: cleanProfileName(linkedIg?.page_name || row.page_name),
+        account_id: Number(row.id),
+        platform: linkedIg ? "fb_ig" : "fb",
+        page_id: String(row.page_id || ""),
+        ig_user_id: linkedIg ? String(linkedIg.page_id || "") : "",
+        created_at: createdAt,
+        updated_at: updatedAt,
+        fb_account_id: Number(row.id),
+        ig_account_id: linkedIg ? Number(linkedIg.id) : null,
+        insight_account_id: Number(row.id),
+      });
+    });
+
+    safeRows.forEach((row) => {
+      const platform = String(row.platform || "").toLowerCase();
+      if (platform !== "instagram") return;
+      if (usedIgIds.has(Number(row.id))) return;
+
+      merged.push({
+        profile_name: cleanProfileName(row.page_name),
+        account_id: Number(row.id),
+        platform: "ig",
+        page_id: "",
+        ig_user_id: String(row.page_id || ""),
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        fb_account_id: null,
+        ig_account_id: Number(row.id),
+        insight_account_id: Number(row.id),
+      });
+    });
+
+    merged.sort((a, b) => Number(b.account_id || 0) - Number(a.account_id || 0));
+    return merged;
   }
 
   function buildAvatarResolver(rows) {
@@ -117,7 +190,7 @@
       const platformOk = filterValue === "all" ? true : String(row.platform || "").toLowerCase() === filterValue;
       if (!platformOk) return false;
       if (!query) return true;
-      const bag = [row.id, row.platform, row.page_name, row.page_id, row.ig_user_id]
+      const bag = [row.account_id, row.platform, row.profile_name, row.page_id, row.ig_user_id]
         .map((v) => String(v ?? "").toLowerCase())
         .join(" ");
       return bag.includes(query);
@@ -127,9 +200,10 @@
   function updateAccountsViewMeta(filteredRows, totalRows) {
     const meta = document.getElementById("accountsViewMeta");
     if (!meta) return;
-    const fb = filteredRows.filter((r) => String(r.platform).toLowerCase() === "facebook").length;
-    const ig = filteredRows.filter((r) => String(r.platform).toLowerCase() === "instagram").length;
-    meta.textContent = `Showing: ${filteredRows.length}/${totalRows} | Facebook: ${fb} | Instagram: ${ig}`;
+    const fbOnly = filteredRows.filter((r) => String(r.platform).toLowerCase() === "fb").length;
+    const igOnly = filteredRows.filter((r) => String(r.platform).toLowerCase() === "ig").length;
+    const both = filteredRows.filter((r) => String(r.platform).toLowerCase() === "fb_ig").length;
+    meta.textContent = `Showing: ${filteredRows.length}/${totalRows} | FB only: ${fbOnly} | IG only: ${igOnly} | FB_IG: ${both}`;
   }
 
   function renderAccountsTable(container, rows, totalRows) {
@@ -142,8 +216,8 @@
 
     const head = `
       <tr>
-        <th>#</th>
-        <th>profile</th>
+        <th>S.N</th>
+        <th>profile_name</th>
         <th>account_id</th>
         <th>platform</th>
         <th>page_id</th>
@@ -159,18 +233,20 @@
       .map((row, index) => {
         const createdAt = row.created_at ? toIndianDateTime(row.created_at) : "-";
         const updatedAt = row.updated_at ? toIndianDateTime(row.updated_at) : "-";
-        const schedulerUrl = `/dashboard/scheduler/?account_id=${encodeURIComponent(row.id)}&platform=${encodeURIComponent(
-          row.platform || ""
+        const schedulePlatform = row.platform === "fb_ig" ? "both" : row.platform === "ig" ? "instagram" : "facebook";
+        const scheduleAccountId = row.platform === "ig" ? row.ig_account_id || row.account_id : row.fb_account_id || row.account_id;
+        const schedulerUrl = `/dashboard/scheduler/?account_id=${encodeURIComponent(scheduleAccountId)}&platform=${encodeURIComponent(
+          schedulePlatform
         )}`;
-        const insightsUrl = `/dashboard/insights/?account_id=${encodeURIComponent(row.id)}`;
+        const insightsUrl = `/dashboard/insights/?account_id=${encodeURIComponent(row.insight_account_id || row.account_id)}`;
         return `
           <tr>
             <td>${index + 1}</td>
-            <td>${avatarHtml(row, avatarResolver)}</td>
-            <td>${escapeHtml(row.id)}</td>
+            <td>${avatarHtml({ ...row, page_name: row.profile_name }, avatarResolver)}</td>
+            <td>${escapeHtml(row.account_id)}</td>
             <td>${platformBadge(row.platform)}</td>
             <td>${escapeHtml(row.page_id)}</td>
-            <td>${escapeHtml(row.ig_user_id || "-")}</td>
+            <td>${escapeHtml(row.ig_user_id || "")}</td>
             <td>${escapeHtml(createdAt)}</td>
             <td>${escapeHtml(updatedAt)}</td>
             <td>
@@ -309,8 +385,9 @@
   function renderAccountsFromCache() {
     const table = document.getElementById("accountsTable");
     if (!table) return;
-    const filtered = applyAccountFilters(cachedAccountsRows);
-    renderAccountsTable(table, filtered, cachedAccountsRows.length);
+    const mergedRows = mergeAccountRows(cachedAccountsRows);
+    const filtered = applyAccountFilters(mergedRows);
+    renderAccountsTable(table, filtered, mergedRows.length);
   }
 
   async function loadAccounts(options = {}) {
