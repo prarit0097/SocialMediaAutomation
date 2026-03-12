@@ -21,9 +21,11 @@ class AnalyticsApiTests(TestCase):
             access_token="token",
         )
 
+    @patch("analytics.services.MetaClient.fetch_facebook_published_posts_count")
     @patch("analytics.services.MetaClient.fetch_facebook_insights")
-    def test_fetch_insights(self, mock_fetch):
+    def test_fetch_insights(self, mock_fetch, mock_posts_count):
         mock_fetch.return_value = [{"name": "page_impressions", "values": []}]
+        mock_posts_count.return_value = 0
         response = self.client.get(f"/api/insights/{self.account.id}/")
         self.assertEqual(response.status_code, 200)
         body = response.json()
@@ -32,21 +34,25 @@ class AnalyticsApiTests(TestCase):
         self.assertIn("summary", body)
         self.assertIn("published_posts", body)
 
+    @patch("analytics.services.MetaClient.fetch_facebook_published_posts_count")
     @patch("analytics.services.MetaClient.fetch_facebook_insights")
-    def test_fetch_insights_meta_error_returns_json(self, mock_fetch):
+    def test_fetch_insights_meta_error_returns_json(self, mock_fetch, mock_posts_count):
         mock_fetch.side_effect = MetaPermanentError("invalid metric", status_code=400, payload={"error": {}})
+        mock_posts_count.return_value = 0
         response = self.client.get(f"/api/insights/{self.account.id}/")
         self.assertEqual(response.status_code, 502)
         body = response.json()
         self.assertEqual(body["error"], "Failed to fetch insights from Meta")
 
     @patch("analytics.services._get_published_posts")
+    @patch("analytics.services.MetaClient.fetch_facebook_published_posts_count")
     @patch("analytics.services.MetaClient.fetch_instagram_insights")
     @patch("analytics.services.MetaClient.fetch_facebook_insights")
     def test_fetch_insights_combines_linked_facebook_and_instagram(
         self,
         mock_fetch_fb,
         mock_fetch_ig,
+        mock_posts_count,
         mock_published_posts,
     ):
         self.account.ig_user_id = "178400001"
@@ -61,6 +67,7 @@ class AnalyticsApiTests(TestCase):
 
         mock_fetch_fb.return_value = [{"name": "followers_count", "values": [{"value": 100}]}]
         mock_fetch_ig.return_value = [{"name": "follower_count", "values": [{"value": 50}]}]
+        mock_posts_count.return_value = 12
         mock_published_posts.side_effect = [
             [{"id": "fb_post_1", "message": "fb", "media_url": None, "published_at": None, "scheduled_for": None}],
             [{"id": "ig_post_1", "message": "ig", "media_url": None, "published_at": None, "scheduled_for": None}],
@@ -79,12 +86,14 @@ class AnalyticsApiTests(TestCase):
         self.assertIn("instagram", platforms)
 
     @patch("analytics.services._get_published_posts")
+    @patch("analytics.services.MetaClient.fetch_facebook_published_posts_count")
     @patch("analytics.services.MetaClient.fetch_instagram_insights")
     @patch("analytics.services.MetaClient.fetch_facebook_insights")
     def test_instagram_summary_prefers_profile_level_followers_over_day_follower_count(
         self,
         mock_fetch_fb,
         mock_fetch_ig,
+        mock_posts_count,
         mock_published_posts,
     ):
         self.account.ig_user_id = "178400001"
@@ -102,6 +111,7 @@ class AnalyticsApiTests(TestCase):
             {"name": "follower_count", "values": [{"value": 0}]},
             {"name": "followers_count", "values": [{"value": 321}]},
         ]
+        mock_posts_count.return_value = 5
         mock_published_posts.side_effect = [[], []]
 
         response = self.client.get(f"/api/insights/{self.account.id}/")
