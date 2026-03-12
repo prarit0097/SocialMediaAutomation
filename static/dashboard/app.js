@@ -955,7 +955,10 @@
       }
     }
 
-    renderTable(insightMetricsTable, comparisonMetricRows(data));
+    const comparisonRows = Array.isArray(data.comparison_rows) && data.comparison_rows.length
+      ? data.comparison_rows
+      : comparisonMetricRows(data);
+    renderTable(insightMetricsTable, comparisonRows);
   }
 
   async function loadPublicUrlStatus() {

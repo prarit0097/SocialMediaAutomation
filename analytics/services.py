@@ -1,8 +1,11 @@
 import logging
+import math
+from datetime import datetime, timedelta, timezone as dt_timezone
 
 from core.constants import FACEBOOK, POST_STATUS_PUBLISHED
 from core.exceptions import MetaAPIError
 from core.services.meta_client import MetaClient
+from django.utils import timezone
 from integrations.models import ConnectedAccount
 from publishing.models import ScheduledPost
 
@@ -37,6 +40,249 @@ def _first_metric_value(insights: list[dict], names: list[str]):
             if value is not None:
                 return value
     return None
+
+
+def _coerce_numeric_value(value):
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        if not math.isfinite(value):
+            return None
+        return int(value) if float(value).is_integer() else value
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return None
+        try:
+            parsed = float(raw)
+        except ValueError:
+            return None
+        if not math.isfinite(parsed):
+            return None
+        return int(parsed) if parsed.is_integer() else parsed
+    if isinstance(value, dict):
+        total = 0
+        found = False
+        for item in value.values():
+            parsed = _coerce_numeric_value(item)
+            if parsed is None:
+                continue
+            total += parsed
+            found = True
+        return total if found else None
+    return None
+
+
+def _matching_metric(insights: list[dict], names: list[str]) -> dict | None:
+    for target_name in names:
+        for metric in insights:
+            if metric.get("name") == target_name:
+                return metric
+    return None
+
+
+def _metric_series(metric: dict) -> list[int | float]:
+    total_value = metric.get("total_value")
+    if isinstance(total_value, dict):
+        value = _coerce_numeric_value(total_value.get("value"))
+        return [] if value is None else [value]
+
+    series = []
+    for item in metric.get("values") or []:
+        if not isinstance(item, dict):
+            continue
+        value = _coerce_numeric_value(item.get("value"))
+        if value is None:
+            continue
+        series.append(value)
+    return series
+
+
+def _metric_value(insights: list[dict], names: list[str], strategy: str = "auto"):
+    metric = _matching_metric(insights, names)
+    if not metric:
+        return None
+
+    series = _metric_series(metric)
+    if not series:
+        return None
+
+    if strategy == "sum":
+        return sum(series[-7:])
+    if strategy == "last":
+        return series[-1]
+    if strategy == "delta":
+        if len(series) < 2:
+            return 0
+        return series[-1] - series[0]
+
+    if metric.get("total_value") is not None:
+        return series[-1]
+    if str(metric.get("period") or "").lower() == "day":
+        return sum(series[-7:])
+    return series[-1]
+
+
+def _parse_metric_datetime(value):
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=dt_timezone.utc)
+    if isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=dt_timezone.utc)
+    return None
+
+
+def _aggregate_recent_post_metric(posts: list[dict], platform: str, field_name: str, days: int = 7):
+    cutoff = timezone.now() - timedelta(days=days)
+    total = 0
+    found = False
+    for row in posts or []:
+        row_platform = str(row.get("platform") or "").lower()
+        if row_platform and row_platform != platform:
+            continue
+        published_at = _parse_metric_datetime(row.get("published_at")) or _parse_metric_datetime(row.get("scheduled_for"))
+        if not published_at or published_at < cutoff:
+            continue
+        value = _coerce_numeric_value(row.get(field_name))
+        if value is None:
+            continue
+        total += value
+        found = True
+    return total if found else None
+
+
+def _comparison_display_value(value):
+    return "N/A" if value is None else value
+
+
+def build_comparison_rows(accounts: list[dict], published_posts: list[dict]) -> list[dict]:
+    fb = next((row for row in accounts if row.get("platform") == FACEBOOK), {})
+    ig = next((row for row in accounts if row.get("platform") == "instagram"), {})
+
+    fb_summary = fb.get("summary", {}) or {}
+    ig_summary = ig.get("summary", {}) or {}
+    fb_insights = fb.get("insights", []) or []
+    ig_insights = ig.get("insights", []) or []
+
+    fb_recent_likes = _aggregate_recent_post_metric(published_posts, "facebook", "total_likes")
+    fb_recent_comments = _aggregate_recent_post_metric(published_posts, "facebook", "total_comments")
+    fb_recent_shares = _aggregate_recent_post_metric(published_posts, "facebook", "total_shares")
+
+    fb_recent_interactions = None
+    if any(value is not None for value in (fb_recent_likes, fb_recent_comments, fb_recent_shares)):
+        fb_recent_interactions = (fb_recent_likes or 0) + (fb_recent_comments or 0) + (fb_recent_shares or 0)
+
+    rows = [
+        {
+            "metric": "Total Followers",
+            "facebook": fb_summary.get("total_followers"),
+            "instagram": ig_summary.get("total_followers"),
+            "window": "Current",
+        },
+        {
+            "metric": "Total Following",
+            "facebook": fb_summary.get("total_following"),
+            "instagram": ig_summary.get("total_following"),
+            "window": "Current",
+        },
+        {
+            "metric": "Total Post Share",
+            "facebook": fb_summary.get("total_post_share"),
+            "instagram": ig_summary.get("total_post_share"),
+            "window": "Current",
+        },
+        {
+            "metric": "Total Reach",
+            "facebook": _metric_value(fb_insights, ["page_impressions_unique"], strategy="sum"),
+            "instagram": _metric_value(ig_insights, ["reach"], strategy="sum"),
+            "window": "Last 7 days",
+        },
+        {
+            "metric": "Total Profile Views",
+            "facebook": _metric_value(fb_insights, ["page_views_total"], strategy="sum"),
+            "instagram": _metric_value(ig_insights, ["profile_views"], strategy="sum"),
+            "window": "Last 7 days",
+        },
+        {
+            "metric": "Total Accounts Engaged",
+            "facebook": _metric_value(fb_insights, ["page_post_engagements"], strategy="sum"),
+            "instagram": _metric_value(ig_insights, ["accounts_engaged"], strategy="sum"),
+            "window": "Last 7 days",
+        },
+        {
+            "metric": "Total Interactions",
+            "facebook": (
+                fb_recent_interactions
+                if fb_recent_interactions is not None
+                else _metric_value(fb_insights, ["page_post_engagements"], strategy="sum")
+            ),
+            "instagram": _metric_value(ig_insights, ["total_interactions"], strategy="sum"),
+            "window": "Last 7 days",
+        },
+        {
+            "metric": "Total Likes",
+            "facebook": _metric_value(fb_insights, ["page_actions_post_reactions_like_total"], strategy="sum"),
+            "instagram": _metric_value(ig_insights, ["likes"], strategy="sum"),
+            "window": "Last 7 days",
+        },
+        {
+            "metric": "Total Comments",
+            "facebook": fb_recent_comments,
+            "instagram": _metric_value(ig_insights, ["comments"], strategy="sum"),
+            "window": "Last 7 days",
+        },
+        {
+            "metric": "Total Shares",
+            "facebook": fb_recent_shares,
+            "instagram": _metric_value(ig_insights, ["shares"], strategy="sum"),
+            "window": "Last 7 days",
+        },
+        {
+            "metric": "Total Views",
+            "facebook": _metric_value(fb_insights, ["page_posts_impressions"], strategy="sum"),
+            "instagram": _metric_value(ig_insights, ["views"], strategy="sum"),
+            "window": "Last 7 days",
+        },
+        {
+            "metric": "Total Saves",
+            "facebook": None,
+            "instagram": _metric_value(ig_insights, ["saves"], strategy="sum"),
+            "window": "Last 7 days",
+        },
+        {
+            "metric": "Total Followers Count",
+            "facebook": _metric_value(fb_insights, ["page_follows"], strategy="delta"),
+            "instagram": _metric_value(ig_insights, ["follower_count"], strategy="sum"),
+            "window": "Last 7 days",
+        },
+        {
+            "metric": "Total Follows Count",
+            "facebook": _metric_value(fb_insights, ["page_follows"], strategy="last"),
+            "instagram": _metric_value(ig_insights, ["follows_count"], strategy="last"),
+            "window": "Current",
+        },
+        {
+            "metric": "Total Media Count",
+            "facebook": fb_summary.get("total_post_share"),
+            "instagram": _metric_value(ig_insights, ["media_count"], strategy="last"),
+            "window": "Current",
+        },
+    ]
+
+    return [
+        {
+            "metric": row["metric"],
+            "facebook": _comparison_display_value(row["facebook"]),
+            "instagram": _comparison_display_value(row["instagram"]),
+            "window": row["window"],
+        }
+        for row in rows
+    ]
 
 
 def _get_published_posts(
@@ -272,7 +518,7 @@ def build_insight_response(
     if platform == "instagram" and total_media_count is not None:
         total_post_share = total_media_count
 
-    return {
+    response = {
         "account_id": account.id,
         "page_id": account.page_id,
         "page_name": account.page_name,
@@ -288,6 +534,11 @@ def build_insight_response(
         "fetched_at": fetched_at.isoformat() if fetched_at else None,
         "cached": cached,
     }
+    response["comparison_rows"] = build_comparison_rows(
+        [response],
+        [{**row, "platform": platform} for row in published_posts],
+    )
+    return response
 
 
 def fetch_and_store_insights(

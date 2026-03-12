@@ -5,7 +5,7 @@ from django.http import JsonResponse
 from django.test import Client, TestCase
 
 from analytics.views import _build_combined_response, _extract_error_message
-from analytics.services import build_insight_response
+from analytics.services import build_comparison_rows, build_insight_response
 from core.constants import FACEBOOK, INSTAGRAM
 from core.exceptions import MetaPermanentError
 from core.services.meta_client import MetaClient
@@ -213,6 +213,70 @@ class AnalyticsApiTests(TestCase):
 
         self.assertEqual([row["id"] for row in combined["published_posts"]], ["ig-newer", "fb-older"])
 
+    def test_build_comparison_rows_uses_verified_metric_windows(self):
+        rows = build_comparison_rows(
+            [
+                {
+                    "platform": "facebook",
+                    "summary": {"total_followers": 146234, "total_following": 0, "total_post_share": 1852},
+                    "insights": [
+                        {"name": "page_impressions_unique", "period": "day", "values": [{"value": 100}, {"value": 200}]},
+                        {"name": "page_posts_impressions", "period": "day", "values": [{"value": 300}, {"value": 400}]},
+                        {"name": "page_post_engagements", "period": "day", "values": [{"value": 20}, {"value": 30}]},
+                        {
+                            "name": "page_actions_post_reactions_like_total",
+                            "period": "day",
+                            "values": [{"value": 7}, {"value": 11}],
+                        },
+                        {"name": "page_views_total", "period": "day", "values": [{"value": 12}, {"value": 8}]},
+                        {"name": "page_follows", "period": "day", "values": [{"value": 144000}, {"value": 146000}]},
+                    ],
+                },
+                {
+                    "platform": "instagram",
+                    "summary": {"total_followers": 4379, "total_following": 6, "total_post_share": 1106},
+                    "insights": [
+                        {"name": "reach", "period": "day", "values": [{"value": 5}, {"value": 10}]},
+                        {"name": "profile_views", "period": "day", "total_value": {"value": 16}},
+                        {"name": "accounts_engaged", "period": "day", "total_value": {"value": 78}},
+                        {"name": "total_interactions", "period": "day", "total_value": {"value": 176}},
+                        {"name": "likes", "period": "day", "total_value": {"value": 65}},
+                        {"name": "comments", "period": "day", "total_value": {"value": 1}},
+                        {"name": "shares", "period": "day", "total_value": {"value": 45}},
+                        {"name": "views", "period": "day", "total_value": {"value": 2988}},
+                        {"name": "saves", "period": "day", "total_value": {"value": 18}},
+                        {"name": "follower_count", "period": "day", "values": [{"value": 0}, {"value": 3}]},
+                        {"name": "follows_count", "period": "lifetime", "values": [{"value": 6}]},
+                        {"name": "media_count", "period": "lifetime", "values": [{"value": 1106}]},
+                    ],
+                },
+            ],
+            [
+                {
+                    "platform": "facebook",
+                    "published_at": "2026-03-12T10:53:26+00:00",
+                    "total_likes": 9,
+                    "total_comments": 4,
+                    "total_shares": 5,
+                },
+            ],
+        )
+
+        indexed = {row["metric"]: row for row in rows}
+        self.assertEqual(indexed["Total Reach"]["facebook"], 300)
+        self.assertEqual(indexed["Total Reach"]["instagram"], 15)
+        self.assertEqual(indexed["Total Profile Views"]["facebook"], 20)
+        self.assertEqual(indexed["Total Accounts Engaged"]["facebook"], 50)
+        self.assertEqual(indexed["Total Interactions"]["facebook"], 18)
+        self.assertEqual(indexed["Total Likes"]["facebook"], 18)
+        self.assertEqual(indexed["Total Comments"]["facebook"], 4)
+        self.assertEqual(indexed["Total Shares"]["facebook"], 5)
+        self.assertEqual(indexed["Total Views"]["facebook"], 700)
+        self.assertEqual(indexed["Total Saves"]["facebook"], "N/A")
+        self.assertEqual(indexed["Total Followers Count"]["facebook"], 2000)
+        self.assertEqual(indexed["Total Follows Count"]["facebook"], 146000)
+        self.assertEqual(indexed["Total Media Count"]["instagram"], 1106)
+
 
 class MetaClientTests(TestCase):
     @patch.object(MetaClient, "_get_by_url")
@@ -230,3 +294,55 @@ class MetaClientTests(TestCase):
         count = MetaClient().fetch_facebook_published_posts_count("page-1", "token")
 
         self.assertEqual(count, 5)
+
+    @patch.object(MetaClient, "_get")
+    def test_fetch_facebook_insights_requests_verified_metrics_with_7_day_window(self, mock_get):
+        def fake_get(path, params, timeout=20):
+            if path == "/page-1":
+                return {"fan_count": 10, "followers_count": 20}
+            return {
+                "data": [
+                    {
+                        "name": params["metric"],
+                        "period": params.get("period"),
+                        "values": [{"value": 1}],
+                    }
+                ]
+            }
+
+        mock_get.side_effect = fake_get
+
+        insights = MetaClient().fetch_facebook_insights("page-1", "token")
+
+        names = [metric["name"] for metric in insights]
+        self.assertIn("page_impressions_unique", names)
+        self.assertIn("page_posts_impressions", names)
+        self.assertIn("page_post_engagements", names)
+        self.assertIn("page_actions_post_reactions_like_total", names)
+        self.assertIn("page_views_total", names)
+        self.assertIn("page_follows", names)
+        self.assertIn("fan_count", names)
+        self.assertIn("followers_count", names)
+
+        insight_calls = [call for call in mock_get.call_args_list if call.args[0] == "/page-1/insights"]
+        self.assertTrue(insight_calls)
+        for call in insight_calls:
+            params = call.args[1]
+            self.assertEqual(params["period"], "day")
+            self.assertIn("since", params)
+            self.assertIn("until", params)
+
+    @patch.object(MetaClient, "_get")
+    def test_fetch_instagram_insights_requests_7_day_window(self, mock_get):
+        def fake_get(path, params, timeout=20):
+            if path == "/ig-1":
+                return {"followers_count": 4379, "follows_count": 6, "media_count": 1106}
+            return {"data": []}
+
+        mock_get.side_effect = fake_get
+
+        MetaClient().fetch_instagram_insights("ig-1", "token")
+
+        insight_calls = [call for call in mock_get.call_args_list if call.args[0] == "/ig-1/insights"]
+        self.assertTrue(insight_calls)
+        self.assertTrue(any("since" in call.args[1] and "until" in call.args[1] for call in insight_calls))

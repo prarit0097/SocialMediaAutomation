@@ -12,7 +12,7 @@ from core.exceptions import MetaAPIError
 from integrations.models import ConnectedAccount
 
 from .models import InsightSnapshot
-from .services import build_insight_response, fetch_and_store_insights
+from .services import build_comparison_rows, build_insight_response, fetch_and_store_insights
 
 logger = logging.getLogger("analytics")
 
@@ -171,7 +171,7 @@ def _build_combined_response(primary: dict, secondary: dict) -> dict:
     fb_summary = (fb or {}).get("summary", {})
     ig_summary = (ig or {}).get("summary", {})
 
-    return {
+    response = {
         "combined": True,
         "platform": "facebook+instagram",
         "account_id": primary.get("account_id"),
@@ -191,6 +191,8 @@ def _build_combined_response(primary: dict, secondary: dict) -> dict:
         "fetched_at": latest_fetched.isoformat() if latest_fetched else primary.get("fetched_at") or secondary.get("fetched_at"),
         "cached": bool(primary.get("cached")) and bool(secondary.get("cached")),
     }
+    response["comparison_rows"] = build_comparison_rows(accounts, published_posts)
+    return response
 
 
 @require_GET

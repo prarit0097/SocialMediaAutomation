@@ -1,7 +1,10 @@
 ﻿from urllib.parse import urlencode
 
+from datetime import timedelta
+
 import requests
 from django.conf import settings
+from django.utils import timezone
 
 from core.constants import META_SCOPES
 from core.exceptions import MetaAPIError, MetaPermanentError, MetaTransientError
@@ -10,6 +13,14 @@ from core.exceptions import MetaAPIError, MetaPermanentError, MetaTransientError
 class MetaClient:
     def __init__(self):
         self.base_url = f"https://graph.facebook.com/{settings.META_GRAPH_VERSION}"
+
+    def _last_7_day_window(self) -> dict:
+        until = timezone.now().date()
+        since = until - timedelta(days=7)
+        return {
+            "since": since.isoformat(),
+            "until": until.isoformat(),
+        }
 
     def oauth_url(self, state: str, redirect_uri: str | None = None) -> str:
         target_redirect_uri = redirect_uri or settings.META_REDIRECT_URI
@@ -172,11 +183,15 @@ class MetaClient:
 
     def fetch_facebook_insights(self, page_id: str, page_access_token: str) -> list[dict]:
         metrics = [
-            "page_impressions",
-            "page_reach",
-            "page_engaged_users",
+            "page_impressions_unique",
+            "page_posts_impressions",
+            "page_post_engagements",
+            "page_actions_post_reactions_like_total",
+            "page_views_total",
+            "page_follows",
         ]
         insights: list[dict] = []
+        params_window = self._last_7_day_window()
 
         for metric in metrics:
             try:
@@ -186,19 +201,16 @@ class MetaClient:
                         "access_token": page_access_token,
                         "metric": metric,
                         "period": "day",
+                        **params_window,
                     },
                 )
                 insights.extend(data.get("data", []))
             except MetaPermanentError as exc:
                 message = str(exc).lower()
-                if "valid insights metric" in message:
+                if "valid insights metric" in message or "not available" in message:
                     continue
                 raise
 
-        if insights:
-            return insights
-
-        # Fallback when metric-level insights are unavailable for the page/token.
         page_data = self._get(
             f"/{page_id}",
             {
@@ -206,12 +218,23 @@ class MetaClient:
                 "fields": "fan_count,followers_count",
             },
         )
-        fallback = []
-        if "fan_count" in page_data:
-            fallback.append({"name": "fan_count", "values": [{"value": page_data.get("fan_count")}]})
-        if "followers_count" in page_data:
-            fallback.append({"name": "followers_count", "values": [{"value": page_data.get("followers_count")}]})
-        return fallback
+
+        def _append_counter_metric(metric_name: str, field_name: str) -> None:
+            if field_name not in page_data:
+                return
+            if any(metric.get("name") == metric_name for metric in insights):
+                return
+            insights.append(
+                {
+                    "name": metric_name,
+                    "values": [{"value": page_data.get(field_name)}],
+                    "period": "lifetime",
+                }
+            )
+
+        _append_counter_metric("fan_count", "fan_count")
+        _append_counter_metric("followers_count", "followers_count")
+        return insights
 
     def fetch_instagram_insights(self, ig_user_id: str, page_access_token: str) -> list[dict]:
         # Query metrics one-by-one so unsupported metrics do not fail the whole response.
@@ -251,11 +274,13 @@ class MetaClient:
             "saves",
             "views",
         }
+        params_window = self._last_7_day_window()
 
         for metric in metrics:
             base_params = {
                 "access_token": page_access_token,
                 "metric": metric,
+                **params_window,
             }
             attempt_params = [
                 {**base_params, "period": "day"},
