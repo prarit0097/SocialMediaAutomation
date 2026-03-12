@@ -682,6 +682,7 @@
   const insightMeta = document.getElementById("insightMeta");
   const insightPageHero = document.getElementById("insightPageHero");
   const insightPageName = document.getElementById("insightPageName");
+  const insightComparisonTitle = document.getElementById("insightComparisonTitle");
   const insightPostsTable = document.getElementById("insightPostsTable");
   const insightMetricsTable = document.getElementById("insightMetricsTable");
 
@@ -720,6 +721,67 @@
   function setInsightValue(element, value) {
     if (!element) return;
     element.textContent = value === null || value === undefined || value === "" ? "N/A" : String(value);
+  }
+
+  function numericMetricValue(metric) {
+    if (!metric) return null;
+    if (metric.total_value && typeof metric.total_value === "object" && metric.total_value.value !== undefined) {
+      return Number(metric.total_value.value);
+    }
+    const values = Array.isArray(metric.values) ? metric.values : [];
+    if (!values.length) return null;
+    const numericValues = values
+      .map((item) => (item && item.value !== undefined ? Number(item.value) : NaN))
+      .filter((value) => Number.isFinite(value));
+    if (!numericValues.length) return null;
+    if (String(metric.period || "").toLowerCase() === "day") {
+      return numericValues.slice(-7).reduce((sum, value) => sum + value, 0);
+    }
+    return numericValues[numericValues.length - 1];
+  }
+
+  function metricFromInsights(insights, names) {
+    const rows = Array.isArray(insights) ? insights : [];
+    for (const name of names) {
+      const match = rows.find((metric) => metric && metric.name === name);
+      if (!match) continue;
+      const value = numericMetricValue(match);
+      if (value !== null) return value;
+    }
+    return null;
+  }
+
+  function comparisonMetricRows(data) {
+    const accounts = Array.isArray(data.accounts) ? data.accounts : [data];
+    const fb = accounts.find((row) => row.platform === "facebook") || {};
+    const ig = accounts.find((row) => row.platform === "instagram") || {};
+    const fbSummary = fb.summary || {};
+    const igSummary = ig.summary || {};
+    const fbInsights = fb.insights || [];
+    const igInsights = ig.insights || [];
+
+    return [
+      { metric: "Total Followers", facebook: fbSummary.total_followers, instagram: igSummary.total_followers, window: "Overall" },
+      { metric: "Total Following", facebook: fbSummary.total_following, instagram: igSummary.total_following, window: "Overall" },
+      { metric: "Total Post Share", facebook: fbSummary.total_post_share, instagram: igSummary.total_post_share, window: "Overall" },
+      { metric: "Total Reach", facebook: metricFromInsights(fbInsights, ["page_reach"]), instagram: metricFromInsights(igInsights, ["reach"]), window: "Last 7 days" },
+      { metric: "Total Profile Views", facebook: null, instagram: metricFromInsights(igInsights, ["profile_views"]), window: "Last 7 days" },
+      { metric: "Total Accounts Engaged", facebook: metricFromInsights(fbInsights, ["page_engaged_users"]), instagram: metricFromInsights(igInsights, ["accounts_engaged"]), window: "Last 7 days" },
+      { metric: "Total Interactions", facebook: null, instagram: metricFromInsights(igInsights, ["total_interactions"]), window: "Last 7 days" },
+      { metric: "Total Likes", facebook: null, instagram: metricFromInsights(igInsights, ["likes"]), window: "Last 7 days" },
+      { metric: "Total Comments", facebook: null, instagram: metricFromInsights(igInsights, ["comments"]), window: "Last 7 days" },
+      { metric: "Total Shares", facebook: null, instagram: metricFromInsights(igInsights, ["shares"]), window: "Last 7 days" },
+      { metric: "Total Views", facebook: metricFromInsights(fbInsights, ["page_impressions"]), instagram: metricFromInsights(igInsights, ["views"]), window: "Last 7 days" },
+      { metric: "Total Saves", facebook: null, instagram: metricFromInsights(igInsights, ["saves"]), window: "Last 7 days" },
+      { metric: "Total Followers Count", facebook: metricFromInsights(fbInsights, ["followers_count"]), instagram: metricFromInsights(igInsights, ["follower_count", "followers_count"]), window: "Current / 7 days" },
+      { metric: "Total Follows Count", facebook: null, instagram: metricFromInsights(igInsights, ["follows_count"]), window: "Current" },
+      { metric: "Total Media Count", facebook: null, instagram: metricFromInsights(igInsights, ["media_count"]), window: "Current" },
+    ].map((row) => ({
+      metric: row.metric,
+      facebook: row.facebook === null || row.facebook === undefined ? "N/A" : row.facebook,
+      instagram: row.instagram === null || row.instagram === undefined ? "N/A" : row.instagram,
+      window: row.window,
+    }));
   }
 
   function isVideoUrl(url) {
@@ -855,27 +917,19 @@
     );
     renderPostsTable(insightPostsTable, publishedPosts);
 
-    function metricDisplayValue(metric) {
-      if (metric && metric.total_value && typeof metric.total_value === "object" && metric.total_value.value !== undefined) {
-        return metric.total_value.value;
+    if (insightComparisonTitle) {
+      if (data.combined && Array.isArray(data.accounts)) {
+        const fbAccount = data.accounts.find((row) => row.platform === "facebook");
+        const igAccount = data.accounts.find((row) => row.platform === "instagram");
+        const fbName = fbAccount ? fbAccount.page_name : "Facebook";
+        const igName = igAccount ? igAccount.page_name : "Instagram";
+        insightComparisonTitle.textContent = `Overall Insights of ${fbName} + ${igName}`;
+      } else {
+        insightComparisonTitle.textContent = `Overall Insights of ${data.page_name || "Selected Page"}`;
       }
-      if (metric && Array.isArray(metric.values) && metric.values.length && metric.values[0] && metric.values[0].value !== undefined) {
-        return metric.values[0].value;
-      }
-      return "";
     }
 
-    const metrics = (data.insights || []).map((metric) => {
-      const row = {
-        metric: metric.name,
-        value: metricDisplayValue(metric),
-        title: metric.title || "",
-        period: metric.period || "",
-      };
-      if (metric.platform) row.platform = metric.platform;
-      return row;
-    });
-    renderTable(insightMetricsTable, metrics);
+    renderTable(insightMetricsTable, comparisonMetricRows(data));
   }
 
   async function loadPublicUrlStatus() {
