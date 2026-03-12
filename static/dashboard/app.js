@@ -674,6 +674,7 @@
   const refreshInsightsBtn = document.getElementById("refreshInsightsBtn");
   const insightAccountId = document.getElementById("insightAccountId");
   const insightError = document.getElementById("insightError");
+  const insightWarning = document.getElementById("insightWarning");
   const publicUrlStatus = document.getElementById("publicUrlStatus");
   const totalFollowers = document.getElementById("totalFollowers");
   const totalFollowing = document.getElementById("totalFollowing");
@@ -780,7 +781,10 @@
   function renderInsights(data) {
     if (!data) return;
     if (insightError) {
-      insightError.textContent = data.warning ? String(data.warning) : "";
+      insightError.textContent = "";
+    }
+    if (insightWarning) {
+      insightWarning.textContent = data.warning ? String(data.warning) : "";
     }
 
     const summary = data.summary || {};
@@ -872,15 +876,18 @@
     const accountId = Number(insightAccountId.value);
     if (!accountId) {
       if (insightError) insightError.textContent = "Enter valid account id";
+      if (insightWarning) insightWarning.textContent = "";
       return;
     }
 
     const suffix = forceRefresh ? "?refresh=1" : "";
     try {
       const data = await fetchJSON(`/api/insights/${accountId}/${suffix}`);
+      if (insightError) insightError.textContent = "";
       renderInsights(data);
     } catch (err) {
       if (insightError) insightError.textContent = err.message;
+      if (insightWarning) insightWarning.textContent = "";
     }
   }
 

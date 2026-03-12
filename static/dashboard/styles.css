@@ -434,6 +434,12 @@ pre {
   font-weight: 700;
 }
 
+.warning-text {
+  margin-top: 10px;
+  color: #8b5a12;
+  font-weight: 700;
+}
+
 .media-preview {
   width: 120px;
   height: 80px;
