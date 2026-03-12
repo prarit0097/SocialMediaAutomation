@@ -213,6 +213,41 @@ class AnalyticsApiTests(TestCase):
 
         self.assertEqual([row["id"] for row in combined["published_posts"]], ["ig-newer", "fb-older"])
 
+    def test_combined_published_posts_sort_handles_missing_publish_time(self):
+        combined = _build_combined_response(
+            {
+                "platform": "facebook",
+                "account_id": 42,
+                "page_id": "fb-page",
+                "page_name": "FB Page",
+                "published_posts": [
+                    {"id": "fb-missing", "published_at": None, "scheduled_for": None},
+                ],
+                "summary": {"total_followers": 1, "total_following": 0, "total_post_share": 1},
+                "insights": [],
+                "snapshot_id": 1,
+                "fetched_at": None,
+                "cached": False,
+            },
+            {
+                "platform": "instagram",
+                "account_id": 74,
+                "page_id": "ig-page",
+                "page_name": "IG Page",
+                "published_posts": [
+                    {"id": "ig-dated", "published_at": "2026-03-12T10:54:26+00:00", "scheduled_for": None},
+                ],
+                "summary": {"total_followers": 1, "total_following": 1, "total_post_share": 1},
+                "insights": [],
+                "snapshot_id": 2,
+                "fetched_at": "2026-03-12T11:01:00+00:00",
+                "cached": False,
+            },
+        )
+
+        self.assertEqual([row["id"] for row in combined["published_posts"]], ["ig-dated", "fb-missing"])
+        self.assertEqual(combined["fetched_at"], "2026-03-12T11:01:00+00:00")
+
     def test_build_comparison_rows_uses_verified_metric_windows(self):
         rows = build_comparison_rows(
             [

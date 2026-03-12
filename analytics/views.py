@@ -1,7 +1,7 @@
 import logging
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timezone as dt_timezone
 
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
@@ -139,7 +139,11 @@ def _parse_iso(value: str | None):
 
 
 def _published_post_sort_key(post: dict):
-    return _parse_iso(post.get("published_at")) or _parse_iso(post.get("scheduled_for")) or datetime.min
+    return (
+        _parse_iso(post.get("published_at"))
+        or _parse_iso(post.get("scheduled_for"))
+        or datetime.min.replace(tzinfo=dt_timezone.utc)
+    )
 
 
 def _build_combined_response(primary: dict, secondary: dict) -> dict:
@@ -166,7 +170,8 @@ def _build_combined_response(primary: dict, secondary: dict) -> dict:
             enriched["platform"] = row.get("platform")
             merged_metrics.append(enriched)
 
-    latest_fetched = max([_parse_iso(primary.get("fetched_at")), _parse_iso(secondary.get("fetched_at"))], default=None)
+    latest_candidates = [value for value in [_parse_iso(primary.get("fetched_at")), _parse_iso(secondary.get("fetched_at"))] if value]
+    latest_fetched = max(latest_candidates, default=None)
 
     fb_summary = (fb or {}).get("summary", {})
     ig_summary = (ig or {}).get("summary", {})
