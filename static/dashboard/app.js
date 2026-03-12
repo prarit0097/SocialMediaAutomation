@@ -751,6 +751,25 @@
     return null;
   }
 
+  function aggregateRecentPostMetric(posts, platform, fieldName) {
+    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const rows = Array.isArray(posts) ? posts : [];
+    let total = 0;
+    let found = false;
+
+    rows.forEach((row) => {
+      if (String(row.platform || "").toLowerCase() !== platform) return;
+      const dt = parseSortDate(row.published_at_utc || row.published_at);
+      if (!dt || dt.getTime() < cutoff) return;
+      const value = Number(row[fieldName]);
+      if (!Number.isFinite(value)) return;
+      total += value;
+      found = true;
+    });
+
+    return found ? total : null;
+  }
+
   function comparisonMetricRows(data) {
     const accounts = Array.isArray(data.accounts) ? data.accounts : [data];
     const fb = accounts.find((row) => row.platform === "facebook") || {};
@@ -759,23 +778,30 @@
     const igSummary = ig.summary || {};
     const fbInsights = fb.insights || [];
     const igInsights = ig.insights || [];
+    const publishedPosts = Array.isArray(data.published_posts) ? data.published_posts : [];
+    const fbRecentViews = aggregateRecentPostMetric(publishedPosts, "facebook", "total_views");
+    const fbRecentLikes = aggregateRecentPostMetric(publishedPosts, "facebook", "total_likes");
+    const fbRecentComments = aggregateRecentPostMetric(publishedPosts, "facebook", "total_comments");
+    const fbRecentShares = aggregateRecentPostMetric(publishedPosts, "facebook", "total_shares");
+    const igRecentShares = aggregateRecentPostMetric(publishedPosts, "instagram", "total_shares");
+    const igRecentSaves = aggregateRecentPostMetric(publishedPosts, "instagram", "total_saves");
 
     return [
       { metric: "Total Followers", facebook: fbSummary.total_followers, instagram: igSummary.total_followers, window: "Overall" },
       { metric: "Total Following", facebook: fbSummary.total_following, instagram: igSummary.total_following, window: "Overall" },
       { metric: "Total Post Share", facebook: fbSummary.total_post_share, instagram: igSummary.total_post_share, window: "Overall" },
       { metric: "Total Reach", facebook: metricFromInsights(fbInsights, ["page_reach"]), instagram: metricFromInsights(igInsights, ["reach"]), window: "Last 7 days" },
-      { metric: "Total Profile Views", facebook: null, instagram: metricFromInsights(igInsights, ["profile_views"]), window: "Last 7 days" },
+      { metric: "Total Profile Views", facebook: metricFromInsights(fbInsights, ["page_views_total"]), instagram: metricFromInsights(igInsights, ["profile_views"]), window: "Last 7 days" },
       { metric: "Total Accounts Engaged", facebook: metricFromInsights(fbInsights, ["page_engaged_users"]), instagram: metricFromInsights(igInsights, ["accounts_engaged"]), window: "Last 7 days" },
-      { metric: "Total Interactions", facebook: null, instagram: metricFromInsights(igInsights, ["total_interactions"]), window: "Last 7 days" },
-      { metric: "Total Likes", facebook: null, instagram: metricFromInsights(igInsights, ["likes"]), window: "Last 7 days" },
-      { metric: "Total Comments", facebook: null, instagram: metricFromInsights(igInsights, ["comments"]), window: "Last 7 days" },
-      { metric: "Total Shares", facebook: null, instagram: metricFromInsights(igInsights, ["shares"]), window: "Last 7 days" },
-      { metric: "Total Views", facebook: metricFromInsights(fbInsights, ["page_impressions"]), instagram: metricFromInsights(igInsights, ["views"]), window: "Last 7 days" },
-      { metric: "Total Saves", facebook: null, instagram: metricFromInsights(igInsights, ["saves"]), window: "Last 7 days" },
+      { metric: "Total Interactions", facebook: [fbRecentLikes, fbRecentComments, fbRecentShares].some((v) => v !== null) ? (fbRecentLikes || 0) + (fbRecentComments || 0) + (fbRecentShares || 0) : null, instagram: metricFromInsights(igInsights, ["total_interactions"]), window: "Last 7 days" },
+      { metric: "Total Likes", facebook: fbRecentLikes, instagram: metricFromInsights(igInsights, ["likes"]), window: "Last 7 days" },
+      { metric: "Total Comments", facebook: fbRecentComments, instagram: metricFromInsights(igInsights, ["comments"]), window: "Last 7 days" },
+      { metric: "Total Shares", facebook: fbRecentShares, instagram: metricFromInsights(igInsights, ["shares"]) ?? igRecentShares, window: "Last 7 days" },
+      { metric: "Total Views", facebook: metricFromInsights(fbInsights, ["page_impressions"]) ?? fbRecentViews, instagram: metricFromInsights(igInsights, ["views"]), window: "Last 7 days" },
+      { metric: "Total Saves", facebook: null, instagram: metricFromInsights(igInsights, ["saves"]) ?? igRecentSaves, window: "Last 7 days" },
       { metric: "Total Followers Count", facebook: metricFromInsights(fbInsights, ["followers_count"]), instagram: metricFromInsights(igInsights, ["follower_count", "followers_count"]), window: "Current / 7 days" },
-      { metric: "Total Follows Count", facebook: null, instagram: metricFromInsights(igInsights, ["follows_count"]), window: "Current" },
-      { metric: "Total Media Count", facebook: null, instagram: metricFromInsights(igInsights, ["media_count"]), window: "Current" },
+      { metric: "Total Follows Count", facebook: metricFromInsights(fbInsights, ["page_follows"]), instagram: metricFromInsights(igInsights, ["follows_count"]), window: "Current" },
+      { metric: "Total Media Count", facebook: fbSummary.total_post_share, instagram: metricFromInsights(igInsights, ["media_count"]), window: "Current" },
     ].map((row) => ({
       metric: row.metric,
       facebook: row.facebook === null || row.facebook === undefined ? "N/A" : row.facebook,

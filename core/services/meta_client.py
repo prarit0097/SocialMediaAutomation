@@ -335,6 +335,8 @@ class MetaClient:
         likes_count = None
         comments_count = None
         views_count = None
+        shares_count = None
+        saves_count = None
         errors: list[str] = []
         stats_timeout = 8
 
@@ -409,15 +411,21 @@ class MetaClient:
                 likes_count = metric_value
             elif metric == "comments" and comments_count is None:
                 comments_count = metric_value
+            elif metric == "shares" and shares_count is None:
+                shares_count = metric_value
+            elif metric == "saved" and saves_count is None:
+                saves_count = metric_value
 
         stats_error = None
-        if likes_count is None and comments_count is None and views_count is None and errors:
+        if likes_count is None and comments_count is None and views_count is None and shares_count is None and saves_count is None and errors:
             stats_error = " | ".join(errors)
 
         return {
             "total_likes": likes_count,
             "total_comments": comments_count,
             "total_views": views_count,
+            "total_shares": shares_count,
+            "total_saves": saves_count,
             "stats_error": stats_error,
         }
 
@@ -425,6 +433,7 @@ class MetaClient:
         likes_count = None
         comments_count = None
         views_count = None
+        shares_count = None
         errors: list[str] = []
         stats_timeout = 8
 
@@ -478,11 +487,13 @@ class MetaClient:
                     likes_count = metric_value
                 elif metric == "post_activity_by_action_type" and comments_count is None and isinstance(metric_value, dict):
                     comments_count = metric_value.get("comment")
+                    if shares_count is None:
+                        shares_count = metric_value.get("share")
             except MetaAPIError as exc:
                 errors.append(f"{metric}: {exc}")
 
         stats_error = None
-        if likes_count is None and comments_count is None and views_count is None:
+        if likes_count is None and comments_count is None and views_count is None and shares_count is None:
             stats_error = " | ".join(errors) if errors else "Meta did not return post engagement metrics."
             try:
                 token_debug = self.debug_token(page_access_token).get("data", {})
@@ -499,6 +510,8 @@ class MetaClient:
             "total_likes": likes_count,
             "total_comments": comments_count,
             "total_views": views_count,
+            "total_shares": shares_count,
+            "total_saves": None,
             "stats_error": stats_error,
         }
 

@@ -60,6 +60,8 @@ def _get_published_posts(
                     "total_views": None,
                     "total_likes": None,
                     "total_comments": None,
+                    "total_shares": None,
+                    "total_saves": None,
                     "stats_error": None,
                 }
                 should_fetch_stats = include_post_stats and post.get("id")
@@ -106,6 +108,8 @@ def _get_published_posts(
                         "total_views": stats.get("total_views"),
                         "total_likes": stats.get("total_likes"),
                         "total_comments": stats.get("total_comments"),
+                        "total_shares": stats.get("total_shares"),
+                        "total_saves": stats.get("total_saves"),
                         "reason": stats.get("stats_error"),
                     }
                 )
@@ -128,6 +132,8 @@ def _get_published_posts(
                     "total_views": None,
                     "total_likes": post.get("like_count"),
                     "total_comments": post.get("comments_count"),
+                    "total_shares": None,
+                    "total_saves": None,
                     "stats_error": None,
                 }
                 should_fetch_stats = include_post_stats and post.get("id")
@@ -171,6 +177,8 @@ def _get_published_posts(
                         "total_views": stats.get("total_views"),
                         "total_likes": stats.get("total_likes"),
                         "total_comments": stats.get("total_comments"),
+                        "total_shares": stats.get("total_shares"),
+                        "total_saves": stats.get("total_saves"),
                         "reason": stats.get("stats_error"),
                     }
                 )
@@ -192,6 +200,8 @@ def _get_published_posts(
             "total_views": None,
             "total_likes": None,
             "total_comments": None,
+            "total_shares": None,
+            "total_saves": None,
         }
         should_fetch_stats = account.platform == FACEBOOK and row.get("external_post_id")
         if stats_limit is not None and index >= stats_limit:
@@ -229,6 +239,8 @@ def _get_published_posts(
                 "total_views": stats.get("total_views"),
                 "total_likes": stats.get("total_likes"),
                 "total_comments": stats.get("total_comments"),
+                "total_shares": stats.get("total_shares"),
+                "total_saves": stats.get("total_saves"),
                 "reason": stats.get("stats_error"),
             }
         )
