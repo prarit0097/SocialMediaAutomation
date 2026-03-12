@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 
 
 class DashboardAuthTests(TestCase):
@@ -37,3 +37,20 @@ class DashboardAuthTests(TestCase):
 
         response = self.client.get("/auth/meta/callback", {"code": "abc", "state": "state123"})
         self.assertEqual(response.status_code, 302)
+
+    @override_settings(
+        PUBLIC_BASE_URL="https://old-tunnel.ngrok-free.app",
+        META_REDIRECT_URI="https://old-tunnel.ngrok-free.app/auth/meta/callback",
+        ALLOWED_HOSTS=["testserver", "new-tunnel.ngrok-free.app"],
+    )
+    def test_public_url_status_reports_request_host_mismatch(self):
+        user_model = get_user_model()
+        user_model.objects.create_user(username="admin", password="pass12345")
+        self.client.login(username="admin", password="pass12345")
+
+        response = self.client.get("/dashboard/public-url-status/", HTTP_HOST="new-tunnel.ngrok-free.app")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertFalse(body["ok"])
+        self.assertTrue(any("PUBLIC_BASE_URL points to old-tunnel.ngrok-free.app" in item for item in body["warnings"]))
+        self.assertTrue(any("Ngrok free domains can rotate" in item for item in body["notes"]))

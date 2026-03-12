@@ -674,6 +674,7 @@
   const refreshInsightsBtn = document.getElementById("refreshInsightsBtn");
   const insightAccountId = document.getElementById("insightAccountId");
   const insightError = document.getElementById("insightError");
+  const publicUrlStatus = document.getElementById("publicUrlStatus");
   const totalFollowers = document.getElementById("totalFollowers");
   const totalFollowing = document.getElementById("totalFollowing");
   const totalPostShare = document.getElementById("totalPostShare");
@@ -851,6 +852,21 @@
     renderTable(insightMetricsTable, metrics);
   }
 
+  async function loadPublicUrlStatus() {
+    if (!publicUrlStatus) return;
+    try {
+      const data = await fetchJSON("/dashboard/public-url-status/");
+      const warnings = Array.isArray(data.warnings) ? data.warnings : [];
+      const notes = Array.isArray(data.notes) ? data.notes : [];
+      const parts = [];
+      if (warnings.length) parts.push(`Config warning: ${warnings.join(" | ")}`);
+      if (notes.length) parts.push(notes.join(" | "));
+      publicUrlStatus.textContent = parts.join(" | ");
+    } catch (_err) {
+      publicUrlStatus.textContent = "";
+    }
+  }
+
   async function loadInsights(forceRefresh) {
     if (!insightAccountId) return;
     const accountId = Number(insightAccountId.value);
@@ -878,10 +894,12 @@
   }
 
   if (insightAccountId && Number(insightAccountId.value)) {
+    loadPublicUrlStatus();
     loadInsights(false);
   }
 
   if (insightAccountId) {
+    loadPublicUrlStatus();
     const insightParams = new URLSearchParams(window.location.search);
     const prefillInsightAccountId = insightParams.get("account_id");
     if (prefillInsightAccountId && !insightAccountId.value) {
