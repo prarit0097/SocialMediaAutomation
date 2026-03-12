@@ -46,6 +46,29 @@ class AnalyticsApiTests(TestCase):
         body = response.json()
         self.assertEqual(body["error"], "Failed to fetch insights from Meta")
 
+    @patch("analytics.views.fetch_and_store_insights")
+    def test_force_refresh_uses_fast_path_without_post_stats(self, mock_fetch_and_store):
+        mock_fetch_and_store.return_value = {
+            "account_id": self.account.id,
+            "page_id": self.account.page_id,
+            "page_name": self.account.page_name,
+            "platform": FACEBOOK,
+            "insights": [],
+            "summary": {"total_followers": 0, "total_following": 0, "total_post_share": 0},
+            "published_posts": [],
+            "snapshot_id": 1,
+            "fetched_at": "2026-03-12T12:00:00+00:00",
+            "cached": False,
+        }
+
+        response = self.client.get(f"/api/insights/{self.account.id}/?refresh=1")
+        self.assertEqual(response.status_code, 200)
+        mock_fetch_and_store.assert_called_once_with(
+            self.account,
+            include_post_stats=False,
+            post_limit=20,
+        )
+
     @patch("analytics.services._get_published_posts")
     @patch("analytics.services.MetaClient.fetch_facebook_published_posts_count")
     @patch("analytics.services.MetaClient.fetch_instagram_insights")

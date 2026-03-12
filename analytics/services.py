@@ -39,7 +39,11 @@ def _first_metric_value(insights: list[dict], names: list[str]):
     return None
 
 
-def _get_published_posts(account: ConnectedAccount, include_post_stats: bool = True) -> list[dict]:
+def _get_published_posts(
+    account: ConnectedAccount,
+    include_post_stats: bool = True,
+    limit: int = 50,
+) -> list[dict]:
     client = MetaClient()
 
     if account.platform == FACEBOOK:
@@ -47,7 +51,7 @@ def _get_published_posts(account: ConnectedAccount, include_post_stats: bool = T
             page_posts = client.fetch_facebook_published_posts(
                 page_id=account.page_id,
                 page_access_token=account.access_token,
-                limit=50,
+                limit=limit,
             )
             enriched_rows = []
             for post in page_posts:
@@ -112,7 +116,7 @@ def _get_published_posts(account: ConnectedAccount, include_post_stats: bool = T
             ig_posts = client.fetch_instagram_published_posts(
                 ig_user_id=ig_user_id,
                 page_access_token=account.access_token,
-                limit=50,
+                limit=limit,
             )
             enriched_rows = []
             for post in ig_posts:
@@ -173,7 +177,7 @@ def _get_published_posts(account: ConnectedAccount, include_post_stats: bool = T
     rows = list(
         ScheduledPost.objects.filter(account=account, status=POST_STATUS_PUBLISHED)
         .values("id", "message", "media_url", "external_post_id", "published_at", "scheduled_for")
-        .order_by("-published_at", "-id")[:50]
+        .order_by("-published_at", "-id")[:limit]
     )
     enriched_rows = []
     for row in rows:
@@ -268,7 +272,11 @@ def build_insight_response(
     }
 
 
-def fetch_and_store_insights(account: ConnectedAccount) -> dict:
+def fetch_and_store_insights(
+    account: ConnectedAccount,
+    include_post_stats: bool = True,
+    post_limit: int = 50,
+) -> dict:
     client = MetaClient()
     total_post_share_override = None
 
@@ -280,7 +288,11 @@ def fetch_and_store_insights(account: ConnectedAccount) -> dict:
         insights = client.fetch_instagram_insights(account.ig_user_id or account.page_id, account.access_token)
         platform = "instagram"
 
-    published_posts = _get_published_posts(account)
+    published_posts = _get_published_posts(
+        account,
+        include_post_stats=include_post_stats,
+        limit=post_limit,
+    )
     snapshot = InsightSnapshot.objects.create(
         account=account,
         platform=platform,

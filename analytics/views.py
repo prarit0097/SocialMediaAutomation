@@ -70,7 +70,11 @@ def _load_single_account_insights(
         if not cache.add(throttle_key, 1, timeout=30):
             return None, JsonResponse({"error": "Too many refresh requests"}, status=429)
         try:
-            data = fetch_and_store_insights(account)
+            data = fetch_and_store_insights(
+                account,
+                include_post_stats=False,
+                post_limit=20,
+            )
         except MetaAPIError as exc:
             logger.warning("insights fetch failed account_id=%s error=%s", account.id, exc)
             return None, JsonResponse(
