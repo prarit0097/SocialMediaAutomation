@@ -129,7 +129,17 @@
       });
     });
 
-    merged.sort((a, b) => Number(b.account_id || 0) - Number(a.account_id || 0));
+    function platformRank(platform) {
+      const value = String(platform || "").toLowerCase();
+      if (value === "fb_ig") return 0;
+      return 1;
+    }
+
+    merged.sort((a, b) => {
+      const rankDiff = platformRank(a.platform) - platformRank(b.platform);
+      if (rankDiff !== 0) return rankDiff;
+      return Number(b.account_id || 0) - Number(a.account_id || 0);
+    });
     return merged;
   }
 
