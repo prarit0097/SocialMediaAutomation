@@ -1,4 +1,5 @@
 import logging
+import json
 from datetime import datetime
 
 from django.contrib.auth.decorators import login_required
@@ -13,6 +14,28 @@ from .models import InsightSnapshot
 from .services import build_insight_response, fetch_and_store_insights
 
 logger = logging.getLogger("analytics")
+
+
+def _extract_error_message(error_response: JsonResponse, fallback: str) -> str:
+    try:
+        raw = error_response.content.decode("utf-8")
+    except Exception:  # noqa: BLE001
+        return fallback
+
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        # Do not leak HTML error pages from upstream proxies like ngrok into the UI.
+        return fallback
+
+    if isinstance(payload, dict):
+        details = payload.get("details")
+        error = payload.get("error")
+        if details:
+            return str(details)
+        if error:
+            return str(error)
+    return fallback
 
 
 def _load_single_account_insights(
@@ -160,10 +183,10 @@ def account_insights(request: HttpRequest, account_id: int) -> JsonResponse:
     )
     if error_response:
         primary_data["combined_partial"] = True
-        try:
-            secondary_error = error_response.content.decode("utf-8")
-        except Exception:  # noqa: BLE001
-            secondary_error = "Linked account insights unavailable."
+        secondary_error = _extract_error_message(
+            error_response,
+            f"Linked {linked_account.platform} insights unavailable.",
+        )
         primary_data["warning"] = f"Linked {linked_account.platform} insights unavailable: {secondary_error}"
         return JsonResponse(primary_data)
 
