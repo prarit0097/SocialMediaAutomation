@@ -3,7 +3,12 @@
 <section class="card compact login-card">
   <p class="eyebrow">Internal Access</p>
   <h1>Admin Login</h1>
-  <p class="hero-copy">Sign in to manage connected pages, scheduling, and insights.</p>
+  <p class="hero-copy">Sign in to manage connected pages, scheduling, and insights from the operations workspace.</p>
+  <ul class="login-points">
+    <li>Account connection and Meta sync status</li>
+    <li>Publishing queue and retry actions</li>
+    <li>Cross-platform page performance review</li>
+  </ul>
   <form method="post" class="form-grid">
     {% csrf_token %}
     {{ form.as_p }}

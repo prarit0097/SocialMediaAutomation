@@ -1,26 +1,76 @@
 {% extends 'base.html' %}
 {% block content %}
-<section class="card hero-card">
-  <p class="eyebrow">Operations Dashboard</p>
-  <h1>Manage Pages, Publishing, and Insights</h1>
-  <p class="hero-copy">Connect Meta pages, schedule content, and monitor growth from one workspace.</p>
+<section class="card hero-card hero-split">
+  <div class="hero-main">
+    <p class="eyebrow">Operations Dashboard</p>
+    <h1>Run Meta publishing, account control, and reporting from one focused workspace.</h1>
+    <p class="hero-copy">Built for connected Facebook Pages and Instagram accounts, with a cleaner flow from onboarding to scheduled publishing to performance review.</p>
+    <div class="hero-pill-row">
+      <span class="hero-pill">Connected accounts</span>
+      <span class="hero-pill">Local-time scheduling</span>
+      <span class="hero-pill">Cross-platform insights</span>
+    </div>
+  </div>
+  <div class="hero-rail">
+    <article class="hero-stat">
+      <span class="hero-stat-label">Workflow</span>
+      <strong>Connect -> Schedule -> Review</strong>
+      <p>Move between setup, publishing, and analytics without switching tools.</p>
+    </article>
+    <article class="hero-stat">
+      <span class="hero-stat-label">Priority</span>
+      <strong>Operational clarity</strong>
+      <p>Status notes, publishing queues, and page-level comparisons stay visible.</p>
+    </article>
+  </div>
 </section>
 
 <section class="card">
-  <h2>Quick Actions</h2>
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">Quick Actions</p>
+      <h2>Jump straight into the work area you need.</h2>
+      <p class="section-copy">Each panel keeps the same data model, so moving between accounts, queue management, and insights stays predictable.</p>
+    </div>
+  </div>
   <div class="grid two">
     <a class="tile" href="{% url 'dashboard:accounts' %}">
+      <p class="tile-kicker">Account setup</p>
       <h3>Connected Accounts</h3>
-      <p>Connect Facebook pages and linked Instagram accounts.</p>
+      <p>Review linked assets, refresh Meta sync state, and inspect page connectability.</p>
     </a>
     <a class="tile" href="{% url 'dashboard:scheduler' %}">
+      <p class="tile-kicker">Publishing queue</p>
       <h3>Scheduler</h3>
-      <p>Plan posts, monitor status, and retry failures quickly.</p>
+      <p>Prepare posts, attach media, and manage timed publishing jobs with fewer clicks.</p>
     </a>
     <a class="tile" href="{% url 'dashboard:insights' %}">
+      <p class="tile-kicker">Performance review</p>
       <h3>Insights</h3>
-      <p>Track follower growth and recent content performance.</p>
+      <p>Compare Facebook and Instagram performance with recent post-level context.</p>
     </a>
   </div>
+</section>
+
+<section class="card split-highlights">
+  <article class="highlight-panel">
+    <p class="eyebrow">What This Workspace Optimizes</p>
+    <h2>Faster day-to-day operations, not dashboard noise.</h2>
+    <p class="section-copy">The UI is structured around the exact flow this project supports: connected accounts, scheduled posts, and page insights. Surfaces stay task-first so operators can act quickly.</p>
+  </article>
+  <article class="highlight-list">
+    <div class="highlight-item">
+      <strong>Clear status surfaces</strong>
+      <span>Refresh state, sync notes, and errors remain visible near the action that caused them.</span>
+    </div>
+    <div class="highlight-item">
+      <strong>Readable data density</strong>
+      <span>Tables, cards, and hero summaries are styled for scanning on both wide and narrow screens.</span>
+    </div>
+    <div class="highlight-item">
+      <strong>Safer navigation</strong>
+      <span>Primary actions are grouped consistently so feature flows remain intact while the UI gets cleaner.</span>
+    </div>
+  </article>
 </section>
 {% endblock %}

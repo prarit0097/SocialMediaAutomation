@@ -1,39 +1,76 @@
 {% extends 'base.html' %}
 {% block content %}
-<section class="card hero-card">
-  <p class="eyebrow">Publishing</p>
-  <h1>Schedule Posts</h1>
-  <p class="hero-copy">Create timed publishing jobs for Facebook and Instagram with local-time scheduling.</p>
+<section class="card hero-card hero-split">
+  <div class="hero-main">
+    <p class="eyebrow">Publishing</p>
+    <h1>Build a cleaner scheduling flow for Facebook and Instagram publishing.</h1>
+    <p class="hero-copy">Prepare media, choose the target platform, and queue posts in local time while the app stores everything safely in UTC.</p>
+    <div class="hero-pill-row">
+      <span class="hero-pill">Single queue</span>
+      <span class="hero-pill">Retry support</span>
+      <span class="hero-pill">Media upload or URL</span>
+    </div>
+  </div>
+  <div class="hero-rail">
+    <article class="hero-stat">
+      <span class="hero-stat-label">Publishing rule</span>
+      <strong>Browser time in, UTC stored</strong>
+      <p>Operators can schedule naturally while the backend keeps execution time normalized.</p>
+    </article>
+  </div>
 </section>
 
-<section class="card">
-  <form id="scheduleForm" class="form-grid">
-    {% csrf_token %}
-    <label>Account ID<input type="number" name="account_id" required></label>
-    <label>Platform
-      <select name="platform" required>
-        <option value="facebook">Facebook</option>
-        <option value="instagram">Instagram</option>
-        <option value="both">Facebook + Instagram (Both)</option>
-      </select>
-    </label>
-    <label>Message<textarea name="message" rows="4"></textarea></label>
-    <label>Media URL (required for Instagram / Both)<input type="url" name="media_url"></label>
-    <label>Or Upload Media (image/video)
-      <input type="file" name="media_file" accept="image/*,video/*">
-    </label>
-    <label>Scheduled For (Local Time)<input type="datetime-local" name="scheduled_for" required></label>
-    <small>Your browser timezone is used. We store UTC internally. If both URL and upload are provided, upload takes priority.</small>
-    <button type="submit">Schedule Post</button>
-  </form>
-  <p id="scheduleResult"></p>
-</section>
+<div class="content-grid content-grid-aside">
+  <section class="card">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">Compose</p>
+        <h2>Create Scheduled Post</h2>
+        <p class="section-copy">Use a connected account ID and pick the exact platform behavior you want before the job enters the queue.</p>
+      </div>
+    </div>
+    <form id="scheduleForm" class="form-grid">
+      {% csrf_token %}
+      <label>Account ID<input type="number" name="account_id" required></label>
+      <label>Platform
+        <select name="platform" required>
+          <option value="facebook">Facebook</option>
+          <option value="instagram">Instagram</option>
+          <option value="both">Facebook + Instagram (Both)</option>
+        </select>
+      </label>
+      <label>Message<textarea name="message" rows="4"></textarea></label>
+      <label>Media URL (required for Instagram / Both)<input type="url" name="media_url"></label>
+      <label>Or Upload Media (image/video)
+        <input type="file" name="media_file" accept="image/*,video/*">
+      </label>
+      <label>Scheduled For (Local Time)<input type="datetime-local" name="scheduled_for" required></label>
+      <small class="form-note">Your browser timezone is used. We store UTC internally. If both URL and upload are provided, upload takes priority.</small>
+      <button type="submit">Schedule Post</button>
+    </form>
+    <p id="scheduleResult" class="result-note"></p>
+  </section>
+
+  <aside class="card accent-card">
+    <p class="eyebrow">Execution Notes</p>
+    <h2>Queue with fewer surprises.</h2>
+    <ul class="info-list">
+      <li>Use the connected account ID shown in the Accounts workspace.</li>
+      <li>Instagram and combined publishing generally require a public media URL or uploaded file.</li>
+      <li>Failed jobs stay traceable in the queue and can be retried from the same screen.</li>
+    </ul>
+  </aside>
+</div>
 
 <section class="card">
   <div class="section-head">
-    <h2>Scheduled Queue</h2>
+    <div>
+      <p class="eyebrow">Queue Monitor</p>
+      <h2>Scheduled Queue</h2>
+      <p class="section-copy">Refresh the queue to review pending, published, and failed jobs without leaving the page.</p>
+    </div>
     <button id="refreshScheduledBtn" class="btn muted">Refresh</button>
   </div>
-  <div id="scheduledTable" class="table-wrap"></div>
+  <div id="scheduledTable" class="table-wrap table-wrap-strong"></div>
 </section>
 {% endblock %}

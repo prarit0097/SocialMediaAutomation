@@ -8,23 +8,35 @@
     <link rel="icon" type="image/svg+xml" href="{% static 'favicon.svg' %}">
     <link rel="stylesheet" href="{% static 'dashboard/styles.css' %}">
   </head>
-  <body>
+  <body class="page-{{ request.resolver_match.url_name|default:'workspace' }}">
+    <div class="ambient ambient-one" aria-hidden="true"></div>
+    <div class="ambient ambient-two" aria-hidden="true"></div>
+    <div class="ambient ambient-three" aria-hidden="true"></div>
     <header class="topbar">
-      <a class="brand" href="{% url 'dashboard:home' %}">
-        <span class="brand-mark">SA</span>
-        <span class="brand-text">Social Automation</span>
-      </a>
-      {% if request.user.is_authenticated %}
-      <nav class="topnav">
-        <a href="{% url 'dashboard:accounts' %}">Accounts</a>
-        <a href="{% url 'dashboard:scheduler' %}">Scheduler</a>
-        <a href="{% url 'dashboard:insights' %}">Insights</a>
-        <a class="logout-link" href="{% url 'logout' %}">Logout</a>
-      </nav>
-      {% endif %}
+      <div class="topbar-inner">
+        <a class="brand" href="{% url 'dashboard:home' %}">
+          <span class="brand-mark">SA</span>
+          <span class="brand-copy">
+            <span class="brand-text">Social Automation</span>
+            <span class="brand-subtext">Meta operations workspace</span>
+          </span>
+        </a>
+        {% if request.user.is_authenticated %}
+        {% with current=request.resolver_match.url_name %}
+        <nav class="topnav">
+          <a class="{% if current == 'accounts' %}is-active{% endif %}" href="{% url 'dashboard:accounts' %}">Accounts</a>
+          <a class="{% if current == 'scheduler' %}is-active{% endif %}" href="{% url 'dashboard:scheduler' %}">Scheduler</a>
+          <a class="{% if current == 'insights' %}is-active{% endif %}" href="{% url 'dashboard:insights' %}">Insights</a>
+          <a class="logout-link" href="{% url 'logout' %}">Logout</a>
+        </nav>
+        {% endwith %}
+        {% endif %}
+      </div>
     </header>
     <main class="layout">
-      {% block content %}{% endblock %}
+      <div class="page-stack">
+        {% block content %}{% endblock %}
+      </div>
     </main>
     <script src="{% static 'dashboard/app.js' %}"></script>
   </body>

@@ -1,36 +1,65 @@
 {% extends 'base.html' %}
 {% block content %}
-<section class="card hero-card">
-  <p class="eyebrow">Accounts</p>
-  <h1>Connected Accounts</h1>
-  <p class="hero-copy">Link your Meta assets once and manage publishing from this control center.</p>
-</section>
-
-<section class="card">
-  <div class="section-actions">
-    <button id="connectMetaBtn" class="btn">Connect Facebook + Instagram</button>
-    <button id="refreshAccountsBtn" class="btn muted">Refresh List</button>
+<section class="card hero-card hero-split">
+  <div class="hero-main">
+    <p class="eyebrow">Accounts</p>
+    <h1>Keep connected Meta assets organized, searchable, and ready for publishing.</h1>
+    <p class="hero-copy">Use this workspace to connect Pages, confirm Instagram links, and check whether catalog assets are actually usable inside the app.</p>
+    <div class="hero-pill-row">
+      <span class="hero-pill">FB + IG linking</span>
+      <span class="hero-pill">Catalog review</span>
+      <span class="hero-pill">Sync visibility</span>
+    </div>
   </div>
-  <div class="accounts-toolbar">
-    <select id="accountsPlatformFilter" aria-label="Filter by platform">
-      <option value="all">All Platforms</option>
-      <option value="fb_ig">FB + IG</option>
-      <option value="fb">Facebook (FB)</option>
-      <option value="ig">Instagram (IG)</option>
-    </select>
-    <input id="accountsSearchInput" type="text" placeholder="Search by name, id, page id..." aria-label="Search accounts">
+  <div class="hero-rail">
+    <article class="hero-stat">
+      <span class="hero-stat-label">Operator Focus</span>
+      <strong>Connection health first</strong>
+      <p>Account state, token targets, and connectability checks stay close to the main table.</p>
+    </article>
   </div>
-  <p id="accountsViewMeta" class="meta-note"></p>
-  <p id="accountSyncStatus" class="meta-note"></p>
-  <div id="accountsTable" class="table-wrap"></div>
 </section>
 
 <section class="card">
   <div class="section-head">
-    <h2>Meta Page Catalog</h2>
+    <div>
+      <p class="eyebrow">Account Control</p>
+      <h2>Connected Accounts</h2>
+      <p class="section-copy">Filter and inspect the actual assets available to the platform before you schedule or analyze anything.</p>
+    </div>
+    <div class="section-actions">
+      <button id="connectMetaBtn" class="btn">Connect Facebook + Instagram</button>
+      <button id="refreshAccountsBtn" class="btn muted">Refresh List</button>
+    </div>
+  </div>
+  <div class="toolbar-surface">
+    <div class="accounts-toolbar">
+      <select id="accountsPlatformFilter" aria-label="Filter by platform">
+        <option value="all">All Platforms</option>
+        <option value="fb_ig">FB + IG</option>
+        <option value="fb">Facebook (FB)</option>
+        <option value="ig">Instagram (IG)</option>
+      </select>
+      <input id="accountsSearchInput" type="text" placeholder="Search by name, id, page id..." aria-label="Search accounts">
+    </div>
+  </div>
+  <div class="status-stack">
+    <p id="accountsViewMeta" class="meta-note"></p>
+    <p id="accountSyncStatus" class="meta-note"></p>
+  </div>
+  <div id="accountsTable" class="table-wrap table-wrap-strong"></div>
+</section>
+
+<section class="card">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">Catalog Review</p>
+      <h2>Meta Page Catalog</h2>
+      <p class="section-copy">See which Meta assets exist, which are already connected, and which still need attention.</p>
+    </div>
     <button id="checkConnectabilityBtn" class="btn muted">Check Connectability</button>
   </div>
   <p id="metaCatalogStatus" class="meta-note"></p>
-  <div id="metaCatalogTable" class="table-wrap"></div>
+  <div id="metaCatalogTable" class="table-wrap table-wrap-strong"></div>
 </section>
 {% endblock %}

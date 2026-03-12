@@ -1,52 +1,93 @@
 {% extends 'base.html' %}
 {% block content %}
-<section class="card hero-card">
-  <p class="eyebrow">Analytics</p>
-  <h1>Insights</h1>
-  <p class="hero-copy">Review follower trends and latest page content performance in one place.</p>
+<section class="card hero-card hero-split">
+  <div class="hero-main">
+    <p class="eyebrow">Analytics</p>
+    <h1>Compare page growth and post performance without losing operational context.</h1>
+    <p class="hero-copy">Load connected account insights, review recent published posts, and compare Facebook versus Instagram metrics from a single page.</p>
+    <div class="hero-pill-row">
+      <span class="hero-pill">Combined FB + IG view</span>
+      <span class="hero-pill">Recent post performance</span>
+      <span class="hero-pill">7-day comparison table</span>
+    </div>
+  </div>
+  <div class="hero-rail">
+    <article class="hero-stat">
+      <span class="hero-stat-label">Analytics flow</span>
+      <strong>Cached review or force refresh</strong>
+      <p>Use cached data when speed matters and force refresh when you need the latest platform response.</p>
+    </article>
+  </div>
 </section>
 
 <section class="card">
-  <div class="inline-controls">
-    <input type="number" id="insightAccountId" placeholder="Enter Account ID">
-    <button id="fetchInsightsBtn" class="btn">Fetch Cached/Latest</button>
-    <button id="refreshInsightsBtn" class="btn muted">Force Refresh</button>
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">Lookup</p>
+      <h2>Load Page Insights</h2>
+      <p class="section-copy">Enter a connected account ID to fetch the latest stored snapshot or request a fresh pull from Meta.</p>
+    </div>
+  </div>
+  <div class="toolbar-surface">
+    <div class="inline-controls">
+      <input type="number" id="insightAccountId" placeholder="Enter Account ID">
+      <button id="fetchInsightsBtn" class="btn">Fetch Cached/Latest</button>
+      <button id="refreshInsightsBtn" class="btn muted">Force Refresh</button>
+    </div>
   </div>
 
-  <div id="insightError" class="error-text"></div>
-  <div id="insightWarning" class="warning-text"></div>
-  <div id="publicUrlStatus" class="meta-note"></div>
-
-  <div class="page-name-hero" id="insightPageHero" hidden>
-    <p class="page-name-label">Selected Page</p>
-    <h2 class="page-name-title" id="insightPageName">-</h2>
+  <div class="status-stack">
+    <div id="insightError" class="error-text"></div>
+    <div id="insightWarning" class="warning-text"></div>
+    <div id="publicUrlStatus" class="meta-note"></div>
   </div>
 
-  <div class="insight-summary-grid" id="insightSummaryGrid">
-    <article class="insight-stat-card">
-      <h3>Total Followers</h3>
-      <p id="totalFollowers">-</p>
-    </article>
-    <article class="insight-stat-card">
-      <h3>Total Following</h3>
-      <p id="totalFollowing">-</p>
-    </article>
-    <article class="insight-stat-card">
-      <h3>Total Post Share</h3>
-      <p id="totalPostShare">-</p>
-    </article>
-  </div>
+  <section class="insight-stage">
+    <div class="page-name-hero" id="insightPageHero" hidden>
+      <p class="page-name-label">Selected Page</p>
+      <h2 class="page-name-title" id="insightPageName">-</h2>
+    </div>
 
-  <p class="meta-note" id="insightMeta"></p>
+    <div class="insight-summary-grid" id="insightSummaryGrid">
+      <article class="insight-stat-card">
+        <h3>Total Followers</h3>
+        <p id="totalFollowers">-</p>
+      </article>
+      <article class="insight-stat-card">
+        <h3>Total Following</h3>
+        <p id="totalFollowing">-</p>
+      </article>
+      <article class="insight-stat-card">
+        <h3>Total Post Share</h3>
+        <p id="totalPostShare">-</p>
+      </article>
+    </div>
 
-  <section class="card nested-card">
-    <h2>Published Posts</h2>
-    <div class="table-wrap" id="insightPostsTable"></div>
+    <p class="meta-note" id="insightMeta"></p>
   </section>
 
-  <section class="card nested-card">
-    <h2 id="insightComparisonTitle">Overall Insights</h2>
-    <div class="table-wrap" id="insightMetricsTable"></div>
-  </section>
+  <div class="content-grid content-grid-equal">
+    <section class="card nested-card">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Content Performance</p>
+          <h2>Published Posts</h2>
+          <p class="section-copy">Review the latest published rows first, with metrics shown alongside the original media.</p>
+        </div>
+      </div>
+      <div class="table-wrap table-wrap-strong" id="insightPostsTable"></div>
+    </section>
+
+    <section class="card nested-card">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Comparison</p>
+          <h2 id="insightComparisonTitle">Overall Insights</h2>
+          <p class="section-copy">Current totals and recent 7-day performance are shown side by side for Facebook and Instagram.</p>
+        </div>
+      </div>
+      <div class="table-wrap table-wrap-strong" id="insightMetricsTable"></div>
+    </section>
+  </div>
 </section>
 {% endblock %}
