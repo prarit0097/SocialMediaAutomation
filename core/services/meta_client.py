@@ -73,6 +73,21 @@ class MetaClient:
 
         return posts[:limit]
 
+    def fetch_facebook_published_posts_count(self, page_id: str, page_access_token: str) -> int | None:
+        response = self._get(
+            f"/{page_id}/published_posts",
+            {
+                "access_token": page_access_token,
+                "limit": 1,
+                "summary": "true",
+            },
+        )
+        summary = response.get("summary") or {}
+        total_count = summary.get("total_count")
+        if isinstance(total_count, int):
+            return total_count
+        return None
+
     def publish_facebook_post(self, page_id: str, page_access_token: str, message: str) -> dict:
         return self._post(
             f"/{page_id}/feed",

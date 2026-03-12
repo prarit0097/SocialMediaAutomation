@@ -77,6 +77,7 @@ def _load_single_account_insights(
             cached=True,
             published_posts=published_posts,
             include_generated_post_stats=False,
+            total_post_share_override=payload.get("published_posts_count"),
         )
         return data, None
 
@@ -152,7 +153,7 @@ def _build_combined_response(primary: dict, secondary: dict) -> dict:
         "summary": {
             "total_followers": (fb_summary.get("total_followers") or 0) + (ig_summary.get("total_followers") or 0),
             "total_following": (fb_summary.get("total_following") or 0) + (ig_summary.get("total_following") or 0),
-            "total_post_share": len(published_posts),
+            "total_post_share": (fb_summary.get("total_post_share") or 0) + (ig_summary.get("total_post_share") or 0),
             "facebook": fb_summary,
             "instagram": ig_summary,
         },
