@@ -137,6 +137,10 @@ def _parse_iso(value: str | None):
         return None
 
 
+def _published_post_sort_key(post: dict):
+    return _parse_iso(post.get("published_at")) or _parse_iso(post.get("scheduled_for")) or datetime.min
+
+
 def _build_combined_response(primary: dict, secondary: dict) -> dict:
     accounts = [primary, secondary]
     accounts.sort(key=lambda row: 0 if row.get("platform") == "facebook" else 1)
@@ -152,7 +156,7 @@ def _build_combined_response(primary: dict, secondary: dict) -> dict:
             enriched["source_page_name"] = row.get("page_name")
             published_posts.append(enriched)
 
-    published_posts.sort(key=lambda p: _parse_iso(p.get("published_at")) or datetime.min, reverse=True)
+    published_posts.sort(key=_published_post_sort_key, reverse=True)
 
     merged_metrics = []
     for row in accounts:

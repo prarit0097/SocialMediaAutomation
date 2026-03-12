@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.http import JsonResponse
 from django.test import Client, TestCase
 
-from analytics.views import _extract_error_message
+from analytics.views import _build_combined_response, _extract_error_message
 from analytics.services import build_insight_response
 from core.constants import FACEBOOK, INSTAGRAM
 from core.exceptions import MetaPermanentError
@@ -177,6 +177,40 @@ class AnalyticsApiTests(TestCase):
 
         self.assertEqual(data["summary"]["total_followers"], 146234)
         self.assertEqual(data["summary"]["total_following"], 0)
+
+    def test_combined_published_posts_are_sorted_by_latest_published_at_first(self):
+        combined = _build_combined_response(
+            {
+                "platform": "facebook",
+                "account_id": 42,
+                "page_id": "fb-page",
+                "page_name": "FB Page",
+                "published_posts": [
+                    {"id": "fb-older", "published_at": "2026-03-12T10:53:26+00:00", "scheduled_for": None},
+                ],
+                "summary": {"total_followers": 1, "total_following": 0, "total_post_share": 1},
+                "insights": [],
+                "snapshot_id": 1,
+                "fetched_at": "2026-03-12T11:00:00+00:00",
+                "cached": False,
+            },
+            {
+                "platform": "instagram",
+                "account_id": 74,
+                "page_id": "ig-page",
+                "page_name": "IG Page",
+                "published_posts": [
+                    {"id": "ig-newer", "published_at": "2026-03-12T10:54:26+00:00", "scheduled_for": None},
+                ],
+                "summary": {"total_followers": 1, "total_following": 1, "total_post_share": 1},
+                "insights": [],
+                "snapshot_id": 2,
+                "fetched_at": "2026-03-12T11:01:00+00:00",
+                "cached": False,
+            },
+        )
+
+        self.assertEqual([row["id"] for row in combined["published_posts"]], ["ig-newer", "fb-older"])
 
 
 class MetaClientTests(TestCase):

@@ -699,6 +699,24 @@
     });
   }
 
+  function parseSortDate(value) {
+    if (!value) return null;
+    const dt = new Date(value);
+    return Number.isNaN(dt.getTime()) ? null : dt;
+  }
+
+  function sortPublishedPosts(rows) {
+    const safeRows = Array.isArray(rows) ? [...rows] : [];
+    safeRows.sort((a, b) => {
+      const aDate = parseSortDate(a.published_at_utc || a.published_at || a.scheduled_for_utc || a.scheduled_for);
+      const bDate = parseSortDate(b.published_at_utc || b.published_at || b.scheduled_for_utc || b.scheduled_for);
+      const aTime = aDate ? aDate.getTime() : 0;
+      const bTime = bDate ? bDate.getTime() : 0;
+      return bTime - aTime;
+    });
+    return safeRows;
+  }
+
   function setInsightValue(element, value) {
     if (!element) return;
     element.textContent = value === null || value === undefined || value === "" ? "N/A" : String(value);
@@ -826,11 +844,15 @@
       insightPageHero.hidden = false;
     }
 
-    const publishedPosts = (data.published_posts || []).map((row) => ({
-      ...row,
-      scheduled_for: toIndianDateTime(row.scheduled_for),
-      published_at: toIndianDateTime(row.published_at),
-    }));
+    const publishedPosts = sortPublishedPosts(
+      (data.published_posts || []).map((row) => ({
+        ...row,
+        scheduled_for_utc: row.scheduled_for || "",
+        published_at_utc: row.published_at || "",
+        scheduled_for: toIndianDateTime(row.scheduled_for),
+        published_at: toIndianDateTime(row.published_at),
+      }))
+    );
     renderPostsTable(insightPostsTable, publishedPosts);
 
     function metricDisplayValue(metric) {
