@@ -31,6 +31,7 @@ What it shows:
 - stale sync indicator when a stored account row was not refreshed in the latest Meta reconnect
 - view meta shows both merged-row count and active raw connected-row count
 - per-row quick actions: Schedule, Insights, and AI Insights
+- actions UI uses a priority-styled Schedule button with compact Insights/AI Insights secondary buttons
 
 What it does:
 - starts the Meta connect flow

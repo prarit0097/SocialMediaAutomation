@@ -322,8 +322,8 @@
           row.insight_account_id || row.account_id
         )}`;
         const scheduleAction = row.is_sync_stale
-          ? `<span class="inline-link-btn disabled" title="${escapeHtml(row.sync_state_reason || "Reconnect this profile before scheduling.")}">Reconnect</span>`
-          : `<a class="inline-link-btn" href="${schedulerUrl}">Schedule</a>`;
+          ? `<span class="inline-link-btn account-action-btn account-action-primary disabled" title="${escapeHtml(row.sync_state_reason || "Reconnect this profile before scheduling.")}">Reconnect</span>`
+          : `<a class="inline-link-btn account-action-btn account-action-primary" href="${schedulerUrl}">Schedule</a>`;
         const syncStateHtml = row.is_sync_stale
           ? `<div class="account-sync-state stale" title="${escapeHtml(row.sync_state_reason || "")}">Stale sync</div>`
           : "";
@@ -338,9 +338,13 @@
             <td>${escapeHtml(createdAt)}</td>
             <td><span class="${updatedAtClass}">${escapeHtml(updatedAt)}</span>${syncStateHtml}</td>
             <td>
-              ${scheduleAction}
-              <a class="inline-link-btn muted" href="${insightsUrl}">Insights</a>
-              <a class="inline-link-btn muted" href="${aiInsightsUrl}">AI Insights</a>
+              <div class="account-actions-stack">
+                ${scheduleAction}
+                <div class="account-actions-row">
+                  <a class="inline-link-btn account-action-btn account-action-secondary" href="${insightsUrl}">Insights</a>
+                  <a class="inline-link-btn account-action-btn account-action-ai" href="${aiInsightsUrl}">AI Insights</a>
+                </div>
+              </div>
             </td>
           </tr>
         `;
