@@ -30,6 +30,7 @@ What it shows:
 - stale posting indicator when no recent post was detected in the last 24 hours
 - stale sync indicator when a stored account row was not refreshed in the latest Meta reconnect
 - view meta shows both merged-row count and active raw connected-row count
+- per-row quick actions: Schedule, Insights, and AI Insights
 
 What it does:
 - starts the Meta connect flow
@@ -117,6 +118,7 @@ What it supports:
 - optional force-refresh before analysis
 - optional operator goal/focus prompt
 - OpenAI-backed JSON report generation from latest stored insight snapshot + recent published posts
+- stronger prompt framework with strict metric-grounded reasoning, platform-specific diagnosis, and 7-day execution planning
 
 Important runtime meaning:
 - AI advice is generated from available snapshot/post data; missing metrics are marked as unavailable

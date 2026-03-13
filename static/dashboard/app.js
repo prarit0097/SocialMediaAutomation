@@ -318,6 +318,9 @@
           schedulePlatform
         )}`;
         const insightsUrl = `/dashboard/insights/?account_id=${encodeURIComponent(row.insight_account_id || row.account_id)}`;
+        const aiInsightsUrl = `/dashboard/ai-insights/?account_id=${encodeURIComponent(
+          row.insight_account_id || row.account_id
+        )}`;
         const scheduleAction = row.is_sync_stale
           ? `<span class="inline-link-btn disabled" title="${escapeHtml(row.sync_state_reason || "Reconnect this profile before scheduling.")}">Reconnect</span>`
           : `<a class="inline-link-btn" href="${schedulerUrl}">Schedule</a>`;
@@ -337,6 +340,7 @@
             <td>
               ${scheduleAction}
               <a class="inline-link-btn muted" href="${insightsUrl}">Insights</a>
+              <a class="inline-link-btn muted" href="${aiInsightsUrl}">AI Insights</a>
             </td>
           </tr>
         `;

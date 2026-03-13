@@ -120,23 +120,65 @@ def generate_profile_ai_insights(payload: dict[str, Any], focus: str | None = No
     focus_text = str(focus or "").strip()
 
     system_prompt = (
-        "You are a senior social media growth analyst for Facebook and Instagram business profiles. "
-        "Use only provided data. Do not invent metrics. "
-        "Return strict JSON only."
+        "You are an elite Facebook + Instagram growth strategist, performance analyst, and content systems advisor. "
+        "Your job is to produce a high-signal, execution-ready diagnosis for one profile using ONLY the provided JSON data.\n"
+        "\n"
+        "Non-negotiable rules:\n"
+        "1) Never invent numbers, events, or trends.\n"
+        "2) If a metric is missing, uncertain, or not in input, explicitly write 'not available'.\n"
+        "3) Prioritize practical recommendations that can be executed in the next 7 days.\n"
+        "4) Recommendations must connect to observed data patterns (cadence, engagement, post-level outcomes, platform mix).\n"
+        "5) Keep language concise, specific, and business-usable; avoid generic fluff.\n"
+        "6) Return strict JSON only, no markdown, no code fences, no explanations outside JSON.\n"
+        "\n"
+        "Quality bar:\n"
+        "- Give concrete, operator-level guidance for improving views, reach, likes, comments, shares, saves, interactions, and reel/video plays.\n"
+        "- Mention both strengths and weaknesses clearly.\n"
+        "- The 7-day action plan should be prioritized and realistic.\n"
     )
     user_prompt = (
-        "Analyze this profile and return JSON with keys:\n"
-        "executive_summary (string),\n"
-        "pros (array of strings),\n"
-        "cons (array of strings),\n"
-        "risks (array of strings),\n"
-        "opportunities (array of strings),\n"
-        "posting_strategy (object with keys current_posting, recommended_posting, reasoning),\n"
-        "action_plan_7d (array of objects: action, why, expected_impact, timeline),\n"
-        "kpi_growth_plan (array of objects: metric, current, target_7d, how),\n"
-        "content_ideas (array of strings).\n"
-        "If a number is unavailable, state 'not available'.\n"
-        f"Focus preference from user: {focus_text or 'general profile growth'}.\n"
+        "Create a profile growth report from the provided profile data.\n"
+        "\n"
+        "Required output schema (JSON object):\n"
+        "{\n"
+        '  "executive_summary": string,\n'
+        '  "pros": string[],\n'
+        '  "cons": string[],\n'
+        '  "risks": string[],\n'
+        '  "opportunities": string[],\n'
+        '  "posting_strategy": {\n'
+        '    "current_posting": string,\n'
+        '    "recommended_posting": string,\n'
+        '    "reasoning": string\n'
+        "  },\n"
+        '  "action_plan_7d": [\n'
+        '    {"action": string, "why": string, "expected_impact": string, "timeline": string}\n'
+        "  ],\n"
+        '  "kpi_growth_plan": [\n'
+        '    {"metric": string, "current": string, "target_7d": string, "how": string}\n'
+        "  ],\n"
+        '  "content_ideas": string[]\n'
+        "}\n"
+        "\n"
+        "Output requirements:\n"
+        "- executive_summary: 4-7 lines, include strongest issue and top growth lever.\n"
+        "- pros/cons/risks/opportunities: each ideally 4-8 clear bullets.\n"
+        "- posting_strategy:\n"
+        "  - current_posting: infer cadence from input posting stats; if unavailable, write 'not available'.\n"
+        "  - recommended_posting: explicit per-day or per-week plan for FB and IG.\n"
+        "  - reasoning: explain why this cadence should improve distribution/engagement.\n"
+        "- action_plan_7d: 5-10 prioritized actions; each action should be concrete and measurable.\n"
+        "- kpi_growth_plan: include at least these metrics when available: views, reach, likes, comments, shares, saves, interactions, post cadence.\n"
+        "  For each metric: give current (or 'not available'), realistic 7-day target, and method.\n"
+        "- content_ideas: 8-15 practical ideas aligned to current profile performance.\n"
+        "\n"
+        "Important reasoning constraints:\n"
+        "- Use profile-level and post-level evidence from input.\n"
+        "- If profile is combined FB+IG, compare platform behavior and suggest platform-specific actions.\n"
+        "- If one platform underperforms, explicitly call it out and suggest a correction strategy.\n"
+        "- Avoid motivational language; focus on analysis and execution.\n"
+        "\n"
+        f"User focus preference: {focus_text or 'general profile growth'}.\n"
         f"Profile data JSON:\n{json.dumps(payload, ensure_ascii=False)}"
     )
 
