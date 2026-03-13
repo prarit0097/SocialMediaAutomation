@@ -66,6 +66,7 @@ What it does:
 - starts the Meta connect flow
 - refreshes the connected account list
 - shows current sync status and Meta page catalog data
+- uses user-token fallback for catalog detail checks (current user token first, then latest global reconnect token)
 - keeps only latest reconnect profiles active in scheduling/health
 - blocks scheduling from stale or inactive account rows until the profile is refreshed in a new reconnect
 - shows Meta catalog in merged FB_IG rows when linked, and separate rows when unlinked

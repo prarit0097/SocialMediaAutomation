@@ -25,6 +25,8 @@ from .sync_state import SYNC_CACHE_KEY_TEMPLATE, build_account_sync_state
 
 logger = logging.getLogger("integrations")
 TOKEN_HEALTH_CACHE_KEY = "meta_token_health_summary_v1"
+GLOBAL_META_USER_ACCESS_TOKEN_KEY = "meta_user_access_token:global"
+META_USER_ACCESS_TOKEN_TTL = 60 * 60 * 24 * 30
 
 
 def _parse_snapshot_datetime(value):
@@ -151,7 +153,12 @@ def meta_callback(request: HttpRequest) -> HttpResponse:
         cache.set(
             f"meta_user_access_token:{user_id}",
             token_data["access_token"],
-            timeout=60 * 60 * 12,
+            timeout=META_USER_ACCESS_TOKEN_TTL,
+        )
+        cache.set(
+            GLOBAL_META_USER_ACCESS_TOKEN_KEY,
+            token_data["access_token"],
+            timeout=META_USER_ACCESS_TOKEN_TTL,
         )
         cache.set(
             SYNC_CACHE_KEY_TEMPLATE.format(user_id=user_id),
@@ -250,7 +257,9 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
 
     seed_account = next((a for a in accounts if a.platform == "facebook"), accounts[0])
     connected_ids = {str(a.page_id) for a in accounts}
-    user_access_token = cache.get(f"meta_user_access_token:{request.user.id}")
+    user_access_token = cache.get(f"meta_user_access_token:{request.user.id}") or cache.get(
+        GLOBAL_META_USER_ACCESS_TOKEN_KEY
+    )
     app_access_token = f"{settings.META_APP_ID}|{settings.META_APP_SECRET}"
     client = MetaClient()
 
@@ -299,7 +308,11 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
             connectability = "not_connectable"
             profile_picture_url = None
             try:
-                detail_token = user_access_token or seed_account.access_token
+                detail_token = user_access_token
+                if not detail_token:
+                    raise MetaAPIError(
+                        "User access token is unavailable. Reconnect to refresh catalog detail access token."
+                    )
                 if is_ig_candidate:
                     page_data = client._get(
                         f"/{target_id}",
@@ -414,11 +427,24 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                 except MetaAPIError:
                     pass
 
-                if page_name:
+                if not user_access_token:
+                    if page_name:
+                        reason = (
+                            "Name resolved with limited lookup, but user token is missing for full catalog access. "
+                            "Click Connect Facebook + Instagram and Refresh List."
+                        )
+                    else:
+                        reason = (
+                            "Catalog details need a fresh user token. "
+                            "Click Connect Facebook + Instagram, allow all required pages/profiles, then Refresh List."
+                        )
+                    connectability = "connectable"
+                elif page_name:
                     reason = (
                         "Name resolved via limited lookup, but page token is unavailable for full access. "
                         "Grant admin/full control and reconnect in Business Integration."
                     )
+                    connectability = "not_connectable"
                 else:
                     if is_ig_candidate:
                         reason = (
@@ -430,7 +456,7 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                             "Unable to read page details with current token. "
                             "Check that this user has admin/full control on this page."
                         )
-                connectability = "not_connectable"
+                    connectability = "not_connectable"
 
             status = "connected" if connectability == "connected" else "catalog-only"
             rows.append(

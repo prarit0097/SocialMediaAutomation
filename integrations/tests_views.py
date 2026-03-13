@@ -9,6 +9,7 @@ from unittest.mock import patch
 from analytics.models import InsightSnapshot
 from publishing.models import ScheduledPost
 from integrations.models import ConnectedAccount
+from core.exceptions import MetaAPIError
 
 
 class IntegrationsViewTests(TestCase):
@@ -147,6 +148,7 @@ class IntegrationsViewTests(TestCase):
             page_name="Connected Page",
             access_token="token",
         )
+        cache.set(f"meta_user_access_token:{self.user.id}", "user-token", timeout=600)
         mock_debug_token.return_value = {
             "data": {
                 "granular_scopes": [
@@ -180,6 +182,7 @@ class IntegrationsViewTests(TestCase):
             page_name="Connected Page",
             access_token="token",
         )
+        cache.set(f"meta_user_access_token:{self.user.id}", "user-token", timeout=600)
         mock_debug_token.return_value = {
             "data": {
                 "granular_scopes": [
@@ -215,6 +218,7 @@ class IntegrationsViewTests(TestCase):
             access_token="token",
             ig_user_id="17841479977081188",
         )
+        cache.set(f"meta_user_access_token:{self.user.id}", "user-token", timeout=600)
         mock_debug_token.return_value = {
             "data": {
                 "granular_scopes": [
@@ -248,6 +252,7 @@ class IntegrationsViewTests(TestCase):
             page_name="Connected Page",
             access_token="token",
         )
+        cache.set(f"meta_user_access_token:{self.user.id}", "user-token", timeout=600)
         mock_debug_token.return_value = {
             "data": {
                 "granular_scopes": [
@@ -271,6 +276,64 @@ class IntegrationsViewTests(TestCase):
         self.assertEqual(by_id["58"]["status"], "catalog-only")
         self.assertEqual(by_id["58"]["connectability"], "connectable")
         self.assertIn("database is busy", by_id["58"]["reason"])
+
+    @patch("integrations.views.MetaClient._get")
+    @patch("integrations.views.MetaClient.debug_token")
+    def test_meta_pages_catalog_uses_global_user_token_fallback(self, mock_debug_token, mock_get):
+        ConnectedAccount.objects.create(
+            platform="facebook",
+            page_id="10",
+            page_name="Connected Page",
+            access_token="token",
+        )
+        cache.set("meta_user_access_token:global", "global-user-token", timeout=600)
+
+        mock_debug_token.return_value = {
+            "data": {
+                "granular_scopes": [
+                    {"scope": "pages_show_list", "target_ids": ["10", "58"]},
+                ]
+            }
+        }
+        mock_get.return_value = {
+            "id": "58",
+            "name": "Global Token Page",
+            "access_token": "page-token-58",
+        }
+
+        response = self.client.get("/api/accounts/meta-pages/?refresh=1")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        by_id = {row["page_id"]: row for row in payload["rows"]}
+        self.assertEqual(by_id["58"]["status"], "connected")
+        self.assertEqual(by_id["58"]["connectability"], "connected")
+        self.assertTrue(any("global-user-token" in str(call) for call in mock_get.call_args_list))
+
+    @patch("integrations.views.MetaClient._get")
+    @patch("integrations.views.MetaClient.debug_token")
+    def test_meta_pages_catalog_shows_reconnect_hint_when_user_token_missing(self, mock_debug_token, mock_get):
+        ConnectedAccount.objects.create(
+            platform="facebook",
+            page_id="10",
+            page_name="Connected Page",
+            access_token="token",
+        )
+        mock_debug_token.return_value = {
+            "data": {
+                "granular_scopes": [
+                    {"scope": "pages_show_list", "target_ids": ["10", "58"]},
+                ]
+            }
+        }
+        mock_get.side_effect = MetaAPIError("lookup failed")
+
+        response = self.client.get("/api/accounts/meta-pages/?refresh=1")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        by_id = {row["page_id"]: row for row in payload["rows"]}
+        self.assertEqual(by_id["58"]["status"], "catalog-only")
+        self.assertEqual(by_id["58"]["connectability"], "connectable")
+        self.assertIn("Connect Facebook + Instagram", by_id["58"]["reason"])
 
     @patch("integrations.views.MetaClient.debug_token")
     @patch("integrations.views.MetaClient.get_managed_pages")
