@@ -27,6 +27,7 @@ logger = logging.getLogger("integrations")
 TOKEN_HEALTH_CACHE_KEY = "meta_token_health_summary_v1"
 GLOBAL_META_USER_ACCESS_TOKEN_KEY = "meta_user_access_token:global"
 META_USER_ACCESS_TOKEN_TTL = 60 * 60 * 24 * 30
+META_USER_SESSION_TOKEN_KEY = "meta_user_access_token"
 
 
 def _parse_snapshot_datetime(value):
@@ -94,6 +95,19 @@ def _deactivate_disconnected_accounts(pages: list[dict]) -> None:
     ConnectedAccount.objects.filter(is_active=True, platform=INSTAGRAM).exclude(
         page_id__in=active_ig_user_ids
     ).update(is_active=False, token_expires_at=None)
+
+
+def _resolve_user_access_token(request: HttpRequest, user_id: int | None) -> str:
+    session_token = str(request.session.get(META_USER_SESSION_TOKEN_KEY) or "").strip()
+    if session_token:
+        return session_token
+
+    if user_id:
+        cached_user_token = str(cache.get(f"meta_user_access_token:{user_id}") or "").strip()
+        if cached_user_token:
+            return cached_user_token
+
+    return str(cache.get(GLOBAL_META_USER_ACCESS_TOKEN_KEY) or "").strip()
 
 
 @require_GET
@@ -174,6 +188,10 @@ def meta_callback(request: HttpRequest) -> HttpResponse:
             },
             timeout=60 * 60 * 12,
         )
+        cache.delete(f"meta_pages_catalog:{user_id}")
+
+    request.session[META_USER_SESSION_TOKEN_KEY] = token_data["access_token"]
+    request.session.modified = True
 
     logger.info("Meta accounts connected. total_pages=%s", len(pages))
     return redirect("dashboard:accounts")
@@ -257,9 +275,7 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
 
     seed_account = next((a for a in accounts if a.platform == "facebook"), accounts[0])
     connected_ids = {str(a.page_id) for a in accounts}
-    user_access_token = cache.get(f"meta_user_access_token:{request.user.id}") or cache.get(
-        GLOBAL_META_USER_ACCESS_TOKEN_KEY
-    )
+    user_access_token = _resolve_user_access_token(request, getattr(request.user, "id", None))
     app_access_token = f"{settings.META_APP_ID}|{settings.META_APP_SECRET}"
     client = MetaClient()
 

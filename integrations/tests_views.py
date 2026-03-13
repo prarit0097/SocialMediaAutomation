@@ -311,6 +311,40 @@ class IntegrationsViewTests(TestCase):
 
     @patch("integrations.views.MetaClient._get")
     @patch("integrations.views.MetaClient.debug_token")
+    def test_meta_pages_catalog_uses_session_user_token_fallback(self, mock_debug_token, mock_get):
+        ConnectedAccount.objects.create(
+            platform="facebook",
+            page_id="10",
+            page_name="Connected Page",
+            access_token="token",
+        )
+        session = self.client.session
+        session["meta_user_access_token"] = "session-user-token"
+        session.save()
+
+        mock_debug_token.return_value = {
+            "data": {
+                "granular_scopes": [
+                    {"scope": "pages_show_list", "target_ids": ["10", "58"]},
+                ]
+            }
+        }
+        mock_get.return_value = {
+            "id": "58",
+            "name": "Session Token Page",
+            "access_token": "page-token-58",
+        }
+
+        response = self.client.get("/api/accounts/meta-pages/?refresh=1")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        by_id = {row["page_id"]: row for row in payload["rows"]}
+        self.assertEqual(by_id["58"]["status"], "connected")
+        self.assertEqual(by_id["58"]["connectability"], "connected")
+        self.assertTrue(any("session-user-token" in str(call) for call in mock_get.call_args_list))
+
+    @patch("integrations.views.MetaClient._get")
+    @patch("integrations.views.MetaClient.debug_token")
     def test_meta_pages_catalog_shows_reconnect_hint_when_user_token_missing(self, mock_debug_token, mock_get):
         ConnectedAccount.objects.create(
             platform="facebook",
@@ -358,6 +392,7 @@ class IntegrationsViewTests(TestCase):
             access_token="old-token",
         )
         cache.set(f"meta_oauth_state:state123", {"user_id": self.user.id}, timeout=600)
+        cache.set(f"meta_pages_catalog:{self.user.id}", {"total_pages": 99, "connected_pages": 0, "rows": []}, timeout=600)
         mock_exchange.return_value = {"access_token": "user-token"}
         mock_pages.return_value = [
             {
@@ -378,3 +413,5 @@ class IntegrationsViewTests(TestCase):
         self.assertFalse(old_ig.is_active)
         self.assertTrue(ConnectedAccount.objects.filter(platform="facebook", page_id="new-fb").exists())
         self.assertTrue(ConnectedAccount.objects.filter(platform="instagram", page_id="new-ig").exists())
+        self.assertTrue(bool(self.client.session.get("meta_user_access_token")))
+        self.assertIsNone(cache.get(f"meta_pages_catalog:{self.user.id}"))

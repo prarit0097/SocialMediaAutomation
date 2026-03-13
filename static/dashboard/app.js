@@ -762,7 +762,9 @@
   const refreshAccountsBtn = document.getElementById("refreshAccountsBtn");
   if (refreshAccountsBtn) {
     const runWithRefreshAccountsLoading = withButtonLoading(refreshAccountsBtn, "Refresh List", "Refreshing...");
-    refreshAccountsBtn.addEventListener("click", () => runWithRefreshAccountsLoading(() => loadAccounts()));
+    refreshAccountsBtn.addEventListener("click", () =>
+      runWithRefreshAccountsLoading(() => loadAccounts({ refreshCatalog: true }))
+    );
     loadAccounts();
   }
   const accountsPlatformFilter = document.getElementById("accountsPlatformFilter");
