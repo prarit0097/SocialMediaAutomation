@@ -130,6 +130,23 @@ class PublishingApiTests(TestCase):
         self.assertIn("Reconnect the profile from Accounts", response.json()["error"])
         self.assertEqual(ScheduledPost.objects.count(), 0)
 
+    def test_schedule_post_rejects_inactive_account_with_empty_token(self):
+        ConnectedAccount.objects.filter(id=self.account.id).update(is_active=False)
+
+        response = self.client.post(
+            reverse("schedule_post"),
+            data={
+                "account_id": self.account.id,
+                "platform": FACEBOOK,
+                "message": "Hello",
+                "scheduled_for": (timezone.now() + timedelta(minutes=10)).isoformat(),
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("inactive", response.json()["error"].lower())
+
     @patch("publishing.views.MetaClient.debug_token")
     def test_retry_failed_post_rejects_invalid_token_until_reconnected(self, mock_debug_token):
         post = ScheduledPost.objects.create(

@@ -99,6 +99,16 @@ def _current_token_validity(account: ConnectedAccount) -> bool | None:
 
 
 def _ensure_account_token_is_valid(account: ConnectedAccount):
+    if not account.is_active:
+        return _bad_request(
+            "This connected profile is inactive because it was not included in the latest Meta reconnect. "
+            "Reconnect and select this profile again before scheduling."
+        )
+    if not (account.access_token or "").strip():
+        return _bad_request(
+            "This connected profile is not active in the latest reconnect. "
+            "Reconnect from Accounts and then schedule using the refreshed row."
+        )
     token_valid = _current_token_validity(account)
     if token_valid is False:
         return _bad_request(

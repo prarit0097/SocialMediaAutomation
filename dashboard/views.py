@@ -75,10 +75,10 @@ def _sync_scoped_accounts(user) -> tuple[list[ConnectedAccount], str]:
     recent_sync_time = get_recent_sync_time(getattr(user, "id", None))
     if recent_sync_time:
         window_start = recent_sync_time - SYNC_FRESHNESS_WINDOW
-        scoped = list(ConnectedAccount.objects.exclude(access_token="").filter(updated_at__gte=window_start).order_by("id"))
+        scoped = list(ConnectedAccount.objects.filter(is_active=True, updated_at__gte=window_start).order_by("id"))
         if scoped:
             return scoped, "recent_sync"
-    return list(ConnectedAccount.objects.exclude(access_token="").order_by("id")), "all_connected"
+    return list(ConnectedAccount.objects.filter(is_active=True).order_by("id")), "all_connected"
 
 
 def _stale_connected_accounts(accounts: list[ConnectedAccount], user) -> list[ConnectedAccount]:
@@ -120,7 +120,7 @@ def _token_health_payload(user):
     invalid_accounts: list[dict] = []
     validation_error = None
     stale_accounts = _stale_connected_accounts(
-        list(ConnectedAccount.objects.exclude(access_token="").order_by("id")),
+        list(ConnectedAccount.objects.filter(is_active=True).order_by("id")),
         user,
     )
 

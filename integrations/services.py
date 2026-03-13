@@ -14,6 +14,7 @@ def upsert_connected_accounts(pages: list[dict]) -> None:
                     "page_name": page["name"],
                     "ig_user_id": (page.get("instagram_business_account") or {}).get("id"),
                     "access_token": page["access_token"],
+                    "is_active": True,
                 },
             )
 
@@ -27,5 +28,6 @@ def upsert_connected_accounts(pages: list[dict]) -> None:
                         "page_name": f"{page['name']} (IG)",
                         "ig_user_id": ig_id,
                         "access_token": page["access_token"],
+                        "is_active": True,
                     },
                 )

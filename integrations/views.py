@@ -14,6 +14,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET
 
 from analytics.models import InsightSnapshot
+from core.constants import FACEBOOK, INSTAGRAM
 from core.exceptions import MetaAPIError
 from core.services.meta_client import MetaClient
 from publishing.models import ScheduledPost
@@ -73,6 +74,26 @@ def _latest_published_post_times(account_ids: list[int]) -> dict[int, datetime |
     return latest_by_account
 
 
+def _deactivate_disconnected_accounts(pages: list[dict]) -> None:
+    if not pages:
+        return
+
+    active_fb_page_ids = {str(page.get("id")) for page in pages if page.get("id")}
+    active_ig_user_ids = {
+        str((page.get("instagram_business_account") or {}).get("id"))
+        for page in pages
+        if (page.get("instagram_business_account") or {}).get("id")
+    }
+
+    ConnectedAccount.objects.filter(is_active=True, platform=FACEBOOK).exclude(
+        page_id__in=active_fb_page_ids
+    ).update(is_active=False, token_expires_at=None)
+
+    ConnectedAccount.objects.filter(is_active=True, platform=INSTAGRAM).exclude(
+        page_id__in=active_ig_user_ids
+    ).update(is_active=False, token_expires_at=None)
+
+
 @require_GET
 @login_required
 def meta_start(request: HttpRequest) -> JsonResponse:
@@ -106,6 +127,7 @@ def meta_callback(request: HttpRequest) -> HttpResponse:
     token_data = client.exchange_code_for_token(code, redirect_uri=redirect_uri)
     pages = client.get_managed_pages(token_data["access_token"])
     upsert_connected_accounts(pages)
+    _deactivate_disconnected_accounts(pages)
     cache.delete(TOKEN_HEALTH_CACHE_KEY)
 
     target_ids_count = None
@@ -135,8 +157,10 @@ def meta_callback(request: HttpRequest) -> HttpResponse:
             SYNC_CACHE_KEY_TEMPLATE.format(user_id=user_id),
             {
                 "meta_pages_synced": len(pages),
-                "facebook_connected_total": ConnectedAccount.objects.filter(platform="facebook").count(),
-                "instagram_connected_total": ConnectedAccount.objects.filter(platform="instagram").count(),
+                "facebook_connected_total": ConnectedAccount.objects.filter(is_active=True, platform="facebook")
+                .count(),
+                "instagram_connected_total": ConnectedAccount.objects.filter(is_active=True, platform="instagram")
+                .count(),
                 "token_target_ids_count": target_ids_count,
                 "warning": sync_warning,
                 "synced_at": timezone.now().isoformat(),
@@ -152,12 +176,13 @@ def meta_callback(request: HttpRequest) -> HttpResponse:
 @login_required
 def list_accounts(_request: HttpRequest) -> JsonResponse:
     account_rows = list(
-        ConnectedAccount.objects.values(
+        ConnectedAccount.objects.filter(is_active=True).values(
             "id",
             "platform",
             "page_id",
             "page_name",
             "ig_user_id",
+            "is_active",
             "created_at",
             "updated_at",
         )
@@ -174,6 +199,7 @@ def list_accounts(_request: HttpRequest) -> JsonResponse:
             page_id=row["page_id"],
             page_name=row["page_name"],
             ig_user_id=row["ig_user_id"],
+            is_active=row["is_active"],
             access_token="",
             updated_at=row["updated_at"],
         )
@@ -193,9 +219,9 @@ def list_accounts(_request: HttpRequest) -> JsonResponse:
 @login_required
 def accounts_sync_status(request: HttpRequest) -> JsonResponse:
     data = cache.get(f"meta_last_sync:{request.user.id}") or {}
-    fb_total = ConnectedAccount.objects.filter(platform="facebook").count()
-    ig_total = ConnectedAccount.objects.filter(platform="instagram").count()
-    latest_updated = ConnectedAccount.objects.aggregate(latest=Max("updated_at")).get("latest")
+    fb_total = ConnectedAccount.objects.filter(is_active=True, platform="facebook").count()
+    ig_total = ConnectedAccount.objects.filter(is_active=True, platform="instagram").count()
+    latest_updated = ConnectedAccount.objects.filter(is_active=True).aggregate(latest=Max("updated_at")).get("latest")
     data = {
         "meta_pages_synced": data.get("meta_pages_synced") or fb_total,
         "facebook_connected_total": data.get("facebook_connected_total") or fb_total,
@@ -216,7 +242,7 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
     if cached:
         return JsonResponse(cached)
 
-    accounts = list(ConnectedAccount.objects.all().order_by("-updated_at"))
+    accounts = list(ConnectedAccount.objects.filter(is_active=True).order_by("-updated_at"))
     if not accounts:
         payload = {"total_pages": 0, "connected_pages": 0, "rows": []}
         cache.set(cache_key, payload, timeout=300)
@@ -232,7 +258,7 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
     seen_ids: set[str] = set()
     fb_by_ig_id = {
         str(a.ig_user_id): a
-        for a in ConnectedAccount.objects.filter(platform="facebook")
+        for a in ConnectedAccount.objects.filter(platform="facebook", is_active=True)
         if a.ig_user_id and a.access_token
     }
 
@@ -296,6 +322,7 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                                         "page_name": page_name or f"{linked_fb.page_name} (IG)",
                                         "ig_user_id": target_id,
                                         "access_token": linked_fb.access_token,
+                                        "is_active": True,
                                     },
                                 )
                                 reason = "Instagram profile is linked and has been synced in app."
@@ -334,6 +361,7 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                                     "page_name": page_name or "(name unavailable)",
                                     "access_token": page_data.get("access_token"),
                                     "ig_user_id": ig_id,
+                                    "is_active": True,
                                 },
                             )
                             if ig_id:

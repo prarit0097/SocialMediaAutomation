@@ -32,12 +32,14 @@ What it does:
 - starts the Meta connect flow
 - refreshes the connected account list
 - shows current sync status and Meta page catalog data
-- blocks scheduling from stale account rows until the page is refreshed in a new reconnect
+- keeps only latest reconnect profiles active in scheduling/health
+- blocks scheduling from stale or inactive account rows until the profile is refreshed in a new reconnect
 
 Important runtime meaning:
 - a green Health indicator does not mean every historical stored account row is usable
 - scheduling is only allowed for account rows refreshed in the latest reconnect window
 - if older connected rows still exist outside the latest reconnect window, Health turns red and asks for reconnect
+- profiles not returned in the latest reconnect are marked inactive and excluded from active account lists
 
 ### Scheduler
 The Scheduler page creates publishing jobs and monitors scheduled, published, and failed rows.
@@ -127,6 +129,8 @@ Stores:
 Operational meaning:
 - `updated_at` reflects when the stored connected account row was last refreshed
 - this is used to determine whether a row belongs to the latest reconnect window
+- `is_active` tracks whether a stored row is part of the latest usable reconnect set
+- encrypted token text itself is not used for DB filtering decisions; active/inactive state is managed with `is_active`
 
 ### Scheduled Posts
 Model: `publishing.ScheduledPost`

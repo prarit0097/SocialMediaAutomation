@@ -271,3 +271,47 @@ class IntegrationsViewTests(TestCase):
         self.assertEqual(by_id["58"]["status"], "catalog-only")
         self.assertEqual(by_id["58"]["connectability"], "connectable")
         self.assertIn("database is busy", by_id["58"]["reason"])
+
+    @patch("integrations.views.MetaClient.debug_token")
+    @patch("integrations.views.MetaClient.get_managed_pages")
+    @patch("integrations.views.MetaClient.exchange_code_for_token")
+    def test_meta_callback_deactivates_accounts_missing_from_latest_reconnect(
+        self,
+        mock_exchange,
+        mock_pages,
+        mock_debug_token,
+    ):
+        old_fb = ConnectedAccount.objects.create(
+            platform="facebook",
+            page_id="old-fb",
+            page_name="Old FB",
+            access_token="old-token",
+        )
+        old_ig = ConnectedAccount.objects.create(
+            platform="instagram",
+            page_id="old-ig",
+            page_name="Old IG",
+            ig_user_id="old-ig",
+            access_token="old-token",
+        )
+        cache.set(f"meta_oauth_state:state123", {"user_id": self.user.id}, timeout=600)
+        mock_exchange.return_value = {"access_token": "user-token"}
+        mock_pages.return_value = [
+            {
+                "id": "new-fb",
+                "name": "New FB",
+                "access_token": "new-token",
+                "instagram_business_account": {"id": "new-ig"},
+            }
+        ]
+        mock_debug_token.return_value = {"data": {"granular_scopes": []}}
+
+        response = self.client.get("/auth/meta/callback", {"code": "abc", "state": "state123"})
+
+        self.assertEqual(response.status_code, 302)
+        old_fb.refresh_from_db()
+        old_ig.refresh_from_db()
+        self.assertFalse(old_fb.is_active)
+        self.assertFalse(old_ig.is_active)
+        self.assertTrue(ConnectedAccount.objects.filter(platform="facebook", page_id="new-fb").exists())
+        self.assertTrue(ConnectedAccount.objects.filter(platform="instagram", page_id="new-ig").exists())

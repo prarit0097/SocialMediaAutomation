@@ -27,11 +27,21 @@ def get_recent_sync_time(user_id: int | None):
                     synced_at = timezone.make_aware(synced_at, timezone=timezone.utc)
                 return synced_at
 
-    latest_updated_at = ConnectedAccount.objects.exclude(access_token="").aggregate(value=Max("updated_at")).get("value")
+    latest_updated_at = ConnectedAccount.objects.filter(is_active=True).aggregate(value=Max("updated_at")).get("value")
     return latest_updated_at
 
 
 def build_account_sync_state(account, user_id: int | None) -> dict:
+    if getattr(account, "is_active", True) is False:
+        return {
+            "is_sync_stale": True,
+            "sync_state": "inactive",
+            "sync_state_reason": (
+                "This profile is inactive because it was not included in the latest Meta reconnect. "
+                "Reconnect and select this profile again."
+            ),
+        }
+
     recent_sync_time = get_recent_sync_time(user_id)
     if not recent_sync_time:
         return {
