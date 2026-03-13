@@ -4,10 +4,13 @@ from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import Client, TestCase, override_settings
 
+from integrations.models import ConnectedAccount
+
 
 class DashboardAuthTests(TestCase):
     def setUp(self):
         self.client = Client()
+        cache.clear()
 
     def test_dashboard_requires_login(self):
         response = self.client.get("/dashboard/")
@@ -54,3 +57,55 @@ class DashboardAuthTests(TestCase):
         self.assertFalse(body["ok"])
         self.assertTrue(any("PUBLIC_BASE_URL points to old-tunnel.ngrok-free.app" in item for item in body["warnings"]))
         self.assertTrue(any("Ngrok free domains can rotate" in item for item in body["notes"]))
+
+    @patch("dashboard.views.MetaClient.debug_token")
+    def test_token_health_status_reports_green_when_tokens_valid(self, mock_debug_token):
+        user_model = get_user_model()
+        user_model.objects.create_user(username="admin", password="pass12345")
+        self.client.login(username="admin", password="pass12345")
+        ConnectedAccount.objects.create(
+            platform="facebook",
+            page_id="fb-1",
+            page_name="Valid FB",
+            access_token="token-shared",
+        )
+        ConnectedAccount.objects.create(
+            platform="instagram",
+            page_id="ig-1",
+            page_name="Valid IG",
+            ig_user_id="ig-1",
+            access_token="token-shared",
+        )
+        mock_debug_token.return_value = {"data": {"is_valid": True}}
+
+        response = self.client.get("/dashboard/token-health-status/")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["level"], "ok")
+        self.assertEqual(body["checked_accounts"], 2)
+        self.assertEqual(body["checked_tokens"], 1)
+        self.assertEqual(body["invalid_accounts"], [])
+
+    @patch("dashboard.views.MetaClient.debug_token")
+    def test_token_health_status_reports_red_when_token_invalid(self, mock_debug_token):
+        user_model = get_user_model()
+        user_model.objects.create_user(username="admin", password="pass12345")
+        self.client.login(username="admin", password="pass12345")
+        ConnectedAccount.objects.create(
+            platform="facebook",
+            page_id="fb-1",
+            page_name="Broken FB",
+            access_token="broken-token",
+        )
+        mock_debug_token.return_value = {"data": {"is_valid": False, "error": {"message": "Token expired"}}}
+
+        response = self.client.get("/dashboard/token-health-status/")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertFalse(body["ok"])
+        self.assertEqual(body["level"], "bad")
+        self.assertEqual(body["invalid_accounts"][0]["page_name"], "Broken FB")
+        self.assertIn("Connect Facebook + Instagram", body["next_steps"][0])

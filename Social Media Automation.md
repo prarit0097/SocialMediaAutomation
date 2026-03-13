@@ -58,6 +58,7 @@ What it shows:
 - total post share
 - published posts table
 - FB vs IG comparison table
+- top-nav Meta token health indicator with green/red blinking status and reconnect guidance
 - warnings/errors for partial or upstream failures
 
 It supports:

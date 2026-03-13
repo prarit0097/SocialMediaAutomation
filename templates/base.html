@@ -24,6 +24,19 @@
         {% if request.user.is_authenticated %}
         {% with current=request.resolver_match.url_name %}
         <nav class="topnav">
+          <div class="health-nav" id="tokenHealthNav" hidden>
+            <button type="button" class="health-chip" id="tokenHealthButton" aria-expanded="false" aria-controls="tokenHealthPopover">
+              <span class="health-chip-label">Health</span>
+              <span class="health-dot" id="tokenHealthDot"></span>
+            </button>
+            <button type="button" class="health-info-btn" id="tokenHealthInfoBtn" aria-expanded="false" aria-controls="tokenHealthPopover" aria-label="Show token health details">i</button>
+            <div class="health-popover" id="tokenHealthPopover" hidden>
+              <strong id="tokenHealthSummary">Checking token health...</strong>
+              <p id="tokenHealthReason"></p>
+              <div class="health-meta" id="tokenHealthMeta"></div>
+              <ul id="tokenHealthSteps"></ul>
+            </div>
+          </div>
           <a class="{% if current == 'accounts' %}is-active{% endif %}" href="{% url 'dashboard:accounts' %}">Accounts</a>
           <a class="{% if current == 'scheduler' %}is-active{% endif %}" href="{% url 'dashboard:scheduler' %}">Scheduler</a>
           <a class="{% if current == 'insights' %}is-active{% endif %}" href="{% url 'dashboard:insights' %}">Insights</a>

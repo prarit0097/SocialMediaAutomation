@@ -701,6 +701,15 @@
   const insightComparisonTitle = document.getElementById("insightComparisonTitle");
   const insightPostsTable = document.getElementById("insightPostsTable");
   const insightMetricsTable = document.getElementById("insightMetricsTable");
+  const tokenHealthNav = document.getElementById("tokenHealthNav");
+  const tokenHealthButton = document.getElementById("tokenHealthButton");
+  const tokenHealthDot = document.getElementById("tokenHealthDot");
+  const tokenHealthInfoBtn = document.getElementById("tokenHealthInfoBtn");
+  const tokenHealthPopover = document.getElementById("tokenHealthPopover");
+  const tokenHealthSummary = document.getElementById("tokenHealthSummary");
+  const tokenHealthReason = document.getElementById("tokenHealthReason");
+  const tokenHealthMeta = document.getElementById("tokenHealthMeta");
+  const tokenHealthSteps = document.getElementById("tokenHealthSteps");
 
   function toIndianDateTime(value) {
     if (!value) return "";
@@ -714,6 +723,62 @@
       second: "2-digit",
       hour12: true,
     });
+  }
+
+  function setHealthPopoverOpen(open) {
+    if (!tokenHealthPopover || !tokenHealthButton || !tokenHealthInfoBtn) return;
+    tokenHealthPopover.hidden = !open;
+    tokenHealthButton.setAttribute("aria-expanded", open ? "true" : "false");
+    tokenHealthInfoBtn.setAttribute("aria-expanded", open ? "true" : "false");
+    tokenHealthButton.classList.toggle("is-open", open);
+    tokenHealthInfoBtn.classList.toggle("is-open", open);
+  }
+
+  function renderTokenHealth(data) {
+    if (!tokenHealthNav || !tokenHealthDot || !tokenHealthSummary || !tokenHealthReason || !tokenHealthMeta || !tokenHealthSteps) {
+      return;
+    }
+    tokenHealthNav.hidden = false;
+    tokenHealthDot.classList.remove("is-ok", "is-bad");
+    tokenHealthDot.classList.add(data && data.ok ? "is-ok" : "is-bad");
+
+    tokenHealthSummary.textContent = data && data.summary ? String(data.summary) : "Meta token health unavailable.";
+    tokenHealthReason.textContent = data && data.reason ? String(data.reason) : "Unable to validate current token state.";
+
+    const checkedAccounts = data && data.checked_accounts !== undefined ? data.checked_accounts : "-";
+    const checkedTokens = data && data.checked_tokens !== undefined ? data.checked_tokens : "-";
+    const cacheText = data && data.cached ? "Yes" : "No";
+    tokenHealthMeta.textContent = `Accounts checked: ${checkedAccounts} | Unique tokens: ${checkedTokens} | Cached: ${cacheText}`;
+
+    const steps = Array.isArray(data && data.next_steps) ? [...data.next_steps] : [];
+    const invalidAccounts = Array.isArray(data && data.invalid_accounts) ? data.invalid_accounts : [];
+    if (invalidAccounts.length) {
+      const preview = invalidAccounts
+        .map((row) => `${row.page_name} (${row.platform})`)
+        .slice(0, 3)
+        .join(", ");
+      steps.unshift(`Affected accounts: ${preview}`);
+    }
+
+    tokenHealthSteps.innerHTML = steps.map((step) => `<li>${escapeHtml(step)}</li>`).join("");
+  }
+
+  async function loadTokenHealth() {
+    if (!tokenHealthNav) return;
+    try {
+      const data = await fetchJSON("/dashboard/token-health-status/");
+      renderTokenHealth(data);
+    } catch (err) {
+      renderTokenHealth({
+        ok: false,
+        summary: "Meta token health unavailable.",
+        reason: err.message,
+        checked_accounts: "-",
+        checked_tokens: "-",
+        cached: false,
+        next_steps: ["Refresh the page once.", "If this keeps failing, reconnect the affected accounts from Accounts."],
+      });
+    }
   }
 
   function isOlderThanHours(value, hours) {
@@ -1042,4 +1107,20 @@
       loadInsights(false);
     }
   }
+
+  if (tokenHealthButton && tokenHealthInfoBtn) {
+    const toggle = () => setHealthPopoverOpen(tokenHealthPopover ? tokenHealthPopover.hidden : true);
+    tokenHealthButton.addEventListener("click", toggle);
+    tokenHealthInfoBtn.addEventListener("click", toggle);
+    document.addEventListener("click", (event) => {
+      if (!tokenHealthNav || !(event.target instanceof Node)) return;
+      if (tokenHealthNav.contains(event.target)) return;
+      setHealthPopoverOpen(false);
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") setHealthPopoverOpen(false);
+    });
+  }
+
+  loadTokenHealth();
 })();

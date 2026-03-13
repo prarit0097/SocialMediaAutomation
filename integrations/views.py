@@ -22,6 +22,7 @@ from .models import ConnectedAccount
 from .services import upsert_connected_accounts
 
 logger = logging.getLogger("integrations")
+TOKEN_HEALTH_CACHE_KEY = "meta_token_health_summary_v1"
 
 
 def _parse_snapshot_datetime(value):
@@ -104,6 +105,7 @@ def meta_callback(request: HttpRequest) -> HttpResponse:
     token_data = client.exchange_code_for_token(code, redirect_uri=redirect_uri)
     pages = client.get_managed_pages(token_data["access_token"])
     upsert_connected_accounts(pages)
+    cache.delete(TOKEN_HEALTH_CACHE_KEY)
 
     target_ids_count = None
     sync_warning = None
