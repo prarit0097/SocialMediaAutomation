@@ -25,6 +25,53 @@
   </div>
 </section>
 
+<section class="card meta-config-shell">
+  <div class="meta-config-main">
+    <p class="eyebrow">Meta App Configuration</p>
+    <h2>Connect this workspace with your own Meta app credentials.</h2>
+    <p class="section-copy">Set your app credentials once from UI. Values are saved in project <code>.env</code> so reconnect flow works without code edits.</p>
+
+    <form id="metaAppConfigForm" class="form-grid meta-config-form">
+      <label for="metaAppIdInput">META_APP_ID
+        <input id="metaAppIdInput" name="meta_app_id" type="text" placeholder="1986364748654569" value="{{ meta_config.meta_app_id|default:'' }}" required>
+      </label>
+
+      <label for="metaAppSecretInput">META_APP_SECRET
+        <input id="metaAppSecretInput" name="meta_app_secret" type="password" placeholder="Enter new secret (leave blank to keep existing)">
+      </label>
+
+      <label for="metaRedirectUriInput">META_REDIRECT_URI
+        <input id="metaRedirectUriInput" name="meta_redirect_uri" type="url" placeholder="https://your-domain.com/auth/meta/callback" value="{{ meta_config.meta_redirect_uri|default:'' }}" required>
+      </label>
+
+      <small id="metaAppSecretState" class="form-note">
+        {% if meta_config.meta_app_secret_configured %}
+          Current secret: {{ meta_config.meta_app_secret_masked }}
+        {% else %}
+          No secret configured yet.
+        {% endif %}
+      </small>
+      <small class="form-note">Tip: redirect URI usually ends with <code>/auth/meta/callback</code>.</small>
+
+      <button id="saveMetaAppConfigBtn" type="submit">Save Meta Configuration</button>
+      <small id="metaAppConfigResult" class="result-note"></small>
+    </form>
+  </div>
+
+  <aside class="meta-config-rail">
+    <article class="hero-stat">
+      <span class="hero-stat-label">Why This Matters</span>
+      <strong>Multi-user friendly setup</strong>
+      <p>Every operator can set app credentials from dashboard, so onboarding does not depend on editing source code.</p>
+    </article>
+    <article class="hero-stat">
+      <span class="hero-stat-label">Applied Scope</span>
+      <strong>OAuth + token operations</strong>
+      <p>New values are used for Meta connect flow and token validation checks after save.</p>
+    </article>
+  </aside>
+</section>
+
 <section class="card">
   <div class="section-head">
     <div>

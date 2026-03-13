@@ -409,6 +409,50 @@ textarea {
   align-items: stretch;
 }
 
+.meta-config-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(260px, 0.78fr);
+  gap: 18px;
+  border-color: rgba(23, 53, 72, 0.16);
+  background:
+    linear-gradient(132deg, rgba(255, 252, 247, 0.98), rgba(248, 243, 235, 0.9) 50%, rgba(237, 245, 240, 0.92) 100%);
+}
+
+.meta-config-main,
+.meta-config-rail {
+  display: flex;
+  flex-direction: column;
+}
+
+.meta-config-rail {
+  gap: 12px;
+}
+
+.meta-config-form {
+  margin-top: 6px;
+  display: grid;
+  gap: 2px;
+}
+
+#metaAppSecretState {
+  margin-top: 2px;
+  font-weight: 800;
+}
+
+#metaAppConfigResult {
+  min-height: 20px;
+  margin-top: 2px;
+  font-weight: 800;
+}
+
+#metaAppConfigResult.is-success {
+  color: var(--ok);
+}
+
+#metaAppConfigResult.is-error {
+  color: var(--danger);
+}
+
 .hero-main,
 .hero-rail {
   display: flex;
@@ -1338,6 +1382,7 @@ pre {
   .content-grid-equal,
   .content-grid-aside,
   .hero-split,
+  .meta-config-shell,
   .split-highlights {
     grid-template-columns: 1fr;
   }

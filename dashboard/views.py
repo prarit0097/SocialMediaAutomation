@@ -1,4 +1,8 @@
+import json
+import os
+import re
 from datetime import timedelta
+from pathlib import Path
 from urllib.parse import urlparse
 
 from django.conf import settings
@@ -7,6 +11,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.utils import timezone
+from django.views.decorators.http import require_http_methods
 
 from core.exceptions import MetaAPIError
 from core.services.meta_client import MetaClient
@@ -16,6 +21,103 @@ from integrations.sync_state import SYNC_FRESHNESS_WINDOW, get_recent_sync_time
 
 def _normalize_base_url(value: str) -> str:
     return (value or "").strip().rstrip("/")
+
+
+ENV_META_KEYS = ("META_APP_ID", "META_APP_SECRET", "META_REDIRECT_URI")
+ENV_SIMPLE_VALUE_RE = re.compile(r"^[A-Za-z0-9_./:@+-]+$")
+
+
+def _env_file_path() -> Path:
+    return Path(getattr(settings, "BASE_DIR", Path.cwd())) / ".env"
+
+
+def _mask_secret(secret: str) -> str:
+    token = str(secret or "").strip()
+    if not token:
+        return ""
+    if len(token) <= 4:
+        return "*" * len(token)
+    return f"{'*' * (len(token) - 4)}{token[-4:]}"
+
+
+def _meta_config_payload() -> dict:
+    app_id = str(getattr(settings, "META_APP_ID", "") or "").strip()
+    app_secret = str(getattr(settings, "META_APP_SECRET", "") or "").strip()
+    redirect_uri = str(getattr(settings, "META_REDIRECT_URI", "") or "").strip()
+
+    return {
+        "meta_app_id": app_id,
+        "meta_redirect_uri": redirect_uri,
+        "meta_app_secret_masked": _mask_secret(app_secret),
+        "meta_app_secret_configured": bool(app_secret),
+    }
+
+
+def _env_serialize_value(value: str) -> str:
+    normalized = str(value or "").strip()
+    if not normalized:
+        return ""
+    if ENV_SIMPLE_VALUE_RE.fullmatch(normalized):
+        return normalized
+    escaped = normalized.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def _upsert_env_values(file_path: Path, updates: dict[str, str]) -> None:
+    lines = file_path.read_text(encoding="utf-8").splitlines(keepends=True) if file_path.exists() else []
+    updated_lines: list[str] = []
+    seen_keys: set[str] = set()
+
+    for line in lines:
+        replaced = False
+        for key, value in updates.items():
+            if re.match(rf"^\s*{re.escape(key)}\s*=", line):
+                updated_lines.append(f"{key}={_env_serialize_value(value)}\n")
+                seen_keys.add(key)
+                replaced = True
+                break
+        if not replaced:
+            updated_lines.append(line if line.endswith("\n") else f"{line}\n")
+
+    for key, value in updates.items():
+        if key in seen_keys:
+            continue
+        if updated_lines and updated_lines[-1].strip():
+            updated_lines.append("\n")
+        updated_lines.append(f"{key}={_env_serialize_value(value)}\n")
+
+    file_path.write_text("".join(updated_lines), encoding="utf-8")
+
+
+def _apply_meta_runtime_settings(updates: dict[str, str]) -> None:
+    for key in ENV_META_KEYS:
+        value = str(updates.get(key) or "").strip()
+        setattr(settings, key, value)
+        os.environ[key] = value
+
+
+def _validate_meta_config(app_id: str, app_secret: str, redirect_uri: str) -> list[str]:
+    errors: list[str] = []
+    if not app_id:
+        errors.append("META_APP_ID is required.")
+    if not app_secret:
+        errors.append("META_APP_SECRET is required.")
+    if not redirect_uri:
+        errors.append("META_REDIRECT_URI is required.")
+
+    for key, value in {
+        "META_APP_ID": app_id,
+        "META_APP_SECRET": app_secret,
+        "META_REDIRECT_URI": redirect_uri,
+    }.items():
+        if "\n" in value or "\r" in value:
+            errors.append(f"{key} cannot contain newline characters.")
+
+    if redirect_uri:
+        parts = urlparse(redirect_uri)
+        if parts.scheme not in {"http", "https"} or not parts.netloc:
+            errors.append("META_REDIRECT_URI must be a valid absolute http/https URL.")
+    return errors
 
 
 def _public_url_status_payload(request):
@@ -261,7 +363,13 @@ def _token_health_payload(user):
 
 @login_required
 def home(request):
-    return render(request, "dashboard/home.html")
+    return render(
+        request,
+        "dashboard/home.html",
+        {
+            "meta_config": _meta_config_payload(),
+        },
+    )
 
 
 @login_required
@@ -292,3 +400,46 @@ def public_url_status(request):
 @login_required
 def token_health_status(request):
     return JsonResponse(_token_health_payload(request.user))
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def meta_app_config(request):
+    if request.method == "GET":
+        return JsonResponse(_meta_config_payload())
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON body."}, status=400)
+
+    meta_app_id = str(payload.get("meta_app_id") or "").strip()
+    meta_redirect_uri = str(payload.get("meta_redirect_uri") or "").strip()
+    submitted_secret = str(payload.get("meta_app_secret") or "").strip()
+    current_secret = str(getattr(settings, "META_APP_SECRET", "") or "").strip()
+    final_secret = submitted_secret or current_secret
+
+    errors = _validate_meta_config(meta_app_id, final_secret, meta_redirect_uri)
+    if errors:
+        return JsonResponse({"error": "Validation failed.", "details": " ".join(errors)}, status=400)
+
+    updates = {
+        "META_APP_ID": meta_app_id,
+        "META_APP_SECRET": final_secret,
+        "META_REDIRECT_URI": meta_redirect_uri,
+    }
+
+    try:
+        _upsert_env_values(_env_file_path(), updates)
+    except OSError as exc:
+        return JsonResponse({"error": "Unable to update .env", "details": str(exc)}, status=500)
+
+    _apply_meta_runtime_settings(updates)
+    cache.delete(TOKEN_HEALTH_CACHE_KEY)
+
+    response = _meta_config_payload()
+    response["ok"] = True
+    response["message"] = "Meta app configuration saved successfully."
+    if "/auth/meta/callback" not in meta_redirect_uri:
+        response["warning"] = "META_REDIRECT_URI usually ends with /auth/meta/callback."
+    return JsonResponse(response)

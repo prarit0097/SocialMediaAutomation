@@ -861,6 +861,69 @@
     });
   }
 
+  const metaAppConfigForm = document.getElementById("metaAppConfigForm");
+  const saveMetaAppConfigBtn = document.getElementById("saveMetaAppConfigBtn");
+  const metaAppConfigResult = document.getElementById("metaAppConfigResult");
+  const metaAppSecretState = document.getElementById("metaAppSecretState");
+
+  if (metaAppConfigForm && saveMetaAppConfigBtn) {
+    const runWithMetaConfigLoading = withButtonLoading(
+      saveMetaAppConfigBtn,
+      "Save Meta Configuration",
+      "Saving..."
+    );
+
+    metaAppConfigForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const formData = new FormData(metaAppConfigForm);
+      const payload = {
+        meta_app_id: String(formData.get("meta_app_id") || "").trim(),
+        meta_app_secret: String(formData.get("meta_app_secret") || "").trim(),
+        meta_redirect_uri: String(formData.get("meta_redirect_uri") || "").trim(),
+      };
+
+      if (metaAppConfigResult) {
+        metaAppConfigResult.textContent = "";
+        metaAppConfigResult.classList.remove("is-success", "is-error");
+      }
+
+      try {
+        const data = await runWithMetaConfigLoading(() =>
+          fetchJSON("/dashboard/meta-app-config/", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRFToken": csrfToken,
+            },
+            body: JSON.stringify(payload),
+          })
+        );
+
+        const warningText = data.warning ? ` ${String(data.warning)}` : "";
+        if (metaAppConfigResult) {
+          metaAppConfigResult.textContent = `${String(data.message || "Meta app configuration saved.")}${warningText}`;
+          metaAppConfigResult.classList.add("is-success");
+        }
+        if (metaAppSecretState) {
+          if (data.meta_app_secret_configured && data.meta_app_secret_masked) {
+            metaAppSecretState.textContent = `Current secret: ${data.meta_app_secret_masked}`;
+          } else {
+            metaAppSecretState.textContent = "No secret configured yet.";
+          }
+        }
+        const secretInput = metaAppConfigForm.querySelector("#metaAppSecretInput");
+        if (secretInput instanceof HTMLInputElement) {
+          secretInput.value = "";
+        }
+      } catch (err) {
+        if (metaAppConfigResult) {
+          metaAppConfigResult.textContent = `Error: ${err.message}`;
+          metaAppConfigResult.classList.add("is-error");
+        }
+      }
+    });
+  }
+
   const fetchInsightsBtn = document.getElementById("fetchInsightsBtn");
   const refreshInsightsBtn = document.getElementById("refreshInsightsBtn");
   const insightAccountId = document.getElementById("insightAccountId");

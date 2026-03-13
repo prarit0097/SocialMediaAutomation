@@ -1,7 +1,11 @@
 from unittest.mock import patch
 from datetime import timedelta
+import json
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from django.contrib.auth import get_user_model
+from django.conf import settings
 from django.core.cache import cache
 from django.test import Client, TestCase, override_settings
 from django.utils import timezone
@@ -17,6 +21,15 @@ class DashboardAuthTests(TestCase):
 
     def test_dashboard_requires_login(self):
         response = self.client.get("/dashboard/")
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/login/", response.url)
+
+    def test_meta_app_config_requires_login(self):
+        response = self.client.post(
+            "/dashboard/meta-app-config/",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
         self.assertEqual(response.status_code, 302)
         self.assertIn("/login/", response.url)
 
@@ -179,3 +192,119 @@ class DashboardAuthTests(TestCase):
         self.assertEqual(body["level"], "bad")
         self.assertTrue(body["stale_accounts"])
         self.assertEqual(body["stale_accounts"][0]["page_name"], "Stale FB")
+
+    def test_meta_app_config_updates_env_and_runtime_settings(self):
+        user_model = get_user_model()
+        user_model.objects.create_user(username="metaadmin", password="pass12345")
+        self.client.login(username="metaadmin", password="pass12345")
+
+        with TemporaryDirectory() as tmp_dir:
+            env_path = Path(tmp_dir) / ".env"
+            env_path.write_text(
+                "\n".join(
+                    [
+                        "META_APP_ID=old-app-id",
+                        "META_APP_SECRET=old-secret",
+                        "META_REDIRECT_URI=https://old.example.com/auth/meta/callback",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            with self.settings(
+                BASE_DIR=Path(tmp_dir),
+                META_APP_ID="old-app-id",
+                META_APP_SECRET="old-secret",
+                META_REDIRECT_URI="https://old.example.com/auth/meta/callback",
+            ):
+                response = self.client.post(
+                    "/dashboard/meta-app-config/",
+                    data=json.dumps(
+                        {
+                            "meta_app_id": "new-app-id",
+                            "meta_app_secret": "new-secret",
+                            "meta_redirect_uri": "https://new.example.com/auth/meta/callback",
+                        }
+                    ),
+                    content_type="application/json",
+                )
+
+                self.assertEqual(response.status_code, 200)
+                body = response.json()
+                self.assertTrue(body["ok"])
+                self.assertEqual(body["meta_app_id"], "new-app-id")
+                self.assertEqual(body["meta_redirect_uri"], "https://new.example.com/auth/meta/callback")
+                self.assertTrue(body["meta_app_secret_configured"])
+                self.assertTrue(str(body["meta_app_secret_masked"]).endswith("cret"))
+
+                file_content = env_path.read_text(encoding="utf-8")
+                self.assertIn("META_APP_ID=new-app-id", file_content)
+                self.assertIn("META_APP_SECRET=new-secret", file_content)
+                self.assertIn("META_REDIRECT_URI=https://new.example.com/auth/meta/callback", file_content)
+
+                self.assertEqual(settings.META_APP_ID, "new-app-id")
+                self.assertEqual(settings.META_APP_SECRET, "new-secret")
+                self.assertEqual(settings.META_REDIRECT_URI, "https://new.example.com/auth/meta/callback")
+
+    def test_meta_app_config_keeps_existing_secret_when_field_blank(self):
+        user_model = get_user_model()
+        user_model.objects.create_user(username="metaadmin2", password="pass12345")
+        self.client.login(username="metaadmin2", password="pass12345")
+
+        with TemporaryDirectory() as tmp_dir:
+            env_path = Path(tmp_dir) / ".env"
+            env_path.write_text(
+                "\n".join(
+                    [
+                        "META_APP_ID=old-app-id",
+                        "META_APP_SECRET=old-secret",
+                        "META_REDIRECT_URI=https://old.example.com/auth/meta/callback",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            with self.settings(
+                BASE_DIR=Path(tmp_dir),
+                META_APP_ID="old-app-id",
+                META_APP_SECRET="old-secret",
+                META_REDIRECT_URI="https://old.example.com/auth/meta/callback",
+            ):
+                response = self.client.post(
+                    "/dashboard/meta-app-config/",
+                    data=json.dumps(
+                        {
+                            "meta_app_id": "old-app-id",
+                            "meta_app_secret": "",
+                            "meta_redirect_uri": "https://old.example.com/auth/meta/callback",
+                        }
+                    ),
+                    content_type="application/json",
+                )
+
+                self.assertEqual(response.status_code, 200)
+                file_content = env_path.read_text(encoding="utf-8")
+                self.assertIn("META_APP_SECRET=old-secret", file_content)
+
+    def test_meta_app_config_rejects_invalid_redirect_uri(self):
+        user_model = get_user_model()
+        user_model.objects.create_user(username="metaadmin3", password="pass12345")
+        self.client.login(username="metaadmin3", password="pass12345")
+
+        response = self.client.post(
+            "/dashboard/meta-app-config/",
+            data=json.dumps(
+                {
+                    "meta_app_id": "abc",
+                    "meta_app_secret": "def",
+                    "meta_redirect_uri": "not-a-url",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        body = response.json()
+        self.assertEqual(body["error"], "Validation failed.")

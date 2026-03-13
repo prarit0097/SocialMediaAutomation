@@ -8,6 +8,7 @@ This file is the high-level source of truth for what the project does, how the m
 ## Core Outcomes
 - Connect and refresh Facebook Pages and linked Instagram accounts through Meta OAuth.
 - Store connected account metadata and encrypted page access tokens.
+- Configure `META_APP_ID`, `META_APP_SECRET`, and `META_REDIRECT_URI` from Dashboard Home and persist them in `.env` without code edits.
 - Schedule Facebook, Instagram, or combined FB + IG posts.
 - Publish due posts automatically through Celery workers.
 - Store cached insights snapshots for operator review and future analytics.
@@ -16,6 +17,19 @@ This file is the high-level source of truth for what the project does, how the m
 - Expose project-aware MCP servers for file, browser, queue, and analytics operations.
 
 ## Main User Areas
+
+### Home
+The Home page is now the workspace setup + navigation surface.
+
+What it shows:
+- Meta App Configuration form for `META_APP_ID`, `META_APP_SECRET`, and `META_REDIRECT_URI`
+- masked secret state so operators can confirm whether a secret is already configured
+- quick actions to Accounts, Scheduler, Insights, and AI Insights
+
+What it does:
+- saves Meta app credentials directly into project `.env`
+- applies updated values to runtime settings immediately for next Meta OAuth/connect actions
+- warns if redirect URI pattern looks unusual (for example missing `/auth/meta/callback`)
 
 ### Accounts
 The Accounts page is the operator view for connected Meta assets.
