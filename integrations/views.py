@@ -1,23 +1,74 @@
 import logging
 import secrets
+import re
+from datetime import datetime, timedelta, timezone as dt_timezone
 
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect
 from django.conf import settings
-from django.db.utils import OperationalError
 from django.db.models import Max
+from django.db.utils import OperationalError
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 
+from analytics.models import InsightSnapshot
 from core.exceptions import MetaAPIError
 from core.services.meta_client import MetaClient
+from publishing.models import ScheduledPost
 
 from .models import ConnectedAccount
 from .services import upsert_connected_accounts
 
 logger = logging.getLogger("integrations")
+
+
+def _parse_snapshot_datetime(value):
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=dt_timezone.utc)
+    if isinstance(value, str):
+        normalized = re.sub(r"([+-]\d{2})(\d{2})$", r"\1:\2", value.strip())
+        try:
+            parsed = datetime.fromisoformat(normalized.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=dt_timezone.utc)
+    return None
+
+
+def _latest_published_post_times(account_ids: list[int]) -> dict[int, datetime | None]:
+    latest_by_account: dict[int, datetime | None] = {
+        row["account_id"]: row["latest_published_at"]
+        for row in ScheduledPost.objects.filter(account_id__in=account_ids, published_at__isnull=False)
+        .values("account_id")
+        .annotate(latest_published_at=Max("published_at"))
+    }
+
+    unresolved = set(account_ids)
+    snapshots = InsightSnapshot.objects.filter(account_id__in=account_ids).order_by("account_id", "-fetched_at")
+    for snapshot in snapshots:
+        account_id = snapshot.account_id
+        if account_id not in unresolved:
+            continue
+        payload = snapshot.payload or {}
+        posts = payload.get("published_posts") or []
+        latest_post = None
+        for post in posts:
+            published_at = _parse_snapshot_datetime(post.get("published_at")) or _parse_snapshot_datetime(post.get("scheduled_for"))
+            if not published_at:
+                continue
+            if latest_post is None or published_at > latest_post:
+                latest_post = published_at
+        if latest_post is not None:
+            current = latest_by_account.get(account_id)
+            latest_by_account[account_id] = latest_post if current is None or latest_post > current else current
+        unresolved.discard(account_id)
+        if not unresolved:
+            break
+    return latest_by_account
 
 
 @require_GET
@@ -97,7 +148,7 @@ def meta_callback(request: HttpRequest) -> HttpResponse:
 @require_GET
 @login_required
 def list_accounts(_request: HttpRequest) -> JsonResponse:
-    rows = list(
+    account_rows = list(
         ConnectedAccount.objects.values(
             "id",
             "platform",
@@ -107,6 +158,17 @@ def list_accounts(_request: HttpRequest) -> JsonResponse:
             "created_at",
             "updated_at",
         )
+    )
+    last_post_map = _latest_published_post_times([row["id"] for row in account_rows])
+    stale_cutoff = timezone.now() - timedelta(hours=24)
+    rows = list(
+        {
+            **row,
+            "last_post_at": (last_post.isoformat() if last_post else None),
+            "last_post_is_stale": (last_post is None) or (last_post < stale_cutoff),
+        }
+        for row in account_rows
+        for last_post in [last_post_map.get(row["id"])]
     )
     return JsonResponse(rows, safe=False)
 

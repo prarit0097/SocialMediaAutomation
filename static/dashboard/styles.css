@@ -957,6 +957,22 @@ pre {
   font-weight: 800;
 }
 
+.account-post-time {
+  color: var(--ink-soft);
+  font-weight: 700;
+}
+
+.account-post-time.stale {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: 1px solid rgba(178, 58, 50, 0.14);
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 4px 8px;
+}
+
 .avatar-wrap {
   display: inline-grid;
   place-items: center;

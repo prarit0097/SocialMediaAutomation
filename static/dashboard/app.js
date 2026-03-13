@@ -124,6 +124,13 @@
       const updatedAt = linkedIg
         ? (new Date(linkedIg.updated_at) > new Date(row.updated_at) ? linkedIg.updated_at : row.updated_at)
         : row.updated_at;
+      const rowLastPostAt = row.last_post_at || null;
+      const linkedLastPostAt = linkedIg?.last_post_at || null;
+      const lastPostAt = [rowLastPostAt, linkedLastPostAt]
+        .map((value) => ({ raw: value, parsed: value ? new Date(value) : null }))
+        .filter((item) => item.parsed && !Number.isNaN(item.parsed.getTime()))
+        .sort((a, b) => b.parsed.getTime() - a.parsed.getTime())[0]?.raw || null;
+      const lastPostIsStale = lastPostAt ? isOlderThanHours(lastPostAt, 24) : true;
 
       merged.push({
         profile_name: cleanProfileName(linkedIg?.page_name || row.page_name),
@@ -133,6 +140,8 @@
         ig_user_id: linkedIg ? String(linkedIg.page_id || "") : "",
         created_at: createdAt,
         updated_at: updatedAt,
+        last_post_at: lastPostAt,
+        last_post_is_stale: lastPostIsStale,
         fb_account_id: Number(row.id),
         ig_account_id: linkedIg ? Number(linkedIg.id) : null,
         insight_account_id: Number(row.id),
@@ -152,6 +161,8 @@
         ig_user_id: String(row.page_id || ""),
         created_at: row.created_at,
         updated_at: row.updated_at,
+        last_post_at: row.last_post_at || null,
+        last_post_is_stale: row.last_post_at ? isOlderThanHours(row.last_post_at, 24) : true,
         fb_account_id: null,
         ig_account_id: Number(row.id),
         insight_account_id: Number(row.id),
@@ -262,7 +273,7 @@
         <th>page_id</th>
         <th>ig_user_id</th>
         <th>created_at</th>
-        <th>updated_at</th>
+        <th>last_post_at</th>
         <th>actions</th>
       </tr>
     `;
@@ -271,7 +282,8 @@
     const body = rows
       .map((row, index) => {
         const createdAt = row.created_at ? toIndianDateTime(row.created_at) : "-";
-        const updatedAt = row.updated_at ? toIndianDateTime(row.updated_at) : "-";
+        const updatedAt = row.last_post_at ? toIndianDateTime(row.last_post_at) : "No post found";
+        const updatedAtClass = row.last_post_is_stale ? "account-post-time stale" : "account-post-time";
         const schedulePlatform = row.platform === "fb_ig" ? "both" : row.platform === "ig" ? "instagram" : "facebook";
         const scheduleAccountId = row.platform === "ig" ? row.ig_account_id || row.account_id : row.fb_account_id || row.account_id;
         const schedulerUrl = `/dashboard/scheduler/?account_id=${encodeURIComponent(scheduleAccountId)}&platform=${encodeURIComponent(
@@ -287,7 +299,7 @@
             <td>${escapeHtml(row.page_id)}</td>
             <td>${escapeHtml(row.ig_user_id || "")}</td>
             <td>${escapeHtml(createdAt)}</td>
-            <td>${escapeHtml(updatedAt)}</td>
+            <td><span class="${updatedAtClass}">${escapeHtml(updatedAt)}</span></td>
             <td>
               <a class="inline-link-btn" href="${schedulerUrl}">Schedule</a>
               <a class="inline-link-btn muted" href="${insightsUrl}">Insights</a>
@@ -698,6 +710,13 @@
       second: "2-digit",
       hour12: true,
     });
+  }
+
+  function isOlderThanHours(value, hours) {
+    if (!value) return true;
+    const dt = new Date(value);
+    if (Number.isNaN(dt.getTime())) return true;
+    return Date.now() - dt.getTime() > hours * 60 * 60 * 1000;
   }
 
   function parseSortDate(value) {

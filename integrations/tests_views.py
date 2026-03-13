@@ -1,9 +1,13 @@
+from datetime import timedelta
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db.utils import OperationalError
 from django.test import Client, TestCase
+from django.utils import timezone
 from unittest.mock import patch
 
+from analytics.models import InsightSnapshot
+from publishing.models import ScheduledPost
 from integrations.models import ConnectedAccount
 
 
@@ -58,6 +62,57 @@ class IntegrationsViewTests(TestCase):
         self.assertEqual(payload["meta_pages_synced"], 41)
         self.assertEqual(payload["facebook_connected_total"], 10)
         self.assertEqual(payload["token_target_ids_count"], 41)
+
+    def test_list_accounts_includes_latest_post_time_from_snapshot(self):
+        account = ConnectedAccount.objects.create(
+            platform="facebook",
+            page_id="1",
+            page_name="Page 1",
+            access_token="token",
+        )
+        newer = (timezone.now() - timedelta(hours=2)).isoformat()
+        older = (timezone.now() - timedelta(hours=6)).isoformat()
+        InsightSnapshot.objects.create(
+            account=account,
+            platform="facebook",
+            payload={
+                "published_posts": [
+                    {"published_at": older},
+                    {"published_at": newer},
+                ]
+            },
+        )
+
+        response = self.client.get("/api/accounts/")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        row = next(item for item in payload if item["id"] == account.id)
+        self.assertEqual(row["last_post_at"], newer)
+        self.assertFalse(row["last_post_is_stale"])
+
+    def test_list_accounts_falls_back_to_latest_published_scheduled_post(self):
+        account = ConnectedAccount.objects.create(
+            platform="facebook",
+            page_id="1",
+            page_name="Page 1",
+            access_token="token",
+        )
+        post = ScheduledPost.objects.create(
+            account=account,
+            platform="facebook",
+            message="hello",
+            scheduled_for=timezone.now() - timedelta(hours=30),
+            media_url="https://example.com/test.jpg",
+            status="published",
+            published_at=timezone.now() - timedelta(hours=30),
+        )
+
+        response = self.client.get("/api/accounts/")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        row = next(item for item in payload if item["id"] == account.id)
+        self.assertEqual(row["last_post_at"], post.published_at.isoformat())
+        self.assertTrue(row["last_post_is_stale"])
 
     @patch("integrations.views.MetaClient._get")
     @patch("integrations.views.MetaClient.debug_token")
