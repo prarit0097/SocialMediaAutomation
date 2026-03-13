@@ -1085,6 +1085,16 @@ pre {
   padding: 4px 8px;
 }
 
+.account-sync-state {
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.account-sync-state.stale {
+  color: var(--danger);
+}
+
 .avatar-wrap {
   display: inline-grid;
   place-items: center;
@@ -1121,6 +1131,13 @@ pre {
   padding: 0 12px;
   font-size: 12px;
   border-radius: 10px;
+}
+
+.inline-link-btn.disabled {
+  cursor: not-allowed;
+  opacity: 0.8;
+  pointer-events: none;
+  background: linear-gradient(135deg, #b96a43 0%, #9b4d2b 100%);
 }
 
 @keyframes rise-in {

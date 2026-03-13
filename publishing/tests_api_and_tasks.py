@@ -80,6 +80,30 @@ class PublishingApiTests(TestCase):
         created_platforms = set(ScheduledPost.objects.values_list("platform", flat=True))
         self.assertEqual(created_platforms, {FACEBOOK, INSTAGRAM})
 
+    def test_schedule_post_rejects_stale_account_not_in_recent_sync(self):
+        from django.core.cache import cache
+
+        cache.set(
+            f"meta_last_sync:{self.user.id}",
+            {"synced_at": timezone.now().isoformat()},
+            timeout=600,
+        )
+        ConnectedAccount.objects.filter(id=self.account.id).update(updated_at=timezone.now() - timedelta(hours=2))
+
+        response = self.client.post(
+            reverse("schedule_post"),
+            data={
+                "account_id": self.account.id,
+                "platform": FACEBOOK,
+                "message": "Hello",
+                "scheduled_for": (timezone.now() + timedelta(minutes=10)).isoformat(),
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("not refreshed in the latest Meta reconnect", response.json()["error"])
+
     @patch("publishing.views.MetaClient.debug_token")
     def test_retry_failed_post_rejects_invalid_token_until_reconnected(self, mock_debug_token):
         post = ScheduledPost.objects.create(

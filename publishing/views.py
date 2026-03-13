@@ -18,6 +18,7 @@ from core.constants import FACEBOOK, INSTAGRAM, PLATFORM_CHOICES, POST_STATUS_FA
 from core.exceptions import MetaAPIError
 from core.services.meta_client import MetaClient
 from integrations.models import ConnectedAccount
+from integrations.sync_state import build_account_sync_state
 
 from .models import ScheduledPost
 from .services import is_invalid_token_error, token_reconnect_message
@@ -82,6 +83,13 @@ def _resolve_dual_accounts(base_account: ConnectedAccount):
     return fb_account, ig_account, None
 
 
+def _ensure_account_is_currently_synced(request: HttpRequest, account: ConnectedAccount):
+    sync_state = build_account_sync_state(account, getattr(request.user, "id", None))
+    if sync_state["is_sync_stale"]:
+        return _bad_request(sync_state["sync_state_reason"])
+    return None
+
+
 def _current_token_validity(account: ConnectedAccount) -> bool | None:
     try:
         data = MetaClient().debug_token(account.access_token).get("data", {})
@@ -128,6 +136,9 @@ def schedule_post(request: HttpRequest) -> JsonResponse:
         return JsonResponse({"error": "Connected account not found"}, status=404)
     if platform in valid_platforms and account.platform != platform:
         return _bad_request("account_id does not belong to selected platform")
+    stale_response = _ensure_account_is_currently_synced(request, account)
+    if stale_response:
+        return stale_response
 
     dt = parse_datetime(scheduled_for)
     if not isinstance(dt, datetime):
@@ -141,6 +152,10 @@ def schedule_post(request: HttpRequest) -> JsonResponse:
         fb_account, ig_account, resolve_error = _resolve_dual_accounts(account)
         if resolve_error:
             return _bad_request(resolve_error)
+        for target in [fb_account, ig_account]:
+            stale_response = _ensure_account_is_currently_synced(request, target)
+            if stale_response:
+                return stale_response
 
         targets = [
             (fb_account, FACEBOOK),
@@ -232,6 +247,9 @@ def retry_failed_post(request: HttpRequest, post_id: int) -> JsonResponse:
 
     if post.status != POST_STATUS_FAILED:
         return _bad_request("Only failed posts can be retried")
+    stale_response = _ensure_account_is_currently_synced(request, post.account)
+    if stale_response:
+        return stale_response
 
     if is_invalid_token_error(post.error_message):
         token_valid = _current_token_validity(post.account)

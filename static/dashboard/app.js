@@ -135,6 +135,8 @@
         .filter((item) => item.parsed && !Number.isNaN(item.parsed.getTime()))
         .sort((a, b) => b.parsed.getTime() - a.parsed.getTime())[0]?.raw || null;
       const lastPostIsStale = lastPostAt ? isOlderThanHours(lastPostAt, 24) : true;
+      const syncIsStale = Boolean(row.is_sync_stale) || Boolean(linkedIg?.is_sync_stale);
+      const syncStateReason = linkedIg?.is_sync_stale ? linkedIg.sync_state_reason : row.sync_state_reason;
 
       merged.push({
         profile_name: cleanProfileName(linkedIg?.page_name || row.page_name),
@@ -146,6 +148,8 @@
         updated_at: updatedAt,
         last_post_at: lastPostAt,
         last_post_is_stale: lastPostIsStale,
+        is_sync_stale: syncIsStale,
+        sync_state_reason: syncStateReason || "",
         fb_account_id: Number(row.id),
         ig_account_id: linkedIg ? Number(linkedIg.id) : null,
         insight_account_id: Number(row.id),
@@ -167,6 +171,8 @@
         updated_at: row.updated_at,
         last_post_at: row.last_post_at || null,
         last_post_is_stale: row.last_post_at ? isOlderThanHours(row.last_post_at, 24) : true,
+        is_sync_stale: Boolean(row.is_sync_stale),
+        sync_state_reason: row.sync_state_reason || "",
         fb_account_id: null,
         ig_account_id: Number(row.id),
         insight_account_id: Number(row.id),
@@ -294,6 +300,12 @@
           schedulePlatform
         )}`;
         const insightsUrl = `/dashboard/insights/?account_id=${encodeURIComponent(row.insight_account_id || row.account_id)}`;
+        const scheduleAction = row.is_sync_stale
+          ? `<span class="inline-link-btn disabled" title="${escapeHtml(row.sync_state_reason || "Reconnect this profile before scheduling.")}">Reconnect</span>`
+          : `<a class="inline-link-btn" href="${schedulerUrl}">Schedule</a>`;
+        const syncStateHtml = row.is_sync_stale
+          ? `<div class="account-sync-state stale" title="${escapeHtml(row.sync_state_reason || "")}">Stale sync</div>`
+          : "";
         return `
           <tr>
             <td>${index + 1}</td>
@@ -303,9 +315,9 @@
             <td>${escapeHtml(row.page_id)}</td>
             <td>${escapeHtml(row.ig_user_id || "")}</td>
             <td>${escapeHtml(createdAt)}</td>
-            <td><span class="${updatedAtClass}">${escapeHtml(updatedAt)}</span></td>
+            <td><span class="${updatedAtClass}">${escapeHtml(updatedAt)}</span>${syncStateHtml}</td>
             <td>
-              <a class="inline-link-btn" href="${schedulerUrl}">Schedule</a>
+              ${scheduleAction}
               <a class="inline-link-btn muted" href="${insightsUrl}">Insights</a>
             </td>
           </tr>

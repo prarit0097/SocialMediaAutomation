@@ -114,6 +114,30 @@ class IntegrationsViewTests(TestCase):
         self.assertEqual(row["last_post_at"], post.published_at.isoformat())
         self.assertTrue(row["last_post_is_stale"])
 
+    def test_list_accounts_marks_account_stale_when_not_in_latest_sync_window(self):
+        account = ConnectedAccount.objects.create(
+            platform="facebook",
+            page_id="1",
+            page_name="Page 1",
+            access_token="token",
+        )
+        cache.set(
+            f"meta_last_sync:{self.user.id}",
+            {
+                "synced_at": timezone.now().isoformat(),
+            },
+            timeout=600,
+        )
+        ConnectedAccount.objects.filter(id=account.id).update(updated_at=timezone.now() - timedelta(hours=2))
+
+        response = self.client.get("/api/accounts/")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        row = next(item for item in payload if item["id"] == account.id)
+        self.assertTrue(row["is_sync_stale"])
+        self.assertEqual(row["sync_state"], "stale")
+
     @patch("integrations.views.MetaClient._get")
     @patch("integrations.views.MetaClient.debug_token")
     def test_meta_pages_catalog_includes_catalog_only_rows(self, mock_debug_token, mock_get):

@@ -20,6 +20,7 @@ from publishing.models import ScheduledPost
 
 from .models import ConnectedAccount
 from .services import upsert_connected_accounts
+from .sync_state import SYNC_CACHE_KEY_TEMPLATE, build_account_sync_state
 
 logger = logging.getLogger("integrations")
 TOKEN_HEALTH_CACHE_KEY = "meta_token_health_summary_v1"
@@ -131,7 +132,7 @@ def meta_callback(request: HttpRequest) -> HttpResponse:
             timeout=60 * 60 * 12,
         )
         cache.set(
-            f"meta_last_sync:{user_id}",
+            SYNC_CACHE_KEY_TEMPLATE.format(user_id=user_id),
             {
                 "meta_pages_synced": len(pages),
                 "facebook_connected_total": ConnectedAccount.objects.filter(platform="facebook").count(),
@@ -163,15 +164,28 @@ def list_accounts(_request: HttpRequest) -> JsonResponse:
     )
     last_post_map = _latest_published_post_times([row["id"] for row in account_rows])
     stale_cutoff = timezone.now() - timedelta(hours=24)
-    rows = list(
-        {
-            **row,
-            "last_post_at": (last_post.isoformat() if last_post else None),
-            "last_post_is_stale": (last_post is None) or (last_post < stale_cutoff),
-        }
-        for row in account_rows
-        for last_post in [last_post_map.get(row["id"])]
-    )
+    user_id = getattr(_request.user, "id", None)
+    rows = []
+    for row in account_rows:
+        last_post = last_post_map.get(row["id"])
+        account = ConnectedAccount(
+            id=row["id"],
+            platform=row["platform"],
+            page_id=row["page_id"],
+            page_name=row["page_name"],
+            ig_user_id=row["ig_user_id"],
+            access_token="",
+            updated_at=row["updated_at"],
+        )
+        sync_state = build_account_sync_state(account, user_id)
+        rows.append(
+            {
+                **row,
+                "last_post_at": (last_post.isoformat() if last_post else None),
+                "last_post_is_stale": (last_post is None) or (last_post < stale_cutoff),
+                **sync_state,
+            }
+        )
     return JsonResponse(rows, safe=False)
 
 

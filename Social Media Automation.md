@@ -26,6 +26,7 @@ What it shows:
 - connected timestamp
 - latest detected posting time (`last_post_at`)
 - stale posting indicator if no recent post was detected in the last 24 hours
+- stale sync indicator if an older stored account was not refreshed in the latest Meta reconnect
 
 What it does:
 - starts Meta connect flow
@@ -43,6 +44,7 @@ Supported publishing modes:
 
 What happens:
 - user enters account, platform, content, media, and schedule time
+- app blocks scheduling on stale accounts that were not refreshed in the latest Meta reconnect
 - post is stored in UTC internally
 - Celery beat checks every minute for due posts
 - Celery worker publishes due jobs to Meta Graph
