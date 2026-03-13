@@ -541,6 +541,7 @@ def fetch_and_store_insights(
     include_post_stats: bool = True,
     post_limit: int = 50,
     post_stats_limit: int | None = None,
+    payload_metadata: dict | None = None,
 ) -> dict:
     client = MetaClient()
     total_post_share_override = None
@@ -566,6 +567,7 @@ def fetch_and_store_insights(
             "insights": insights,
             "published_posts": published_posts,
             "published_posts_count": total_post_share_override,
+            "metadata": payload_metadata or {},
         },
     )
 

@@ -2,10 +2,13 @@
 
 from django.contrib.auth import get_user_model
 from django.http import JsonResponse
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
+from django.utils import timezone
 
-from analytics.views import _build_combined_response, _extract_error_message
+from analytics.models import InsightSnapshot
 from analytics.services import _aggregate_recent_post_metric, build_comparison_rows, build_insight_response
+from analytics.tasks import DAILY_HEAVY_COLLECTION_MODE, queue_daily_heavy_insight_refresh, refresh_account_insights_snapshot
+from analytics.views import _build_combined_response, _extract_error_message
 from core.constants import FACEBOOK, INSTAGRAM
 from core.exceptions import MetaPermanentError
 from core.services.meta_client import MetaClient
@@ -401,3 +404,87 @@ class MetaClientTests(TestCase):
         insight_calls = [call for call in mock_get.call_args_list if call.args[0] == "/ig-1/insights"]
         self.assertTrue(insight_calls)
         self.assertTrue(any("since" in call.args[1] and "until" in call.args[1] for call in insight_calls))
+
+
+@override_settings(
+    CELERY_TIMEZONE="Asia/Kolkata",
+    DAILY_INSIGHTS_POST_LIMIT=100,
+    DAILY_INSIGHTS_POST_STATS_LIMIT=40,
+)
+class AnalyticsAutomationTaskTests(TestCase):
+    def setUp(self):
+        self.account = ConnectedAccount.objects.create(
+            platform=FACEBOOK,
+            page_id="auto-1",
+            page_name="Auto Page",
+            access_token="token",
+        )
+        self.blank_token_account = ConnectedAccount.objects.create(
+            platform=INSTAGRAM,
+            page_id="auto-2",
+            page_name="Blank Token",
+            access_token="",
+        )
+
+    @patch("analytics.tasks.refresh_account_insights_snapshot.delay")
+    def test_queue_daily_heavy_refresh_enqueues_accounts_without_snapshot(self, mock_delay):
+        result = queue_daily_heavy_insight_refresh()
+
+        self.assertEqual(result["total_accounts"], 2)
+        self.assertEqual(result["queued"], 1)
+        self.assertEqual(result["skipped"], 1)
+        mock_delay.assert_called_once_with(self.account.id, force=False)
+
+    @patch("analytics.tasks.refresh_account_insights_snapshot.delay")
+    def test_queue_daily_heavy_refresh_skips_existing_daily_heavy_snapshot(self, mock_delay):
+        snapshot = InsightSnapshot.objects.create(
+            account=self.account,
+            platform=FACEBOOK,
+            payload={"metadata": {"collection_mode": DAILY_HEAVY_COLLECTION_MODE}},
+        )
+        snapshot.fetched_at = timezone.now()
+        snapshot.save(update_fields=["fetched_at"])
+
+        result = queue_daily_heavy_insight_refresh()
+
+        self.assertEqual(result["queued"], 0)
+        self.assertEqual(result["skipped"], 2)
+        mock_delay.assert_not_called()
+
+    @patch("analytics.tasks.fetch_and_store_insights")
+    def test_refresh_account_insights_snapshot_uses_heavy_limits_and_metadata(self, mock_fetch):
+        mock_fetch.return_value = {"snapshot_id": 77}
+
+        task_result = refresh_account_insights_snapshot.apply(args=[self.account.id], kwargs={"force": False}).result
+
+        self.assertEqual(task_result["status"], "stored")
+        self.assertEqual(task_result["snapshot_id"], 77)
+        mock_fetch.assert_called_once()
+        args = mock_fetch.call_args.args
+        kwargs = mock_fetch.call_args.kwargs
+        self.assertEqual(args[0].id, self.account.id)
+        self.assertTrue(kwargs["include_post_stats"])
+        self.assertEqual(kwargs["post_limit"], 100)
+        self.assertEqual(kwargs["post_stats_limit"], 40)
+        self.assertEqual(kwargs["payload_metadata"]["collection_mode"], DAILY_HEAVY_COLLECTION_MODE)
+        self.assertEqual(kwargs["payload_metadata"]["collection_source"], "celery_beat")
+        self.assertEqual(kwargs["payload_metadata"]["collection_timezone"], "Asia/Kolkata")
+
+    @patch("analytics.services._get_published_posts")
+    @patch("analytics.services.MetaClient.fetch_facebook_published_posts_count")
+    @patch("analytics.services.MetaClient.fetch_facebook_insights")
+    def test_fetch_and_store_insights_persists_snapshot_metadata(self, mock_fetch_insights, mock_posts_count, mock_posts):
+        mock_fetch_insights.return_value = [{"name": "followers_count", "values": [{"value": 5}]}]
+        mock_posts_count.return_value = 1
+        mock_posts.return_value = []
+
+        from analytics.services import fetch_and_store_insights
+
+        result = fetch_and_store_insights(
+            self.account,
+            payload_metadata={"collection_mode": DAILY_HEAVY_COLLECTION_MODE, "collection_source": "test"},
+        )
+
+        snapshot = InsightSnapshot.objects.get(id=result["snapshot_id"])
+        self.assertEqual(snapshot.payload["metadata"]["collection_mode"], DAILY_HEAVY_COLLECTION_MODE)
+        self.assertEqual(snapshot.payload["metadata"]["collection_source"], "test")

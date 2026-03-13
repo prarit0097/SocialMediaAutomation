@@ -7,6 +7,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 env = environ.Env(
     DEBUG=(bool, False),
+    CELERY_TIMEZONE=(str, "Asia/Kolkata"),
+    DAILY_INSIGHTS_ENABLED=(bool, True),
+    DAILY_INSIGHTS_SCHEDULE_HOUR=(int, 5),
+    DAILY_INSIGHTS_SCHEDULE_MINUTE=(int, 0),
+    DAILY_INSIGHTS_POST_LIMIT=(int, 100),
+    DAILY_INSIGHTS_POST_STATS_LIMIT=(int, 40),
 )
 environ.Env.read_env(BASE_DIR / ".env")
 
@@ -110,13 +116,23 @@ CELERY_RESULT_BACKEND = REDIS_URL
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
-CELERY_TIMEZONE = "UTC"
+CELERY_TIMEZONE = env("CELERY_TIMEZONE")
+DAILY_INSIGHTS_ENABLED = env("DAILY_INSIGHTS_ENABLED")
+DAILY_INSIGHTS_SCHEDULE_HOUR = env("DAILY_INSIGHTS_SCHEDULE_HOUR")
+DAILY_INSIGHTS_SCHEDULE_MINUTE = env("DAILY_INSIGHTS_SCHEDULE_MINUTE")
+DAILY_INSIGHTS_POST_LIMIT = env("DAILY_INSIGHTS_POST_LIMIT")
+DAILY_INSIGHTS_POST_STATS_LIMIT = env("DAILY_INSIGHTS_POST_STATS_LIMIT")
 CELERY_BEAT_SCHEDULE = {
     "process-due-posts-every-minute": {
         "task": "publishing.tasks.process_due_posts",
         "schedule": crontab(minute="*"),
     }
 }
+if DAILY_INSIGHTS_ENABLED:
+    CELERY_BEAT_SCHEDULE["queue-daily-heavy-insight-refresh"] = {
+        "task": "analytics.tasks.queue_daily_heavy_insight_refresh",
+        "schedule": crontab(hour=DAILY_INSIGHTS_SCHEDULE_HOUR, minute=DAILY_INSIGHTS_SCHEDULE_MINUTE),
+    }
 
 CACHES = {
     "default": {

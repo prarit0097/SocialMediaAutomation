@@ -7,6 +7,7 @@ Django-based internal admin app to connect Facebook + Instagram accounts, schedu
 - Connected accounts listing API and dashboard table
 - Post scheduling API and dashboard form
 - Celery worker + beat for automatic scheduled publishing
+- Daily automated heavy insights snapshot refresh for all connected profiles
 - Insights API with snapshot caching and refresh throttling
 - Single-admin auth using Django sessions
 - Encrypted token storage at rest using Fernet-backed model field
@@ -45,10 +46,17 @@ Update `.env` values:
 - `SECRET_KEY`
 - `DATABASE_URL`
 - `REDIS_URL`
+- `CELERY_TIMEZONE` (default: `Asia/Kolkata` for 5:00 AM daily insights automation)
 - `META_APP_ID`
 - `META_APP_SECRET`
 - `META_REDIRECT_URI` (default: `http://localhost:8000/auth/meta/callback`)
 - optional `FERNET_KEY`
+- optional automation tuning:
+  - `DAILY_INSIGHTS_ENABLED=True`
+  - `DAILY_INSIGHTS_SCHEDULE_HOUR=5`
+  - `DAILY_INSIGHTS_SCHEDULE_MINUTE=0`
+  - `DAILY_INSIGHTS_POST_LIMIT=100`
+  - `DAILY_INSIGHTS_POST_STATS_LIMIT=40`
 
 ## 3) Database and admin user
 ```bash
@@ -116,8 +124,10 @@ Instagram example needs `media_url`.
 
 ## 7) Celery behavior
 - Beat triggers `publishing.tasks.process_due_posts` every minute
+- Beat triggers `analytics.tasks.queue_daily_heavy_insight_refresh` every day at `05:00` in `CELERY_TIMEZONE`
 - Due posts move from `pending` to `processing`
 - Per-post task publishes to Meta Graph
+- Daily heavy insights refresh queues one task per connected account, stores fresh `InsightSnapshot` rows, and lets the dashboard use the latest cached snapshot by default
 - Status transitions:
   - `pending -> processing -> published`
   - `processing -> failed` on final error
