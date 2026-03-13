@@ -14,15 +14,15 @@
     <div class="ambient ambient-three" aria-hidden="true"></div>
     <header class="topbar">
       <div class="topbar-inner">
-        <a class="brand" href="{% url 'dashboard:home' %}">
+        <a class="brand" href="{% if request.user.is_authenticated %}{% url 'dashboard:home' %}{% else %}{% url 'landing' %}{% endif %}">
           <span class="brand-mark">SA</span>
           <span class="brand-copy">
             <span class="brand-text">Social Automation</span>
             <span class="brand-subtext">Meta operations workspace</span>
           </span>
         </a>
-        {% if request.user.is_authenticated %}
         {% with current=request.resolver_match.url_name %}
+        {% if request.user.is_authenticated %}
         <nav class="topnav">
           <div class="health-nav" id="tokenHealthNav" hidden>
             <button type="button" class="health-chip" id="tokenHealthButton" aria-expanded="false" aria-controls="tokenHealthPopover">
@@ -43,8 +43,14 @@
           <a class="{% if current == 'ai_insights' %}is-active{% endif %}" href="{% url 'dashboard:ai_insights' %}">AI Insights</a>
           <a class="logout-link" href="{% url 'logout' %}">Logout</a>
         </nav>
-        {% endwith %}
+        {% else %}
+        <nav class="topnav topnav-public">
+          <a class="{% if current == 'landing' %}is-active{% endif %}" href="{% url 'landing' %}">Home</a>
+          <a class="{% if current == 'login' %}is-active{% endif %}" href="{% url 'login' %}">Login</a>
+          <a class="logout-link" href="{% url 'signup' %}">Signup</a>
+        </nav>
         {% endif %}
+        {% endwith %}
       </div>
     </header>
     <main class="layout">

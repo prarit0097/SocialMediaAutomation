@@ -18,6 +18,19 @@ This file is the high-level source of truth for what the project does, how the m
 
 ## Main User Areas
 
+### Landing Page
+The Landing page is the first screen shown at app start (`/`) for non-authenticated users.
+
+What it shows:
+- high-level overview of all core modules (Accounts, Scheduler, Insights, AI Insights)
+- visual feature cards with user-friendly illustrations
+- clear `Login` and `Signup` actions
+- simple step flow explaining setup to analytics journey
+
+What it does:
+- helps first-time users understand app value before authentication
+- routes authenticated users directly to Dashboard Home to continue operations
+
 ### Home
 The Home page is now the workspace setup + navigation surface.
 

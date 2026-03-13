@@ -3,12 +3,13 @@ from django.contrib import admin
 from django.urls import include, path
 from django.views.generic import RedirectView
 
+from accounts.views import landing_page
 from core.media_views import serve_media
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("favicon.ico", RedirectView.as_view(url=f"{settings.STATIC_URL}favicon.svg", permanent=False)),
-    path("", RedirectView.as_view(pattern_name="dashboard:home", permanent=False)),
+    path("", landing_page, name="landing"),
     path("", include("accounts.urls")),
     path("auth/", include("integrations.auth_urls")),
     path("api/", include("integrations.api_urls")),

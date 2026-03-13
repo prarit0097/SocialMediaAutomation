@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="card compact login-card">
+  <p class="eyebrow">Create Access</p>
+  <h1>Signup</h1>
+  <p class="hero-copy">Create your operator account to manage Meta setup, scheduling, and insights from one place.</p>
+  <form method="post" class="form-grid">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Create Account</button>
+    <small class="form-note">Already have an account? <a href="{% url 'login' %}">Login</a></small>
+  </form>
+</section>
+{% endblock %}

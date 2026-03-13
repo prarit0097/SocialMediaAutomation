@@ -1,0 +1,112 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block content %}
+<section class="card landing-hero">
+  <div class="landing-hero-main">
+    <p class="eyebrow">Social Media Automation</p>
+    <h1>Run Meta account setup, scheduling, insights, and AI strategy from one clean workspace.</h1>
+    <p class="hero-copy">Built for teams that manage Facebook Pages and linked Instagram Business accounts daily. Connect once, publish reliably, track performance, and plan growth with AI.</p>
+    <div class="landing-cta-row">
+      <a class="btn" href="{% url 'login' %}">Login</a>
+      <a class="btn muted" href="{% url 'signup' %}">Signup</a>
+    </div>
+    <div class="hero-pill-row">
+      <span class="hero-pill">Facebook + Instagram support</span>
+      <span class="hero-pill">Automated publishing queue</span>
+      <span class="hero-pill">Daily heavy snapshots (03:00 AM)</span>
+      <span class="hero-pill">AI profile insights</span>
+    </div>
+  </div>
+  <div class="landing-hero-visual">
+    <img src="{% static 'dashboard/illustrations/connect.svg' %}" alt="Connected Meta accounts view">
+  </div>
+</section>
+
+<section class="card">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">What You Get</p>
+      <h2>Everything needed for Meta operations in one app.</h2>
+      <p class="section-copy">Start from account connection, move to scheduler, review page insights, then generate AI-backed growth actions. No context switching.</p>
+    </div>
+  </div>
+
+  <div class="landing-feature-grid">
+    <article class="landing-feature-card">
+      <img src="{% static 'dashboard/illustrations/connect.svg' %}" alt="Accounts and Meta catalog illustration">
+      <div>
+        <p class="tile-kicker">Accounts</p>
+        <h3>Connected Accounts + Meta Catalog</h3>
+        <p>See FB+IG merged profiles, stale sync warnings, token health context, and one-click navigation to schedule and insights.</p>
+      </div>
+    </article>
+
+    <article class="landing-feature-card">
+      <img src="{% static 'dashboard/illustrations/schedule.svg' %}" alt="Publishing scheduler illustration">
+      <div>
+        <p class="tile-kicker">Scheduler</p>
+        <h3>Reliable Post Queue</h3>
+        <p>Schedule images/videos for FB, IG, or both. Track pending, processing, published, failed jobs with retry support and guarded validations.</p>
+      </div>
+    </article>
+
+    <article class="landing-feature-card">
+      <img src="{% static 'dashboard/illustrations/insights.svg' %}" alt="Insights dashboard illustration">
+      <div>
+        <p class="tile-kicker">Insights</p>
+        <h3>Cross-Platform Performance View</h3>
+        <p>Review followers, post share, published post metrics, and FB vs IG comparison from cached snapshots with force refresh when needed.</p>
+      </div>
+    </article>
+
+    <article class="landing-feature-card">
+      <img src="{% static 'dashboard/illustrations/ai.svg' %}" alt="AI insights report illustration">
+      <div>
+        <p class="tile-kicker">AI Insights</p>
+        <h3>Actionable Growth Guidance</h3>
+        <p>Generate profile-level pros, risks, KPI targets, posting strategy, and 7-day action plans grounded in your stored data.</p>
+      </div>
+    </article>
+  </div>
+</section>
+
+<section class="card split-highlights">
+  <article class="highlight-panel">
+    <p class="eyebrow">How It Works</p>
+    <h2>Simple flow from setup to growth.</h2>
+    <p class="section-copy">The app is designed so even first-time operators can go step by step and keep daily workflow smooth.</p>
+    <ol class="landing-steps">
+      <li>Signup or login.</li>
+      <li>Set Meta app credentials from Home settings.</li>
+      <li>Connect Facebook + Instagram assets.</li>
+      <li>Schedule posts and monitor queue.</li>
+      <li>Review insights and AI recommendations.</li>
+    </ol>
+  </article>
+  <article class="highlight-list">
+    <div class="highlight-item">
+      <strong>Daily automation included</strong>
+      <span>Heavy insights snapshot collection runs every day at 03:00 AM (Asia/Kolkata) for analytics readiness.</span>
+    </div>
+    <div class="highlight-item">
+      <strong>Built for scale</strong>
+      <span>Priority queue routing keeps user-facing publishing faster while heavy analytics tasks run in background.</span>
+    </div>
+    <div class="highlight-item">
+      <strong>Safer operations</strong>
+      <span>Token health checks, stale profile detection, and guarded retries reduce avoidable publishing failures.</span>
+    </div>
+  </article>
+</section>
+
+<section class="card landing-bottom-cta">
+  <div>
+    <p class="eyebrow">Start Now</p>
+    <h2>Ready to operate your Meta pages from one professional panel?</h2>
+  </div>
+  <div class="landing-cta-row">
+    <a class="btn" href="{% url 'login' %}">Login</a>
+    <a class="btn muted" href="{% url 'signup' %}">Signup</a>
+  </div>
+</section>
+{% endblock %}
