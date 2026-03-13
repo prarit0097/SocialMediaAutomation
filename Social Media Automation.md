@@ -136,7 +136,7 @@ Important runtime meaning:
 
 ### Daily Heavy Insights Automation
 - task: `analytics.tasks.queue_daily_heavy_insight_refresh`
-- default schedule: every day at `05:00 AM`
+- default schedule: every day at `03:00 AM`
 - timezone source: `CELERY_TIMEZONE`
 - intended timezone: `Asia/Kolkata`
 - purpose: fetch the heaviest practical insights snapshot for every connected profile and store it for UI and future analytics
