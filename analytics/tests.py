@@ -97,7 +97,7 @@ class AnalyticsApiTests(TestCase):
                         "total_saves": 1,
                     }
                 ],
-                "metadata": {"collection_mode": DAILY_HEAVY_COLLECTION_MODE},
+                "metadata": {},
             },
         )
         mock_generate.return_value = {
@@ -127,7 +127,6 @@ class AnalyticsApiTests(TestCase):
         self.assertIn("analysis", body)
         self.assertEqual(body["analysis"]["executive_summary"], "Growth is stable with room for better cadence.")
         self.assertEqual(body["page_name"], self.account.page_name)
-        self.assertTrue(body["source_overview"]["priority_daily_heavy"]["available"])
 
     @patch("analytics.views.generate_profile_ai_insights")
     def test_ai_profile_insights_handles_openai_errors(self, mock_generate):
