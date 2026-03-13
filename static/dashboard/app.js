@@ -409,9 +409,151 @@
     return "facebook";
   }
 
+  function buildCatalogLinkMaps(connectedRows) {
+    const fbToIg = new Map();
+    const igToFb = new Map();
+    (connectedRows || []).forEach((row) => {
+      const platform = String(row.platform || "").toLowerCase();
+      if (platform !== "facebook") return;
+      const fbPageId = String(row.page_id || "");
+      const igUserId = String(row.ig_user_id || "");
+      if (!fbPageId || !igUserId) return;
+      fbToIg.set(fbPageId, igUserId);
+      igToFb.set(igUserId, fbPageId);
+    });
+    return { fbToIg, igToFb };
+  }
+
+  function catalogAvailability(row, connectedRows, platformOverride) {
+    const connectability = String(row.connectability || "").toLowerCase();
+    const status = String(row.status || "").toLowerCase();
+    const pageTokenStatus = String(row.page_token_status || row.connection_status || "").toLowerCase();
+    const platform = platformOverride || guessCatalogPlatform(row, connectedRows);
+    const available =
+      status === "connected" ||
+      connectability === "connected" ||
+      (connectability === "connectable" && (pageTokenStatus === "connected" || pageTokenStatus === "synced"));
+    return {
+      platform,
+      available,
+      reason:
+        row.reason ||
+        "Meta did not return page access token. Connect this page in Business Integrations and reconnect.",
+      status,
+      connectability,
+    };
+  }
+
+  function mergeCatalogRows(rows, connectedRows) {
+    const safeRows = Array.isArray(rows) ? [...rows] : [];
+    const { fbToIg, igToFb } = buildCatalogLinkMaps(connectedRows);
+    const igById = new Map();
+    const fbRows = [];
+    const otherRows = [];
+
+    safeRows.forEach((row) => {
+      const platform = String(row.platform || "").toLowerCase() || guessCatalogPlatform(row, connectedRows);
+      if (platform === "facebook") {
+        fbRows.push(row);
+        return;
+      }
+      if (platform === "instagram") {
+        igById.set(String(row.page_id || ""), row);
+        return;
+      }
+      otherRows.push(row);
+    });
+
+    const usedIgIds = new Set();
+    const merged = [];
+
+    fbRows.forEach((fbRow) => {
+      const fbPageId = String(fbRow.page_id || "");
+      const linkedIgId = String(fbRow.ig_user_id || fbToIg.get(fbPageId) || "");
+      const igRow = linkedIgId ? igById.get(linkedIgId) : null;
+      if (!igRow) {
+        const fbInfo = catalogAvailability(fbRow, connectedRows, "facebook");
+        merged.push({
+          profile_name: cleanProfileName(fbRow.page_name),
+          platform: "facebook",
+          page_id: fbPageId,
+          ig_user_id: linkedIgId,
+          status: fbRow.status || "-",
+          connectability: fbRow.connectability || "-",
+          reason: fbInfo.reason,
+          insights_available: fbInfo.available,
+          profile_picture_url: fbRow.profile_picture_url || null,
+        });
+        return;
+      }
+
+      usedIgIds.add(String(igRow.page_id || ""));
+      const fbInfo = catalogAvailability(fbRow, connectedRows, "facebook");
+      const igInfo = catalogAvailability(igRow, connectedRows, "instagram");
+      const reason = [fbInfo.reason, igInfo.reason].filter(Boolean).filter((v, i, arr) => arr.indexOf(v) === i).join(" | ");
+      const connectability = [fbInfo.connectability, igInfo.connectability].includes("not_connectable")
+        ? "not_connectable"
+        : [fbInfo.connectability, igInfo.connectability].includes("connectable")
+        ? "connectable"
+        : "connected";
+      const status = [String(fbRow.status || "").toLowerCase(), String(igRow.status || "").toLowerCase()].every(
+        (value) => value === "connected"
+      )
+        ? "connected"
+        : "mixed";
+
+      merged.push({
+        profile_name: `${cleanProfileName(fbRow.page_name)} + ${cleanProfileName(igRow.page_name)}`,
+        platform: "fb_ig",
+        page_id: fbPageId,
+        ig_user_id: String(igRow.page_id || linkedIgId || ""),
+        status,
+        connectability,
+        reason,
+        insights_available: fbInfo.available && igInfo.available,
+        profile_picture_url: fbRow.profile_picture_url || igRow.profile_picture_url || null,
+      });
+    });
+
+    igById.forEach((igRow, igId) => {
+      if (usedIgIds.has(igId)) return;
+      const igInfo = catalogAvailability(igRow, connectedRows, "instagram");
+      merged.push({
+        profile_name: cleanProfileName(igRow.page_name),
+        platform: "instagram",
+        page_id: String(igToFb.get(igId) || ""),
+        ig_user_id: igId,
+        status: igRow.status || "-",
+        connectability: igRow.connectability || "-",
+        reason: igInfo.reason,
+        insights_available: igInfo.available,
+        profile_picture_url: igRow.profile_picture_url || null,
+      });
+    });
+
+    otherRows.forEach((row) => {
+      const info = catalogAvailability(row, connectedRows);
+      merged.push({
+        profile_name: cleanProfileName(row.page_name),
+        platform: info.platform,
+        page_id: String(row.page_id || ""),
+        ig_user_id: String(row.ig_user_id || ""),
+        status: row.status || "-",
+        connectability: row.connectability || "-",
+        reason: info.reason,
+        insights_available: info.available,
+        profile_picture_url: row.profile_picture_url || null,
+      });
+    });
+
+    merged.sort((a, b) => String(a.profile_name || "").localeCompare(String(b.profile_name || "")));
+    return merged;
+  }
+
   function renderCatalogTable(container, rows, connectedRows) {
     if (!container) return;
-    if (!rows.length) {
+    const mergedRows = mergeCatalogRows(rows, connectedRows);
+    if (!mergedRows.length) {
       container.innerHTML = "<p>No records found.</p>";
       return;
     }
@@ -422,39 +564,32 @@
         <th>#</th>
         <th>profile</th>
         <th>platform</th>
-        <th>page_id</th>
+        <th>fb_page_id</th>
+        <th>ig_user_id</th>
         <th>status</th>
         <th>connectability</th>
         <th>reason</th>
         <th>insights</th>
       </tr>
     `;
-    const body = rows
+    const body = mergedRows
       .map((row, index) => {
-        const connectability = String(row.connectability || "").toLowerCase();
-        const status = String(row.status || "").toLowerCase();
-        const pageTokenStatus = String(row.page_token_status || row.connection_status || "").toLowerCase();
-        const platform = guessCatalogPlatform(row, connectedRows);
-        const insightsAvailable =
-          status === "connected" ||
-          connectability === "connected" ||
-          (connectability === "connectable" && (pageTokenStatus === "connected" || pageTokenStatus === "synced"));
-        const reason =
-          row.reason ||
-          "Meta did not return page access token. Connect this page in Business Integrations and reconnect.";
-        const badge = insightsAvailable
+        const reason = row.reason || "Meta did not return page access token. Connect and reconnect.";
+        const badge = row.insights_available
           ? "<span class='status-badge ok'>Available</span>"
           : `<span class='status-badge warn' title='${escapeHtml(reason)}'>Unavailable</span>`;
+        const platform = String(row.platform || "").toLowerCase();
 
         return `
           <tr>
             <td>${index + 1}</td>
             <td>${avatarHtml(
-              { page_id: row.page_id, ig_user_id: row.ig_user_id, page_name: row.page_name || "(name unavailable)", platform },
+              { page_id: row.page_id, ig_user_id: row.ig_user_id, page_name: row.profile_name || "(name unavailable)", platform },
               avatarResolver
             )}</td>
             <td>${platformBadge(platform)}</td>
             <td>${escapeHtml(row.page_id)}</td>
+            <td>${escapeHtml(row.ig_user_id || "")}</td>
             <td>${escapeHtml(row.status || "-")}</td>
             <td>${escapeHtml(row.connectability || "-")}</td>
             <td>${escapeHtml(reason)}</td>
@@ -523,6 +658,7 @@
 
     if (catalogResult.status === "fulfilled") {
       const catalog = catalogResult.value;
+      const mergedCatalogRows = mergeCatalogRows(catalog.rows || [], rows);
       if (catalogTable) {
         renderCatalogTable(catalogTable, catalog.rows || [], rows);
       }
@@ -531,9 +667,10 @@
         const total = catalog.total_pages ?? connected;
         const connectable = (catalog.rows || []).filter((r) => r.connectability === "connectable").length;
         const notConnectable = (catalog.rows || []).filter((r) => r.connectability === "not_connectable").length;
-        catalogStatus.textContent = `Catalog Total: ${total} | Connected in App: ${connected} | Catalog-only: ${
-          Math.max(0, total - connected)
-        } | Connectable: ${connectable} | Not Connectable: ${notConnectable}`;
+        catalogStatus.textContent = `Catalog Total: ${total} | Merged view rows: ${mergedCatalogRows.length} | Connected in App: ${connected} | Catalog-only: ${Math.max(
+          0,
+          total - connected
+        )} | Connectable: ${connectable} | Not Connectable: ${notConnectable}`;
       }
     } else {
       if (catalogTable) catalogTable.innerHTML = "<p>Catalog unavailable right now.</p>";

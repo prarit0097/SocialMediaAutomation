@@ -36,6 +36,7 @@ What it does:
 - shows current sync status and Meta page catalog data
 - keeps only latest reconnect profiles active in scheduling/health
 - blocks scheduling from stale or inactive account rows until the profile is refreshed in a new reconnect
+- shows Meta catalog in merged FB_IG rows when linked, and separate rows when unlinked
 
 Important runtime meaning:
 - a green Health indicator does not mean every historical stored account row is usable
