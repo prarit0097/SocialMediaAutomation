@@ -49,11 +49,15 @@ Supported publishing modes:
 What happens:
 - user enters account, platform, content, media, and schedule time
 - app validates account freshness and rejects stale account rows
+- local Instagram image uploads are auto-optimized to a lighter JPG variant for more reliable Meta download
+- app preflights public media URLs before Instagram publish attempts
 - post is stored in UTC internally
 - Celery beat checks every minute for due posts
 - Celery worker publishes due jobs to Meta Graph
 - failed jobs can be retried if the account row is current
 - invalid Meta token failures are stored with reconnect guidance so the operator knows to reconnect before retrying
+- Instagram video / reel publishing waits for container processing to finish before final publish
+- Meta media download timeouts are treated as transient and automatically retried
 
 Common failure pattern:
 - if a page was not refreshed in the latest reconnect, old stored tokens can still exist in the database

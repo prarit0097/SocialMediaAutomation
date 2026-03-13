@@ -1,13 +1,18 @@
-﻿from datetime import timedelta
+from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 from django.test import Client, TestCase
+from django.test.utils import override_settings
 from django.urls import reverse
 from django.utils import timezone
+from requests import Response
 
 from core.constants import FACEBOOK, INSTAGRAM, POST_STATUS_FAILED, POST_STATUS_PENDING, POST_STATUS_PUBLISHED
-from core.exceptions import MetaPermanentError
+from core.exceptions import MetaPermanentError, MetaTransientError
+from core.services.meta_client import MetaClient
 from integrations.models import ConnectedAccount
 from publishing.models import ScheduledPost
 from publishing.services import publish_scheduled_post
@@ -218,7 +223,15 @@ class PublishingServiceTests(TestCase):
 
     @patch("publishing.services.MetaClient.publish_instagram_media", return_value={"id": "ig-post-id"})
     @patch("publishing.services.MetaClient.create_instagram_media", return_value={"id": "ig-creation-id"})
-    def test_instagram_image_uses_image_media_kind(self, mock_create_media, _mock_publish_media):
+    @patch("publishing.services.MetaClient.wait_for_instagram_media_ready", return_value={"status_code": "FINISHED"})
+    @patch("publishing.services.ensure_public_media_fetchable")
+    def test_instagram_image_uses_image_media_kind(
+        self,
+        _mock_probe,
+        _mock_wait,
+        mock_create_media,
+        _mock_publish_media,
+    ):
         post = ScheduledPost.objects.create(
             account=self.ig_account,
             platform=INSTAGRAM,
@@ -235,7 +248,15 @@ class PublishingServiceTests(TestCase):
 
     @patch("publishing.services.MetaClient.publish_instagram_media", return_value={"id": "ig-post-id"})
     @patch("publishing.services.MetaClient.create_instagram_media", return_value={"id": "ig-creation-id"})
-    def test_instagram_video_uses_video_media_kind(self, mock_create_media, _mock_publish_media):
+    @patch("publishing.services.MetaClient.wait_for_instagram_media_ready", return_value={"status_code": "FINISHED"})
+    @patch("publishing.services.ensure_public_media_fetchable")
+    def test_instagram_video_uses_video_media_kind(
+        self,
+        _mock_probe,
+        mock_wait,
+        mock_create_media,
+        _mock_publish_media,
+    ):
         post = ScheduledPost.objects.create(
             account=self.ig_account,
             platform=INSTAGRAM,
@@ -249,3 +270,57 @@ class PublishingServiceTests(TestCase):
         kwargs = mock_create_media.call_args.kwargs
         self.assertEqual(kwargs["media_kind"], "video")
         self.assertEqual(kwargs["media_url"], "https://example.com/a.mp4")
+        mock_wait.assert_called_once_with(creation_id="ig-creation-id", page_access_token="token")
+
+    @override_settings(PUBLIC_BASE_URL="https://public.example.com")
+    @patch("publishing.services.MetaClient.publish_instagram_media", return_value={"id": "ig-post-id"})
+    @patch("publishing.services.MetaClient.create_instagram_media", return_value={"id": "ig-creation-id"})
+    @patch("publishing.services.MetaClient.wait_for_instagram_media_ready", return_value={"status_code": "FINISHED"})
+    @patch("publishing.services.ensure_public_media_fetchable")
+    def test_instagram_local_png_is_optimized_before_publish(
+        self,
+        _mock_probe,
+        _mock_wait,
+        mock_create_media,
+        _mock_publish_media,
+    ):
+        from PIL import Image
+
+        image = Image.new("RGB", (1200, 1600), color=(250, 250, 250))
+        temp = default_storage.save("scheduled_uploads/test_local_instagram.png", ContentFile(b"placeholder"))
+        temp_path = default_storage.path(temp)
+        image.save(temp_path, format="PNG")
+        media_url = "https://public.example.com/media/scheduled_uploads/test_local_instagram.png"
+        post = ScheduledPost.objects.create(
+            account=self.ig_account,
+            platform=INSTAGRAM,
+            message="IG image",
+            media_url=media_url,
+            scheduled_for=timezone.now(),
+            status="processing",
+        )
+
+        try:
+            publish_scheduled_post(post)
+            kwargs = mock_create_media.call_args.kwargs
+            self.assertEqual(kwargs["media_kind"], "image")
+            self.assertTrue(kwargs["media_url"].endswith("_ig.jpg"))
+            post.refresh_from_db()
+            self.assertTrue(post.media_url.endswith("_ig.jpg"))
+        finally:
+            if default_storage.exists(temp):
+                default_storage.delete(temp)
+            derived = "scheduled_uploads/test_local_instagram_ig.jpg"
+            if default_storage.exists(derived):
+                default_storage.delete(derived)
+
+    def test_handle_response_classifies_meta_download_timeout_as_transient(self):
+        response = Response()
+        response.status_code = 400
+        response._content = (
+            b'{"error":{"message":"Timeout","code":-2,"error_subcode":2207003,'
+            b'"error_user_title":"Timeout","error_user_msg":"It takes too long to download the media."}}'
+        )
+
+        with self.assertRaises(MetaTransientError):
+            MetaClient()._handle_response(response)

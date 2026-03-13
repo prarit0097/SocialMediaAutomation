@@ -9,3 +9,4 @@ psycopg[binary]==3.2.6
 django-celery-beat==2.7.0
 gunicorn==23.0.0
 mcp==1.26.0
+Pillow==11.2.1

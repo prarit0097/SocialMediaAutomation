@@ -1,6 +1,7 @@
 import mimetypes
 import os
 import re
+from pathlib import Path
 
 from django.conf import settings
 from django.http import FileResponse, Http404, HttpResponse, HttpResponseNotAllowed
@@ -25,6 +26,7 @@ def serve_media(request, path: str):
     file_size = os.path.getsize(absolute_path)
     content_type, _ = mimetypes.guess_type(absolute_path)
     content_type = content_type or "application/octet-stream"
+    file_name = Path(absolute_path).name
     range_header = request.headers.get("Range", "").strip()
 
     if not range_header:
@@ -34,6 +36,8 @@ def serve_media(request, path: str):
             response = FileResponse(open(absolute_path, "rb"), content_type=content_type)
         response["Content-Length"] = str(file_size)
         response["Accept-Ranges"] = "bytes"
+        response["Cache-Control"] = "public, max-age=86400"
+        response["Content-Disposition"] = f'inline; filename="{file_name}"'
         return response
 
     match = RANGE_RE.match(range_header)
@@ -76,4 +80,6 @@ def serve_media(request, path: str):
     response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
     response["Content-Length"] = str(chunk_size)
     response["Accept-Ranges"] = "bytes"
+    response["Cache-Control"] = "public, max-age=86400"
+    response["Content-Disposition"] = f'inline; filename="{file_name}"'
     return response

@@ -1,6 +1,7 @@
 ﻿from urllib.parse import urlencode
 
 from datetime import timedelta
+import time
 
 import requests
 from django.conf import settings
@@ -180,6 +181,35 @@ class MetaClient:
                 "creation_id": creation_id,
             },
         )
+
+    def wait_for_instagram_media_ready(
+        self,
+        creation_id: str,
+        page_access_token: str,
+        timeout: int = 180,
+        poll_interval: int = 5,
+    ) -> dict:
+        started = time.monotonic()
+        latest_payload = {}
+        while time.monotonic() - started < timeout:
+            latest_payload = self._get(
+                f"/{creation_id}",
+                {
+                    "access_token": page_access_token,
+                    "fields": "status,status_code",
+                },
+            )
+            status_code = str(latest_payload.get("status_code") or "").upper()
+            status = str(latest_payload.get("status") or "").upper()
+            if status_code in {"FINISHED", "PUBLISHED"} or status in {"FINISHED", "PUBLISHED"}:
+                return latest_payload
+            if status_code in {"ERROR", "EXPIRED", "FAILED"} or status in {"ERROR", "EXPIRED", "FAILED"}:
+                raise MetaPermanentError(
+                    f"Instagram media processing failed before publish. status_code={status_code or 'unknown'}"
+                )
+            time.sleep(poll_interval)
+
+        raise MetaTransientError("Instagram media processing did not finish in time. Retry will try again.")
 
     def fetch_facebook_insights(self, page_id: str, page_access_token: str) -> list[dict]:
         metrics = [
@@ -589,6 +619,8 @@ class MetaClient:
             details.append(f"user_msg={user_msg}")
         if details:
             message = f"{message} ({', '.join(details)})"
+        if code == -2 or subcode == 2207003 or (user_title or "").lower() == "timeout":
+            raise MetaTransientError(message, status_code=response.status_code, payload=payload)
         if response.status_code >= 500 or response.status_code == 429:
             raise MetaTransientError(message, status_code=response.status_code, payload=payload)
 

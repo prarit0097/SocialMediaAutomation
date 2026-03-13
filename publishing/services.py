@@ -1,23 +1,19 @@
 import logging
-from urllib.parse import urlparse
 
 from core.constants import FACEBOOK
 from core.exceptions import MetaPermanentError
 from core.services.meta_client import MetaClient
+from publishing.media_utils import (
+    IMAGE_EXTENSIONS,
+    VIDEO_EXTENSIONS,
+    ensure_public_media_fetchable,
+    media_extension,
+    prepare_instagram_media_url,
+)
 
 logger = logging.getLogger("publishing")
 
-
-VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".m4v", ".avi"}
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
 TOKEN_INVALID_MARKERS = ("error validating access token", "code=190", "subcode=460")
-
-
-def _media_extension(media_url: str) -> str:
-    path = urlparse(media_url).path.lower()
-    if "." not in path:
-        return ""
-    return path[path.rfind(".") :]
 
 
 def is_invalid_token_error(value: str | Exception | None) -> bool:
@@ -39,7 +35,7 @@ def publish_scheduled_post(post):
 
     if post.platform == FACEBOOK:
         if post.media_url:
-            ext = _media_extension(post.media_url)
+            ext = media_extension(post.media_url)
             caption = (post.message or "").strip() or None
 
             if ext in VIDEO_EXTENSIONS:
@@ -85,7 +81,14 @@ def publish_scheduled_post(post):
         logger.info("facebook text publish response post id=%s response=%s", post.id, result)
         return result.get("id")
 
-    ext = _media_extension(post.media_url or "")
+    prepared_media_url = prepare_instagram_media_url(post.media_url or "")
+    if prepared_media_url != post.media_url:
+        post.media_url = prepared_media_url
+        post.save(update_fields=["media_url", "updated_at"])
+
+    ensure_public_media_fetchable(post.media_url or "")
+
+    ext = media_extension(post.media_url or "")
     media_kind = "video" if ext in VIDEO_EXTENSIONS else "image"
     if ext and media_kind == "image" and ext not in IMAGE_EXTENSIONS:
         raise MetaPermanentError(f"Unsupported Instagram media type: {ext}")
@@ -96,6 +99,10 @@ def publish_scheduled_post(post):
         media_url=post.media_url,
         caption=post.message or "",
         media_kind=media_kind,
+    )
+    client.wait_for_instagram_media_ready(
+        creation_id=creation.get("id"),
+        page_access_token=account.access_token,
     )
     publish_result = client.publish_instagram_media(
         ig_user_id=account.ig_user_id or account.page_id,
