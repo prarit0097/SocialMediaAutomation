@@ -110,6 +110,110 @@ def _normalize_kpi_rows(value: Any) -> list[dict[str, str]]:
     return rows
 
 
+def _to_number(value: Any) -> float | None:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        raw = value.strip().replace(",", "")
+        if not raw:
+            return None
+        try:
+            return float(raw)
+        except ValueError:
+            return None
+    return None
+
+
+def _format_number(value: float | None, decimals: int = 2) -> str:
+    if value is None:
+        return "not available"
+    rounded = round(float(value), decimals)
+    if abs(rounded - int(rounded)) < 1e-9:
+        return str(int(rounded))
+    return f"{rounded:.{decimals}f}".rstrip("0").rstrip(".")
+
+
+def _mentions_both_platforms(text: str) -> bool:
+    lowered = str(text or "").lower()
+    has_fb = ("facebook" in lowered) or bool(re.search(r"\bfb\b", lowered))
+    has_ig = ("instagram" in lowered) or bool(re.search(r"\big\b", lowered))
+    return has_fb and has_ig
+
+
+def _default_posting_strategy(payload: dict[str, Any]) -> dict[str, str]:
+    cadence = payload.get("posting_cadence") if isinstance(payload.get("posting_cadence"), dict) else {}
+    perf = payload.get("performance_last_7d") if isinstance(payload.get("performance_last_7d"), dict) else {}
+
+    fb_posts_7 = _to_number(cadence.get("facebook_posts_last_7d"))
+    ig_posts_7 = _to_number(cadence.get("instagram_posts_last_7d"))
+    fb_avg_7 = _to_number(cadence.get("facebook_avg_posts_per_day_last_7d"))
+    ig_avg_7 = _to_number(cadence.get("instagram_avg_posts_per_day_last_7d"))
+    total_avg_7 = _to_number(cadence.get("avg_posts_per_day_last_7d"))
+
+    if fb_avg_7 is None and fb_posts_7 is not None:
+        fb_avg_7 = round(fb_posts_7 / 7.0, 2)
+    if ig_avg_7 is None and ig_posts_7 is not None:
+        ig_avg_7 = round(ig_posts_7 / 7.0, 2)
+
+    if fb_avg_7 is None and ig_avg_7 is None and total_avg_7 is not None:
+        fb_avg_7 = round(total_avg_7 / 2.0, 2)
+        ig_avg_7 = round(total_avg_7 / 2.0, 2)
+
+    if fb_posts_7 is None and fb_avg_7 is not None:
+        fb_posts_7 = round(fb_avg_7 * 7, 2)
+    if ig_posts_7 is None and ig_avg_7 is not None:
+        ig_posts_7 = round(ig_avg_7 * 7, 2)
+
+    if fb_avg_7 is None and ig_avg_7 is None:
+        current = "Facebook: not available | Instagram: not available"
+        recommended = (
+            "Facebook: 1 post/day (~7 posts/7d). "
+            "Instagram: 1 post/day (~7 posts/7d) with at least 4 reels + 3 static/carousel posts."
+        )
+        reasoning = (
+            "Current platform-wise cadence is not available in the snapshot, so a balanced baseline is recommended. "
+            "This gives enough weekly volume to test hooks, creatives, and posting slots on both platforms."
+        )
+        return {
+            "current_posting": current,
+            "recommended_posting": recommended,
+            "reasoning": reasoning,
+        }
+
+    fb_target_avg = max(1.0, round((fb_avg_7 or 0.0) + 0.3, 2))
+    ig_target_avg = max(1.0, round((ig_avg_7 or 0.0) + 0.4, 2))
+    fb_target_week = max(7, int(round(fb_target_avg * 7)))
+    ig_target_week = max(7, int(round(ig_target_avg * 7)))
+
+    current = (
+        f"Facebook: {_format_number(fb_posts_7, 0)} posts in last 7 days "
+        f"(avg {_format_number(fb_avg_7)}/day) | "
+        f"Instagram: {_format_number(ig_posts_7, 0)} posts in last 7 days "
+        f"(avg {_format_number(ig_avg_7)}/day)"
+    )
+    recommended = (
+        f"Facebook: target ~{_format_number(fb_target_avg)}/day ({fb_target_week} posts/7d) "
+        "with consistent feed posts and at least 2 short videos/week. "
+        f"Instagram: target ~{_format_number(ig_target_avg)}/day ({ig_target_week} posts/7d) "
+        "with reels-first mix (minimum 4-5 reels/week) plus carousel/static support posts."
+    )
+    reasoning = (
+        "A moderate platform-wise cadence increase should improve reach distribution and give more creative tests per week. "
+        f"Last 7-day performance context: views={_format_number(_to_number(perf.get('views')), 0)}, "
+        f"likes={_format_number(_to_number(perf.get('likes')), 0)}, "
+        f"comments={_format_number(_to_number(perf.get('comments')), 0)}, "
+        f"shares={_format_number(_to_number(perf.get('shares')), 0)}. "
+        "Separate FB and IG targets reduce under-posting risk on one platform and make weekly optimization measurable."
+    )
+    return {
+        "current_posting": current,
+        "recommended_posting": recommended,
+        "reasoning": reasoning,
+    }
+
+
 def generate_profile_ai_insights(payload: dict[str, Any], focus: str | None = None) -> dict[str, Any]:
     api_key = (settings.OPENAI_API_KEY or "").strip()
     if not api_key:
@@ -130,6 +234,7 @@ def generate_profile_ai_insights(payload: dict[str, Any], focus: str | None = No
         "4) Recommendations must connect to observed data patterns (cadence, engagement, post-level outcomes, platform mix).\n"
         "5) Keep language concise, specific, and business-usable; avoid generic fluff.\n"
         "6) Return strict JSON only, no markdown, no code fences, no explanations outside JSON.\n"
+        "7) In posting_strategy, never give a blended cadence; always split Facebook and Instagram separately.\n"
         "\n"
         "Quality bar:\n"
         "- Give concrete, operator-level guidance for improving views, reach, likes, comments, shares, saves, interactions, and reel/video plays.\n"
@@ -164,9 +269,13 @@ def generate_profile_ai_insights(payload: dict[str, Any], focus: str | None = No
         "- executive_summary: 4-7 lines, include strongest issue and top growth lever.\n"
         "- pros/cons/risks/opportunities: each ideally 4-8 clear bullets.\n"
         "- posting_strategy:\n"
-        "  - current_posting: infer cadence from input posting stats; if unavailable, write 'not available'.\n"
-        "  - recommended_posting: explicit per-day or per-week plan for FB and IG.\n"
-        "  - reasoning: explain why this cadence should improve distribution/engagement.\n"
+        "  - current_posting: MUST report both platforms separately using last-7-days data.\n"
+        "    Required format: 'Facebook: <posts_7d> posts in last 7 days (avg <x>/day) | Instagram: <posts_7d> posts in last 7 days (avg <y>/day)'.\n"
+        "    Use input keys posting_cadence.facebook_posts_last_7d, posting_cadence.instagram_posts_last_7d, posting_cadence.facebook_avg_posts_per_day_last_7d, posting_cadence.instagram_avg_posts_per_day_last_7d.\n"
+        "    If missing, write 'not available' for that platform; do not merge both platforms into one number.\n"
+        "  - recommended_posting: MUST give separate FB and IG posting plan (posts/day and posts/7d), with short content-mix guidance.\n"
+        "  - reasoning: MUST explain platform-wise why recommendation should work, referencing observed metrics/cadence from input.\n"
+        "    Include at least 3 concrete data anchors from provided JSON (for example views, likes, comments, shares, saves, cadence gap).\n"
         "- action_plan_7d: 5-10 prioritized actions; each action should be concrete and measurable.\n"
         "- kpi_growth_plan: include at least these metrics when available: views, reach, likes, comments, shares, saves, interactions, post cadence.\n"
         "  For each metric: give current (or 'not available'), realistic 7-day target, and method.\n"
@@ -217,6 +326,22 @@ def generate_profile_ai_insights(payload: dict[str, Any], focus: str | None = No
         raise AIInsightsError("OpenAI response format was unexpected.") from exc
 
     parsed = _json_from_text(content)
+    fallback_posting_strategy = _default_posting_strategy(payload)
+    parsed_posting_strategy = parsed.get("posting_strategy") if isinstance(parsed.get("posting_strategy"), dict) else {}
+
+    current_posting = str(parsed_posting_strategy.get("current_posting") or "").strip()
+    recommended_posting = str(parsed_posting_strategy.get("recommended_posting") or "").strip()
+    reasoning = str(parsed_posting_strategy.get("reasoning") or "").strip()
+
+    if not current_posting or not _mentions_both_platforms(current_posting):
+        current_posting = fallback_posting_strategy["current_posting"]
+    if not recommended_posting or not _mentions_both_platforms(recommended_posting):
+        recommended_posting = fallback_posting_strategy["recommended_posting"]
+    if not reasoning:
+        reasoning = fallback_posting_strategy["reasoning"]
+    elif not _mentions_both_platforms(reasoning):
+        reasoning = f"{reasoning} {fallback_posting_strategy['reasoning']}".strip()
+
     normalized = {
         "executive_summary": str(parsed.get("executive_summary") or "").strip(),
         "pros": _normalize_list(parsed.get("pros")),
@@ -224,9 +349,9 @@ def generate_profile_ai_insights(payload: dict[str, Any], focus: str | None = No
         "risks": _normalize_list(parsed.get("risks")),
         "opportunities": _normalize_list(parsed.get("opportunities")),
         "posting_strategy": {
-            "current_posting": str((parsed.get("posting_strategy") or {}).get("current_posting") or "").strip(),
-            "recommended_posting": str((parsed.get("posting_strategy") or {}).get("recommended_posting") or "").strip(),
-            "reasoning": str((parsed.get("posting_strategy") or {}).get("reasoning") or "").strip(),
+            "current_posting": current_posting,
+            "recommended_posting": recommended_posting,
+            "reasoning": reasoning,
         },
         "action_plan_7d": _normalize_plan_rows(parsed.get("action_plan_7d")),
         "kpi_growth_plan": _normalize_kpi_rows(parsed.get("kpi_growth_plan")),

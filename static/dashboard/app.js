@@ -1341,7 +1341,9 @@
       `Posts 30d: ${cadence.posts_last_30d ?? "-"}`,
       `Avg/day (7d): ${cadence.avg_posts_per_day_last_7d ?? "-"}`,
       `FB posts 7d: ${cadence.facebook_posts_last_7d ?? "-"}`,
+      `FB avg/day (7d): ${cadence.facebook_avg_posts_per_day_last_7d ?? "-"}`,
       `IG posts 7d: ${cadence.instagram_posts_last_7d ?? "-"}`,
+      `IG avg/day (7d): ${cadence.instagram_avg_posts_per_day_last_7d ?? "-"}`,
     ].join(" | ");
 
     const perfText = [

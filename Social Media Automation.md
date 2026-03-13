@@ -110,7 +110,7 @@ What it shows:
 - AI executive summary for selected profile
 - strengths (pros) and weaknesses (cons)
 - risks and improvement opportunities
-- recommended posting strategy (current vs suggested cadence)
+- recommended posting strategy (current vs suggested cadence) with mandatory separate FB/IG current cadence using last-7-days posts and avg/day
 - 7-day action plan and KPI growth targets
 - content ideas aligned to current profile data
 
@@ -120,6 +120,7 @@ What it supports:
 - optional operator goal/focus prompt
 - OpenAI-backed JSON report generation from latest stored insight snapshot + recent published posts
 - stronger prompt framework with strict metric-grounded reasoning, platform-specific diagnosis, and 7-day execution planning
+- fallback normalization for posting strategy so output always contains platform-separated FB/IG current posting, recommended cadence, and reasoning
 
 Important runtime meaning:
 - AI advice is generated from available snapshot/post data; missing metrics are marked as unavailable

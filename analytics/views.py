@@ -347,6 +347,8 @@ def _ai_context_payload(data: dict, focus: str):
     ig_posts_7 = _post_count(posts, days=7, platform="instagram")
     total_posts_7 = _post_count(posts, days=7)
     total_posts_30 = _post_count(posts, days=30)
+    fb_avg_posts_7 = round(fb_posts_7 / 7, 2)
+    ig_avg_posts_7 = round(ig_posts_7 / 7, 2)
 
     comparison_rows = data.get("comparison_rows") if isinstance(data.get("comparison_rows"), list) else []
     condensed_comparison = comparison_rows[:15]
@@ -371,6 +373,8 @@ def _ai_context_payload(data: dict, focus: str):
             "avg_posts_per_day_last_30d": round(total_posts_30 / 30, 2),
             "facebook_posts_last_7d": fb_posts_7,
             "instagram_posts_last_7d": ig_posts_7,
+            "facebook_avg_posts_per_day_last_7d": fb_avg_posts_7,
+            "instagram_avg_posts_per_day_last_7d": ig_avg_posts_7,
         },
         "performance_last_7d": {
             "views": _post_metric_total(posts, "views", days=7),
