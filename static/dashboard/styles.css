@@ -453,6 +453,39 @@ textarea {
   color: var(--danger);
 }
 
+.meta-howto-panel {
+  align-items: flex-start;
+}
+
+.meta-howto-list {
+  margin: 10px 0 8px;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+}
+
+.meta-howto-list li {
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.meta-howto-list a {
+  color: var(--navy);
+  font-weight: 800;
+}
+
+.meta-howto-list a:hover {
+  color: var(--navy-strong);
+}
+
+.meta-check-note {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
 .hero-main,
 .hero-rail {
   display: flex;

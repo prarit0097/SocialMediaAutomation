@@ -69,6 +69,19 @@
       <strong>OAuth + token operations</strong>
       <p>New values are used for Meta connect flow and token validation checks after save.</p>
     </article>
+    <article class="hero-stat meta-howto-panel">
+      <span class="hero-stat-label">How To Get Values</span>
+      <strong>Find META_APP_ID, META_APP_SECRET, META_REDIRECT_URI</strong>
+      <ol class="meta-howto-list">
+        <li>Open <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener noreferrer">developers.facebook.com/apps</a> and create/select your app.</li>
+        <li>Choose <strong>Business</strong> use-case and add Facebook Login if not already added.</li>
+        <li>In <strong>App Settings -> Basic</strong>, copy <strong>App ID</strong> and paste it as <code>META_APP_ID</code>.</li>
+        <li>Click <strong>Show</strong> for App Secret and paste it as <code>META_APP_SECRET</code>.</li>
+        <li>In Facebook Login settings, set <strong>Valid OAuth Redirect URI</strong> exactly as your callback URL.</li>
+        <li>Paste same callback URL here as <code>META_REDIRECT_URI</code> (example: <code>https://your-domain/auth/meta/callback</code>).</li>
+      </ol>
+      <p class="meta-check-note">After save, use <strong>Connect Facebook + Instagram</strong> on Accounts page to verify credentials and sync pages.</p>
+    </article>
   </aside>
 </section>
 
