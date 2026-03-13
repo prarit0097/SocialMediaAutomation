@@ -1,41 +1,45 @@
 # Social Media Automation Project Guide
 
 ## Project Purpose
-This project is an internal Django-based web app for managing Meta assets from one workspace. It connects Facebook Pages and linked Instagram Business accounts, schedules posts, publishes them automatically, and stores insights snapshots for reporting and future analytics.
+Social Media Automation is an internal Django-based Meta operations app. It connects Facebook Pages and linked Instagram Business accounts, schedules and publishes posts, stores insights snapshots, and keeps enough historical data for future analytics and AI-driven recommendations.
 
-Anyone reading this file should be able to understand what the app does without reading the full codebase.
+This file is the high-level source of truth for what the project does, how the main workflows behave, and what operational rules currently apply.
 
-## Core Use Cases
-- Connect Facebook Pages and linked Instagram accounts through Meta OAuth.
-- Store connected account details and page access tokens securely.
-- Schedule Facebook posts, Instagram posts, or combined FB + IG publishing.
+## Core Outcomes
+- Connect and refresh Facebook Pages and linked Instagram accounts through Meta OAuth.
+- Store connected account metadata and encrypted page access tokens.
+- Schedule Facebook, Instagram, or combined FB + IG posts.
 - Publish due posts automatically through Celery workers.
-- View account-level insights and recent published post performance.
-- Refresh insights on demand from the UI.
-- Run a daily heavy insights collection job so cached analytics stay updated.
+- Store cached insights snapshots for operator review and future analytics.
+- Run a daily heavy insights collection job so dashboards rely on stored data instead of repeated live API pulls.
+- Expose project-aware MCP servers for file, browser, queue, and analytics operations.
 
 ## Main User Areas
 
-### 1. Accounts
-The Accounts page is used to inspect connected assets and confirm whether pages and IG profiles are available inside the app.
+### Accounts
+The Accounts page is the operator view for connected Meta assets.
 
 What it shows:
-- merged FB / IG profile view where possible
-- account IDs used by scheduling and insights
+- merged FB / IG profile rows where a link exists
+- account IDs used by scheduler and insights
 - Facebook Page ID and Instagram user ID
 - connected timestamp
 - latest detected posting time (`last_post_at`)
-- stale posting indicator if no recent post was detected in the last 24 hours
-- stale sync indicator if an older stored account was not refreshed in the latest Meta reconnect
+- stale posting indicator when no recent post was detected in the last 24 hours
+- stale sync indicator when a stored account row was not refreshed in the latest Meta reconnect
 
 What it does:
-- starts Meta connect flow
-- refreshes connected account list
-- shows sync status
-- shows Meta page catalog / connectability state
+- starts the Meta connect flow
+- refreshes the connected account list
+- shows current sync status and Meta page catalog data
+- blocks scheduling from stale account rows until the page is refreshed in a new reconnect
 
-### 2. Scheduler
-The Scheduler page creates scheduled publishing jobs.
+Important runtime meaning:
+- a green Health indicator does not mean every historical stored account row is usable
+- scheduling is only allowed for account rows refreshed in the latest reconnect window
+
+### Scheduler
+The Scheduler page creates publishing jobs and monitors scheduled, published, and failed rows.
 
 Supported publishing modes:
 - Facebook only
@@ -44,15 +48,19 @@ Supported publishing modes:
 
 What happens:
 - user enters account, platform, content, media, and schedule time
-- app blocks scheduling on stale accounts that were not refreshed in the latest Meta reconnect
+- app validates account freshness and rejects stale account rows
 - post is stored in UTC internally
 - Celery beat checks every minute for due posts
 - Celery worker publishes due jobs to Meta Graph
-- failed jobs can be retried
-- invalid Meta token failures are stored with reconnect guidance so the operator knows to reconnect the account before retrying
+- failed jobs can be retried if the account row is current
+- invalid Meta token failures are stored with reconnect guidance so the operator knows to reconnect before retrying
 
-### 3. Insights
-The Insights page is used to inspect performance for a connected account.
+Common failure pattern:
+- if a page was not refreshed in the latest reconnect, old stored tokens can still exist in the database
+- the app now blocks scheduling and retry on those stale rows instead of allowing a later `190/460` publish failure
+
+### Insights
+The Insights page is the reporting view for account-level Meta data and recent post performance.
 
 What it shows:
 - total followers
@@ -61,26 +69,33 @@ What it shows:
 - published posts table
 - FB vs IG comparison table
 - top-nav Meta token health indicator with green/red blinking status and reconnect guidance
-- warnings/errors for partial or upstream failures
+- warnings for partial upstream failures
 
-It supports:
+What it supports:
 - fetch cached/latest snapshot
 - force refresh from Meta
 - combined FB + IG view for linked assets
-- recent post sorting by latest publish time
+- newest-first published post sorting by `published_at`
+- full-width published posts section with comparison table below it
+
+Important runtime meaning:
+- UI primarily uses stored snapshots
+- force refresh is optimized to avoid excessively slow page loads
+- some FB comparison rows use best-available Meta equivalents because exact IG-style metrics do not always exist on Facebook
 
 ## Background Automation
 
 ### Scheduled Publishing Automation
 - task: `publishing.tasks.process_due_posts`
 - frequency: every minute
-- purpose: move due scheduled posts into publishing tasks
+- purpose: move due scheduled posts into publish tasks
 
 ### Daily Heavy Insights Automation
 - task: `analytics.tasks.queue_daily_heavy_insight_refresh`
 - default schedule: every day at `05:00 AM`
-- timezone source: `CELERY_TIMEZONE` (currently intended for `Asia/Kolkata`)
-- purpose: fetch the heaviest practical insights snapshot for every connected profile and store it for UI + future analytics use
+- timezone source: `CELERY_TIMEZONE`
+- intended timezone: `Asia/Kolkata`
+- purpose: fetch the heaviest practical insights snapshot for every connected profile and store it for UI and future analytics
 
 Heavy insights collection currently stores:
 - account-level insights returned by Meta
@@ -88,7 +103,7 @@ Heavy insights collection currently stores:
 - post-level stats for a configured subset of recent posts
 - snapshot metadata describing collection mode and collection date
 
-This is important because future AI analysis can use these stored snapshots instead of depending only on live API calls.
+This matters because future AI analysis can use stored snapshots instead of depending only on live API calls.
 
 ## Main Data Stored
 
@@ -103,6 +118,10 @@ Stores:
 - encrypted page access token
 - token expiry if available
 - created and updated timestamps
+
+Operational meaning:
+- `updated_at` reflects when the stored connected account row was last refreshed
+- this is used to determine whether a row belongs to the latest reconnect window
 
 ### Scheduled Posts
 Model: `publishing.ScheduledPost`
@@ -129,32 +148,34 @@ Stores:
 - optional metadata for collection mode
 - snapshot fetch time
 
-## How Data Flows
+## Workflow Summary
 
 ### Connect Flow
 1. User starts Meta OAuth.
 2. Meta returns a code.
-3. App exchanges code for token.
+3. App exchanges the code for a token.
 4. App fetches managed pages.
-5. App creates or updates connected FB and IG accounts.
+5. App creates or updates connected FB and IG account rows.
+6. App records the latest reconnect time for stale-account detection.
 
 ### Publish Flow
-1. User creates scheduled post.
-2. Post is saved with `pending` status.
-3. Beat queues due posts.
-4. Worker publishes to Meta.
-5. Post becomes `published` or `failed`.
+1. User creates a scheduled post.
+2. App validates account freshness and platform rules.
+3. Post is saved with `pending` status.
+4. Beat queues due posts.
+5. Worker publishes to Meta.
+6. Post becomes `published` or `failed`.
 
 ### Insights Flow
 1. User opens insights for an account.
-2. App returns latest stored snapshot if available.
+2. App returns the latest stored snapshot if available.
 3. On force refresh, app fetches fresh Meta data.
 4. App stores a new snapshot.
-5. UI renders summary cards, published posts, and comparison table.
+5. UI renders summary cards, published posts, and comparison data.
 
 ## Current Technical Stack
 - Django
-- Django templates + JavaScript frontend
+- Django templates with JavaScript frontend
 - PostgreSQL or SQLite for storage
 - Redis
 - Celery worker
@@ -164,11 +185,11 @@ Stores:
 - Codex MCP servers for local operations and future agent tooling
 
 ## Codex MCP Tooling
-This project now includes four local MCP servers under `mcp_servers/` so Codex or future agents can inspect and operate the workspace more directly.
+This project includes local MCP servers under `mcp_servers/` so Codex or future agents can inspect and operate the workspace more directly.
 
 ### Filesystem MCP
 - reads and updates project files
-- can inspect temporary local log files used during local runs
+- inspects local logs and generated artifacts
 
 ### Browser / Playwright MCP
 - opens the dashboard in a real browser
@@ -186,23 +207,24 @@ This project now includes four local MCP servers under `mcp_servers/` so Codex o
 - detects posting gaps
 - builds cached FB vs IG comparison data from stored snapshots
 
-## Current Operational Assumptions
-- Meta app permissions must be valid.
-- Instagram publishing requires public media URLs.
-- Public HTTPS base URL is required for Meta-facing media/callback workflows.
-- Celery worker and beat must be running for scheduled publishing and daily heavy insights automation.
+## Operational Requirements
+- Meta app permissions must remain valid.
+- Instagram publishing requires public HTTPS media URLs.
+- `PUBLIC_BASE_URL` must point to a reachable public HTTPS base.
+- Celery worker and Celery beat must be running for scheduled publishing and daily heavy insights automation.
+- reconnecting a subset of pages does not automatically refresh every older stored account row.
 
-## What This Project Is Preparing For
-This project is not only a scheduler and dashboard. It is also becoming a data collection layer for future analytics tooling.
+## Future Direction
+This project is not only a scheduler and dashboard. It is becoming a stored-data layer for future analytics tooling.
 
-Planned/expected future direction:
+Planned direction:
 - AI agent reads stored insight snapshots
 - AI agent analyzes trends across FB and IG
 - AI agent suggests content and posting improvements
-- UI can rely more on stored snapshots and less on expensive live pulls
-- MCP-based tools can give agents direct structured access to cached analytics, queue health, and browser validation workflows
+- UI relies more on stored snapshots and less on expensive live pulls
+- MCP-based tools give agents structured access to cached analytics, queue health, and browser validation workflows
 
-## Rule For Maintenance
+## Maintenance Rule
 This file must be updated whenever project behavior, workflow, automation, stored data, or important UI meaning changes.
 
-If someone asks, “What does this project do?”, this file should be the first source of truth.
+If someone asks, "What does this project do?", this file should be the first source of truth.
