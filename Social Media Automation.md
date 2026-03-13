@@ -37,6 +37,7 @@ What it does:
 Important runtime meaning:
 - a green Health indicator does not mean every historical stored account row is usable
 - scheduling is only allowed for account rows refreshed in the latest reconnect window
+- if older connected rows still exist outside the latest reconnect window, Health turns red and asks for reconnect
 
 ### Scheduler
 The Scheduler page creates publishing jobs and monitors scheduled, published, and failed rows.

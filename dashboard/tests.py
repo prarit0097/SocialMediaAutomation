@@ -1,4 +1,5 @@
 from unittest.mock import patch
+from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -140,3 +141,33 @@ class DashboardAuthTests(TestCase):
         self.assertEqual(body["level"], "ok")
         self.assertEqual(body["scope"], "recent_sync")
         self.assertIn("rate limit", body["summary"].lower())
+
+    @patch("dashboard.views.MetaClient.debug_token")
+    def test_token_health_status_reports_red_when_stale_accounts_exist(self, mock_debug_token):
+        user_model = get_user_model()
+        user = user_model.objects.create_user(username="staleadmin", password="pass12345")
+        self.client.login(username="staleadmin", password="pass12345")
+        fresh = ConnectedAccount.objects.create(
+            platform="facebook",
+            page_id="fb-fresh",
+            page_name="Fresh FB",
+            access_token="fresh-token",
+        )
+        stale = ConnectedAccount.objects.create(
+            platform="facebook",
+            page_id="fb-stale",
+            page_name="Stale FB",
+            access_token="stale-token",
+        )
+        ConnectedAccount.objects.filter(id=fresh.id).update(updated_at=timezone.now())
+        ConnectedAccount.objects.filter(id=stale.id).update(updated_at=timezone.now() - timedelta(hours=2))
+        mock_debug_token.return_value = {"data": {"is_valid": True}}
+
+        response = self.client.get("/dashboard/token-health-status/")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertFalse(body["ok"])
+        self.assertEqual(body["level"], "bad")
+        self.assertTrue(body["stale_accounts"])
+        self.assertEqual(body["stale_accounts"][0]["page_name"], "Stale FB")

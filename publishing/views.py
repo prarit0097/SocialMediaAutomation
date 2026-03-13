@@ -98,6 +98,18 @@ def _current_token_validity(account: ConnectedAccount) -> bool | None:
     return bool(data.get("is_valid"))
 
 
+def _ensure_account_token_is_valid(account: ConnectedAccount):
+    token_valid = _current_token_validity(account)
+    if token_valid is False:
+        return _bad_request(
+            token_reconnect_message(
+                account,
+                "Meta token validation failed before scheduling. Stored page token is no longer valid.",
+            )
+        )
+    return None
+
+
 @require_POST
 @login_required
 def schedule_post(request: HttpRequest) -> JsonResponse:
@@ -139,6 +151,9 @@ def schedule_post(request: HttpRequest) -> JsonResponse:
     stale_response = _ensure_account_is_currently_synced(request, account)
     if stale_response:
         return stale_response
+    invalid_token_response = _ensure_account_token_is_valid(account)
+    if invalid_token_response:
+        return invalid_token_response
 
     dt = parse_datetime(scheduled_for)
     if not isinstance(dt, datetime):
@@ -156,6 +171,9 @@ def schedule_post(request: HttpRequest) -> JsonResponse:
             stale_response = _ensure_account_is_currently_synced(request, target)
             if stale_response:
                 return stale_response
+            invalid_token_response = _ensure_account_token_is_valid(target)
+            if invalid_token_response:
+                return invalid_token_response
 
         targets = [
             (fb_account, FACEBOOK),

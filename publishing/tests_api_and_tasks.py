@@ -39,7 +39,8 @@ class PublishingApiTests(TestCase):
             access_token="token",
         )
 
-    def test_schedule_post_success(self):
+    @patch("publishing.views.MetaClient.debug_token", return_value={"data": {"is_valid": True}})
+    def test_schedule_post_success(self, _mock_debug_token):
         response = self.client.post(
             reverse("schedule_post"),
             data={
@@ -68,7 +69,8 @@ class PublishingApiTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["error"], "account_id does not belong to selected platform")
 
-    def test_schedule_post_both_creates_facebook_and_instagram_jobs(self):
+    @patch("publishing.views.MetaClient.debug_token", return_value={"data": {"is_valid": True}})
+    def test_schedule_post_both_creates_facebook_and_instagram_jobs(self, _mock_debug_token):
         response = self.client.post(
             reverse("schedule_post"),
             data={
@@ -108,6 +110,25 @@ class PublishingApiTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("not refreshed in the latest Meta reconnect", response.json()["error"])
+
+    @patch("publishing.views.MetaClient.debug_token")
+    def test_schedule_post_rejects_invalid_token_before_queueing(self, mock_debug_token):
+        mock_debug_token.return_value = {"data": {"is_valid": False}}
+
+        response = self.client.post(
+            reverse("schedule_post"),
+            data={
+                "account_id": self.account.id,
+                "platform": FACEBOOK,
+                "message": "Hello",
+                "scheduled_for": (timezone.now() + timedelta(minutes=10)).isoformat(),
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Reconnect the profile from Accounts", response.json()["error"])
+        self.assertEqual(ScheduledPost.objects.count(), 0)
 
     @patch("publishing.views.MetaClient.debug_token")
     def test_retry_failed_post_rejects_invalid_token_until_reconnected(self, mock_debug_token):

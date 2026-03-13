@@ -11,6 +11,7 @@ from django.utils import timezone
 from core.exceptions import MetaAPIError
 from core.services.meta_client import MetaClient
 from integrations.models import ConnectedAccount
+from integrations.sync_state import SYNC_FRESHNESS_WINDOW, get_recent_sync_time
 
 
 def _normalize_base_url(value: str) -> str:
@@ -71,17 +72,21 @@ def _account_label(account: ConnectedAccount) -> str:
 
 
 def _sync_scoped_accounts(user) -> tuple[list[ConnectedAccount], str]:
-    sync_data = cache.get(f"meta_last_sync:{user.id}") if getattr(user, "id", None) else None
-    synced_at_raw = (sync_data or {}).get("synced_at")
-    if synced_at_raw:
-        synced_at = timezone.datetime.fromisoformat(str(synced_at_raw).replace("Z", "+00:00"))
-        if timezone.is_naive(synced_at):
-            synced_at = timezone.make_aware(synced_at, timezone=timezone.utc)
-        window_start = synced_at - timedelta(minutes=10)
+    recent_sync_time = get_recent_sync_time(getattr(user, "id", None))
+    if recent_sync_time:
+        window_start = recent_sync_time - SYNC_FRESHNESS_WINDOW
         scoped = list(ConnectedAccount.objects.exclude(access_token="").filter(updated_at__gte=window_start).order_by("id"))
         if scoped:
             return scoped, "recent_sync"
     return list(ConnectedAccount.objects.exclude(access_token="").order_by("id")), "all_connected"
+
+
+def _stale_connected_accounts(accounts: list[ConnectedAccount], user) -> list[ConnectedAccount]:
+    recent_sync_time = get_recent_sync_time(getattr(user, "id", None))
+    if not recent_sync_time:
+        return []
+    window_start = recent_sync_time - SYNC_FRESHNESS_WINDOW
+    return [account for account in accounts if account.updated_at < window_start]
 
 
 def _token_health_payload(user):
@@ -114,6 +119,10 @@ def _token_health_payload(user):
     client = MetaClient()
     invalid_accounts: list[dict] = []
     validation_error = None
+    stale_accounts = _stale_connected_accounts(
+        list(ConnectedAccount.objects.exclude(access_token="").order_by("id")),
+        user,
+    )
 
     for token, grouped_accounts in token_groups.items():
         try:
@@ -158,6 +167,32 @@ def _token_health_payload(user):
             "checked_tokens": len(token_groups),
             "scope": scope,
             "invalid_accounts": invalid_accounts[:6],
+            "stale_accounts": [],
+            "validation_error": validation_error,
+        }
+    elif stale_accounts:
+        payload = {
+            "ok": False,
+            "level": "bad",
+            "label": "Needs reconnect",
+            "summary": "Some connected profiles were not refreshed in the latest Meta reconnect.",
+            "reason": (
+                f"{len(stale_accounts)} stored account row(s) are older than the latest reconnect window. "
+                "Scheduling from those rows can fail until they are refreshed."
+            ),
+            "next_steps": [
+                "Open Accounts and click Connect Facebook + Instagram.",
+                "Reconnect the missing profiles so fresh page tokens are stored.",
+                "Click Refresh List and use the current synced rows for scheduling.",
+            ],
+            "checked_accounts": len(accounts),
+            "checked_tokens": len(token_groups),
+            "scope": scope,
+            "invalid_accounts": [],
+            "stale_accounts": [
+                {"account_id": account.id, "page_name": account.page_name, "platform": account.platform}
+                for account in stale_accounts[:6]
+            ],
             "validation_error": validation_error,
         }
     elif is_rate_limited:
@@ -175,6 +210,7 @@ def _token_health_payload(user):
             "checked_tokens": len(token_groups),
             "scope": scope,
             "invalid_accounts": [],
+            "stale_accounts": [],
             "validation_error": validation_error,
         }
     elif not validation_error:
@@ -195,6 +231,7 @@ def _token_health_payload(user):
             "checked_tokens": len(token_groups),
             "scope": scope,
             "invalid_accounts": [],
+            "stale_accounts": [],
             "validation_error": None,
         }
     else:
@@ -214,6 +251,7 @@ def _token_health_payload(user):
             "checked_tokens": len(token_groups),
             "scope": scope,
             "invalid_accounts": [],
+            "stale_accounts": [],
             "validation_error": validation_error,
         }
 
