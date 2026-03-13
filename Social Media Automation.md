@@ -25,6 +25,7 @@ What it shows:
 - Meta App Configuration form for `META_APP_ID`, `META_APP_SECRET`, and `META_REDIRECT_URI`
 - masked secret state so operators can confirm whether a secret is already configured
 - in-page step-by-step guide for new users to find App ID, App Secret, and OAuth Redirect URI from Meta Developer console
+- beginner-friendly setup checklist covering: use-case selection, customize use-case, API/Login setup, required scopes, and FB+IG asset linking
 - quick actions to Accounts, Scheduler, Insights, and AI Insights
 
 What it does:

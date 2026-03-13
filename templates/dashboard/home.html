@@ -73,13 +73,34 @@
       <span class="hero-stat-label">How To Get Values</span>
       <strong>Find META_APP_ID, META_APP_SECRET, META_REDIRECT_URI</strong>
       <ol class="meta-howto-list">
-        <li>Open <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener noreferrer">developers.facebook.com/apps</a> and create/select your app.</li>
-        <li>Choose <strong>Business</strong> use-case and add Facebook Login if not already added.</li>
-        <li>In <strong>App Settings -> Basic</strong>, copy <strong>App ID</strong> and paste it as <code>META_APP_ID</code>.</li>
-        <li>Click <strong>Show</strong> for App Secret and paste it as <code>META_APP_SECRET</code>.</li>
-        <li>In Facebook Login settings, set <strong>Valid OAuth Redirect URI</strong> exactly as your callback URL.</li>
-        <li>Paste same callback URL here as <code>META_REDIRECT_URI</code> (example: <code>https://your-domain/auth/meta/callback</code>).</li>
+        <li><strong>Step 1:</strong> Go to <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener noreferrer">developers.facebook.com/apps</a> and click <strong>Create App</strong>.</li>
+        <li><strong>Step 2 (Use case):</strong> Select <strong>Business</strong>. This app works for Facebook Pages + Instagram Business.</li>
+        <li><strong>Step 3 (Customize use case):</strong> If Meta asks to customize, keep options related to <strong>Facebook Login</strong>, <strong>Pages access</strong>, <strong>Instagram publishing</strong>, and <strong>Insights</strong>.</li>
+        <li><strong>Step 4 (API setup with login):</strong> Add/enable <strong>Facebook Login</strong>. In its settings, add your callback URL in <strong>Valid OAuth Redirect URIs</strong>.</li>
+        <li><strong>Step 5 (Get App ID):</strong> Open <strong>App Settings -> Basic</strong>, copy <strong>App ID</strong>, paste into <code>META_APP_ID</code>.</li>
+        <li><strong>Step 6 (Get App Secret):</strong> In same screen click <strong>Show</strong> for App Secret, paste into <code>META_APP_SECRET</code>.</li>
+        <li><strong>Step 7 (Set Redirect URI):</strong> Use exact value like <code>https://your-domain/auth/meta/callback</code> for both Meta Login settings and <code>META_REDIRECT_URI</code>.</li>
+        <li><strong>Step 8 (FB + IG linking):</strong> Your Instagram must be <strong>Professional</strong> and linked to a Facebook Page. Page role should be admin/editor.</li>
+        <li><strong>Step 9 (Business Integration selection):</strong> During connect flow, select all required Facebook Pages and Instagram profiles.</li>
+        <li><strong>Step 10:</strong> Save here, then go to <strong>Accounts -> Connect Facebook + Instagram</strong> to verify.</li>
       </ol>
+
+      <div class="meta-scope-box">
+        <p class="meta-scope-title">Permissions/Scopes to add (required for this app)</p>
+        <ul class="meta-scope-list">
+          <li><code>pages_show_list</code></li>
+          <li><code>pages_read_engagement</code></li>
+          <li><code>pages_manage_posts</code></li>
+          <li><code>pages_read_user_content</code></li>
+          <li><code>read_insights</code></li>
+          <li><code>instagram_basic</code></li>
+          <li><code>instagram_content_publish</code></li>
+          <li><code>instagram_manage_insights</code></li>
+          <li><code>business_management</code> <span>(optional but useful in some business setups)</span></li>
+        </ul>
+        <p class="meta-scope-note">Note: some tutorials say <code>instagram_content_publishing</code>; this project uses <code>instagram_content_publish</code>.</p>
+      </div>
+
       <p class="meta-check-note">After save, use <strong>Connect Facebook + Instagram</strong> on Accounts page to verify credentials and sync pages.</p>
     </article>
   </aside>
