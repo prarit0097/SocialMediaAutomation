@@ -13,7 +13,7 @@ from core.constants import (
 from core.exceptions import MetaPermanentError, MetaTransientError
 
 from .models import ScheduledPost
-from .services import publish_scheduled_post
+from .services import is_invalid_token_error, publish_scheduled_post, token_reconnect_message
 
 logger = logging.getLogger("publishing")
 
@@ -86,7 +86,7 @@ def publish_post_task(self, post_id: int):
         raise self.retry(exc=exc, countdown=countdown)
     except MetaPermanentError as exc:
         post.status = POST_STATUS_FAILED
-        post.error_message = str(exc)
+        post.error_message = token_reconnect_message(post.account, exc) if is_invalid_token_error(exc) else str(exc)
         post.save(update_fields=["status", "error_message", "updated_at"])
         logger.exception("permanent error post id=%s", post.id)
     except Exception as exc:  # noqa: BLE001

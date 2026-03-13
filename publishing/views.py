@@ -15,9 +15,12 @@ from django.utils.dateparse import parse_datetime
 from django.views.decorators.http import require_GET, require_POST
 
 from core.constants import FACEBOOK, INSTAGRAM, PLATFORM_CHOICES, POST_STATUS_FAILED, POST_STATUS_PENDING
+from core.exceptions import MetaAPIError
+from core.services.meta_client import MetaClient
 from integrations.models import ConnectedAccount
 
 from .models import ScheduledPost
+from .services import is_invalid_token_error, token_reconnect_message
 
 logger = logging.getLogger("publishing")
 ALLOWED_MEDIA_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".mov", ".webm", ".m4v"}
@@ -77,6 +80,14 @@ def _resolve_dual_accounts(base_account: ConnectedAccount):
         )
 
     return fb_account, ig_account, None
+
+
+def _current_token_validity(account: ConnectedAccount) -> bool | None:
+    try:
+        data = MetaClient().debug_token(account.access_token).get("data", {})
+    except MetaAPIError:
+        return None
+    return bool(data.get("is_valid"))
 
 
 @require_POST
@@ -221,6 +232,11 @@ def retry_failed_post(request: HttpRequest, post_id: int) -> JsonResponse:
 
     if post.status != POST_STATUS_FAILED:
         return _bad_request("Only failed posts can be retried")
+
+    if is_invalid_token_error(post.error_message):
+        token_valid = _current_token_validity(post.account)
+        if token_valid is False:
+            return _bad_request(token_reconnect_message(post.account, post.error_message))
 
     retry_time = timezone.now()
     try:

@@ -47,6 +47,7 @@ What happens:
 - Celery beat checks every minute for due posts
 - Celery worker publishes due jobs to Meta Graph
 - failed jobs can be retried
+- invalid Meta token failures are stored with reconnect guidance so the operator knows to reconnect the account before retrying
 
 ### 3. Insights
 The Insights page is used to inspect performance for a connected account.

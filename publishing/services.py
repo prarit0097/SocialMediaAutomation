@@ -10,6 +10,7 @@ logger = logging.getLogger("publishing")
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".m4v", ".avi"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
+TOKEN_INVALID_MARKERS = ("error validating access token", "code=190", "subcode=460")
 
 
 def _media_extension(media_url: str) -> str:
@@ -17,6 +18,19 @@ def _media_extension(media_url: str) -> str:
     if "." not in path:
         return ""
     return path[path.rfind(".") :]
+
+
+def is_invalid_token_error(value: str | Exception | None) -> bool:
+    text = str(value or "").lower()
+    return all(marker in text for marker in TOKEN_INVALID_MARKERS)
+
+
+def token_reconnect_message(account, original_error: str | Exception) -> str:
+    return (
+        "Meta access token is invalid for this connected account. "
+        "Reconnect the profile from Accounts -> Connect Facebook + Instagram, refresh the account list, "
+        f"then retry this failed post for {account.page_name}. Original Meta error: {original_error}"
+    )
 
 
 def publish_scheduled_post(post):

@@ -5,6 +5,10 @@ from core.services.meta_client import MetaClient
 from integrations.models import ConnectedAccount
 
 
+def _safe_console_text(value: str) -> str:
+    return str(value).encode("cp1252", errors="replace").decode("cp1252")
+
+
 class Command(BaseCommand):
     help = "Validate stored Meta tokens using debug_token endpoint"
 
@@ -26,7 +30,9 @@ class Command(BaseCommand):
                 active = data.get("is_valid", False)
                 expires_at = data.get("expires_at")
                 self.stdout.write(
-                    f"[{account.id}] {account.page_name} ({account.platform}) active={active} expires_at={expires_at}"
+                    _safe_console_text(
+                        f"[{account.id}] {account.page_name} ({account.platform}) active={active} expires_at={expires_at}"
+                    )
                 )
             except Exception as exc:  # noqa: BLE001
-                self.stdout.write(self.style.ERROR(f"[{account.id}] failed: {exc}"))
+                self.stdout.write(self.style.ERROR(_safe_console_text(f"[{account.id}] failed: {exc}")))

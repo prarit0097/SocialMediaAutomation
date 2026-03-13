@@ -6,7 +6,8 @@ from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from core.constants import FACEBOOK, INSTAGRAM, POST_STATUS_PENDING, POST_STATUS_PUBLISHED
+from core.constants import FACEBOOK, INSTAGRAM, POST_STATUS_FAILED, POST_STATUS_PENDING, POST_STATUS_PUBLISHED
+from core.exceptions import MetaPermanentError
 from integrations.models import ConnectedAccount
 from publishing.models import ScheduledPost
 from publishing.services import publish_scheduled_post
@@ -79,6 +80,51 @@ class PublishingApiTests(TestCase):
         created_platforms = set(ScheduledPost.objects.values_list("platform", flat=True))
         self.assertEqual(created_platforms, {FACEBOOK, INSTAGRAM})
 
+    @patch("publishing.views.MetaClient.debug_token")
+    def test_retry_failed_post_rejects_invalid_token_until_reconnected(self, mock_debug_token):
+        post = ScheduledPost.objects.create(
+            account=self.account,
+            platform=FACEBOOK,
+            message="Hello",
+            scheduled_for=timezone.now(),
+            status=POST_STATUS_FAILED,
+            error_message="Error validating access token: session invalidated (code=190, subcode=460)",
+        )
+        mock_debug_token.return_value = {"data": {"is_valid": False}}
+
+        response = self.client.post(
+            reverse("retry_failed_post", args=[post.id]),
+            data={},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        post.refresh_from_db()
+        self.assertEqual(post.status, POST_STATUS_FAILED)
+        self.assertIn("Reconnect the profile from Accounts", response.json()["error"])
+
+    @patch("publishing.views.MetaClient.debug_token")
+    def test_retry_failed_post_allows_retry_after_reconnect(self, mock_debug_token):
+        post = ScheduledPost.objects.create(
+            account=self.account,
+            platform=FACEBOOK,
+            message="Hello",
+            scheduled_for=timezone.now(),
+            status=POST_STATUS_FAILED,
+            error_message="Error validating access token: session invalidated (code=190, subcode=460)",
+        )
+        mock_debug_token.return_value = {"data": {"is_valid": True}}
+
+        response = self.client.post(
+            reverse("retry_failed_post", args=[post.id]),
+            data={},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        post.refresh_from_db()
+        self.assertEqual(post.status, POST_STATUS_PENDING)
+
 
 class PublishingTaskTests(TestCase):
     def setUp(self):
@@ -102,6 +148,18 @@ class PublishingTaskTests(TestCase):
         self.post.refresh_from_db()
         self.assertEqual(self.post.status, POST_STATUS_PUBLISHED)
         self.assertEqual(self.post.external_post_id, "meta-post-id")
+
+    @patch("publishing.tasks.publish_scheduled_post")
+    def test_publish_post_task_stores_reconnect_guidance_for_invalid_token(self, mock_publish):
+        mock_publish.side_effect = MetaPermanentError(
+            "Error validating access token: The session has been invalidated. (code=190, subcode=460)"
+        )
+
+        publish_post_task(self.post.id)
+
+        self.post.refresh_from_db()
+        self.assertEqual(self.post.status, POST_STATUS_FAILED)
+        self.assertIn("Reconnect the profile from Accounts", self.post.error_message)
 
 
 class PublishingServiceTests(TestCase):
