@@ -122,6 +122,7 @@ What it supports:
 
 Important runtime meaning:
 - AI advice is generated from available snapshot/post data; missing metrics are marked as unavailable
+- AI pipeline prioritizes `daily_heavy` snapshots (5:00 AM automation data) as the primary evidence source when available
 - OpenAI key must be configured in `.env` (`OPENAI_API_KEY`) for AI generation
 
 ## Background Automation

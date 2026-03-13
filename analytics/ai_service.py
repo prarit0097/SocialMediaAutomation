@@ -173,6 +173,8 @@ def generate_profile_ai_insights(payload: dict[str, Any], focus: str | None = No
         "- content_ideas: 8-15 practical ideas aligned to current profile performance.\n"
         "\n"
         "Important reasoning constraints:\n"
+        "- Treat `priority_daily_heavy` in input as PRIMARY source. Start analysis from that first.\n"
+        "- Use `source_priority` conflict rule strictly if any values differ.\n"
         "- Use profile-level and post-level evidence from input.\n"
         "- If profile is combined FB+IG, compare platform behavior and suggest platform-specific actions.\n"
         "- If one platform underperforms, explicitly call it out and suggest a correction strategy.\n"

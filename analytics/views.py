@@ -19,6 +19,8 @@ from .models import InsightSnapshot
 from .services import build_comparison_rows, build_insight_response, fetch_and_store_insights
 
 logger = logging.getLogger("analytics")
+DAILY_HEAVY_COLLECTION_MODE = "daily_heavy"
+MAX_PRIORITY_SNAPSHOT_SCAN = 120
 
 
 def _sanitize_error_text(value: str | None, fallback: str) -> str:
@@ -341,7 +343,95 @@ def _top_posts_snapshot(posts: list[dict], limit: int = 5) -> list[dict]:
     return top_rows
 
 
-def _ai_context_payload(data: dict, focus: str):
+def _latest_daily_heavy_snapshot(account: ConnectedAccount):
+    snapshots = InsightSnapshot.objects.filter(account=account).order_by("-fetched_at")[:MAX_PRIORITY_SNAPSHOT_SCAN]
+    for snapshot in snapshots:
+        metadata = ((snapshot.payload or {}).get("metadata") or {})
+        if metadata.get("collection_mode") == DAILY_HEAVY_COLLECTION_MODE:
+            return snapshot
+    return None
+
+
+def _daily_heavy_account_context(account: ConnectedAccount):
+    snapshot = _latest_daily_heavy_snapshot(account)
+    if not snapshot:
+        return None
+
+    payload = snapshot.payload or {}
+    published_posts = payload.get("published_posts")
+    if published_posts is None:
+        published_posts = []
+    snapshot_data = build_insight_response(
+        account=account,
+        platform=snapshot.platform,
+        insights=payload.get("insights", []),
+        snapshot_id=snapshot.id,
+        fetched_at=snapshot.fetched_at,
+        cached=True,
+        published_posts=published_posts,
+        include_generated_post_stats=False,
+        total_post_share_override=payload.get("published_posts_count"),
+    )
+    posts = _normalize_posts_for_ai(snapshot_data)
+
+    return {
+        "account_id": account.id,
+        "page_name": account.page_name,
+        "platform": account.platform,
+        "snapshot_id": snapshot.id,
+        "fetched_at": snapshot.fetched_at.isoformat() if snapshot.fetched_at else None,
+        "metadata": payload.get("metadata") or {},
+        "summary": snapshot_data.get("summary") or {},
+        "posting_cadence": {
+            "posts_last_24h": _post_count(posts, days=1),
+            "posts_last_7d": _post_count(posts, days=7),
+            "posts_last_30d": _post_count(posts, days=30),
+            "avg_posts_per_day_last_7d": round(_post_count(posts, days=7) / 7, 2),
+            "avg_posts_per_day_last_30d": round(_post_count(posts, days=30) / 30, 2),
+        },
+        "performance_last_7d": {
+            "views": _post_metric_total(posts, "views", days=7),
+            "likes": _post_metric_total(posts, "likes", days=7),
+            "comments": _post_metric_total(posts, "comments", days=7),
+            "shares": _post_metric_total(posts, "shares", days=7),
+            "saves": _post_metric_total(posts, "saves", days=7),
+        },
+        "comparison_rows": (snapshot_data.get("comparison_rows") or [])[:10],
+        "top_posts": _top_posts_snapshot(posts, limit=4),
+    }
+
+
+def _build_priority_daily_heavy_context(primary_account: ConnectedAccount, insight_data: dict):
+    candidate_accounts = [primary_account]
+    linked_account = _resolve_linked_account(primary_account)
+    if linked_account and linked_account.id != primary_account.id:
+        candidate_accounts.append(linked_account)
+
+    account_contexts = []
+    covered_account_ids = set()
+    for row in candidate_accounts:
+        context = _daily_heavy_account_context(row)
+        if not context:
+            continue
+        account_contexts.append(context)
+        covered_account_ids.add(row.id)
+
+    missing_ids = [row.id for row in candidate_accounts if row.id not in covered_account_ids]
+    return {
+        "available": bool(account_contexts),
+        "policy": (
+            "Use daily_heavy snapshot accounts as primary factual source first. "
+            "Use latest/cached summary as secondary context only."
+        ),
+        "accounts_expected": len(candidate_accounts),
+        "accounts_covered": len(account_contexts),
+        "missing_account_ids": missing_ids,
+        "accounts": account_contexts,
+        "current_context_fetched_at": insight_data.get("fetched_at"),
+    }
+
+
+def _ai_context_payload(data: dict, focus: str, priority_daily_heavy: dict | None = None):
     posts = _normalize_posts_for_ai(data)
     fb_posts_7 = _post_count(posts, days=7, platform="facebook")
     ig_posts_7 = _post_count(posts, days=7, platform="instagram")
@@ -381,6 +471,28 @@ def _ai_context_payload(data: dict, focus: str):
         },
         "comparison_rows": condensed_comparison,
         "top_posts": _top_posts_snapshot(posts, limit=6),
+        "priority_daily_heavy": priority_daily_heavy
+        or {
+            "available": False,
+            "policy": (
+                "If daily_heavy snapshot data exists, use it first. Otherwise use latest cached context."
+            ),
+            "accounts_expected": 0,
+            "accounts_covered": 0,
+            "missing_account_ids": [],
+            "accounts": [],
+        },
+        "source_priority": {
+            "primary": "priority_daily_heavy",
+            "secondary": [
+                "summary",
+                "posting_cadence",
+                "performance_last_7d",
+                "comparison_rows",
+                "top_posts",
+            ],
+            "conflict_rule": "If values differ, trust priority_daily_heavy first.",
+        },
     }
     return context
 
@@ -418,7 +530,8 @@ def ai_profile_insights(request: HttpRequest, account_id: int) -> JsonResponse:
     if error_response:
         return error_response
 
-    ai_context = _ai_context_payload(insight_data, focus)
+    priority_daily_heavy = _build_priority_daily_heavy_context(account, insight_data)
+    ai_context = _ai_context_payload(insight_data, focus, priority_daily_heavy=priority_daily_heavy)
     try:
         ai_analysis = generate_profile_ai_insights(ai_context, focus=focus)
     except AIInsightsError as exc:
@@ -447,6 +560,7 @@ def ai_profile_insights(request: HttpRequest, account_id: int) -> JsonResponse:
                 "performance_last_7d": ai_context.get("performance_last_7d"),
                 "comparison_rows_count": len(ai_context.get("comparison_rows") or []),
                 "top_posts_count": len(ai_context.get("top_posts") or []),
+                "priority_daily_heavy": ai_context.get("priority_daily_heavy") or {},
             },
         }
     )
