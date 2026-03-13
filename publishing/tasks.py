@@ -54,7 +54,8 @@ def process_due_posts():
             post.save(update_fields=["status", "error_message", "updated_at"])
 
     for post in due_posts:
-        publish_post_task.delay(post.id)
+        # Keep due publishing jobs ahead of heavy background analytics work.
+        publish_post_task.apply_async(args=[post.id], priority=9)
 
     return {"queued": len(due_posts)}
 
@@ -63,7 +64,16 @@ def process_due_posts():
 def publish_post_task(self, post_id: int):
     post = ScheduledPost.objects.select_related("account").filter(id=post_id).first()
     if not post:
-        return
+        return {"status": "missing", "post_id": post_id}
+
+    # Guard against duplicate queue deliveries or delayed retries after the
+    # row was already finalized by another worker.
+    if post.status == POST_STATUS_PUBLISHED:
+        return {"status": "already_published", "post_id": post.id}
+    if post.status == POST_STATUS_FAILED:
+        return {"status": "already_failed", "post_id": post.id}
+    if post.status not in {POST_STATUS_PENDING, POST_STATUS_PROCESSING}:
+        return {"status": "skipped_state", "post_id": post.id, "state": post.status}
 
     try:
         external_post_id = publish_scheduled_post(post)

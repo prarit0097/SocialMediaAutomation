@@ -13,6 +13,8 @@ env = environ.Env(
     DAILY_INSIGHTS_SCHEDULE_MINUTE=(int, 0),
     DAILY_INSIGHTS_POST_LIMIT=(int, 100),
     DAILY_INSIGHTS_POST_STATS_LIMIT=(int, 40),
+    OPENAI_MODEL=(str, "gpt-4o-mini"),
+    OPENAI_TIMEOUT_SECONDS=(int, 45),
 )
 environ.Env.read_env(BASE_DIR / ".env")
 
@@ -117,11 +119,24 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = env("CELERY_TIMEZONE")
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_TASK_DEFAULT_PRIORITY = 5
+CELERY_TASK_QUEUE_MAX_PRIORITY = 10
+CELERY_TASK_ROUTES = {
+    "publishing.tasks.process_due_posts": {"priority": 9},
+    "publishing.tasks.publish_post_task": {"priority": 9},
+    "analytics.tasks.queue_daily_heavy_insight_refresh": {"priority": 2},
+    "analytics.tasks.refresh_account_insights_snapshot": {"priority": 1},
+}
+CELERY_BROKER_TRANSPORT_OPTIONS = {"queue_order_strategy": "priority"}
 DAILY_INSIGHTS_ENABLED = env("DAILY_INSIGHTS_ENABLED")
 DAILY_INSIGHTS_SCHEDULE_HOUR = env("DAILY_INSIGHTS_SCHEDULE_HOUR")
 DAILY_INSIGHTS_SCHEDULE_MINUTE = env("DAILY_INSIGHTS_SCHEDULE_MINUTE")
 DAILY_INSIGHTS_POST_LIMIT = env("DAILY_INSIGHTS_POST_LIMIT")
 DAILY_INSIGHTS_POST_STATS_LIMIT = env("DAILY_INSIGHTS_POST_STATS_LIMIT")
+OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
+OPENAI_MODEL = env("OPENAI_MODEL")
+OPENAI_TIMEOUT_SECONDS = env("OPENAI_TIMEOUT_SECONDS")
 CELERY_BEAT_SCHEDULE = {
     "process-due-posts-every-minute": {
         "task": "publishing.tasks.process_due_posts",

@@ -8,6 +8,7 @@ Django-based internal admin app to connect Facebook + Instagram accounts, schedu
 - Post scheduling API and dashboard form
 - Celery worker + beat for automatic scheduled publishing
 - Daily automated heavy insights snapshot refresh for all connected profiles
+- Profile-wise AI insights generation from stored snapshots (OpenAI)
 - Insights API with snapshot caching and refresh throttling
 - Single-admin auth using Django sessions
 - Encrypted token storage at rest using Fernet-backed model field
@@ -55,8 +56,11 @@ Update `.env` values:
   - `DAILY_INSIGHTS_ENABLED=True`
   - `DAILY_INSIGHTS_SCHEDULE_HOUR=5`
   - `DAILY_INSIGHTS_SCHEDULE_MINUTE=0`
-  - `DAILY_INSIGHTS_POST_LIMIT=100`
-  - `DAILY_INSIGHTS_POST_STATS_LIMIT=40`
+- `DAILY_INSIGHTS_POST_LIMIT=100`
+- `DAILY_INSIGHTS_POST_STATS_LIMIT=40`
+- `OPENAI_API_KEY` (required for AI Insights page)
+- `OPENAI_MODEL` (default: `gpt-4o-mini`)
+- `OPENAI_TIMEOUT_SECONDS` (default: `45`)
 
 ## 3) Database and admin user
 ```bash
@@ -109,6 +113,7 @@ APIs (authenticated):
 - `GET /api/posts/scheduled/`
 - `GET /api/insights/<account_id>/`
 - `GET /api/insights/<account_id>/?refresh=1` (rate-limited)
+- `POST /api/ai-insights/<account_id>/` (profile-wise AI report)
 
 Sample schedule payload:
 ```json

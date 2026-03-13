@@ -69,7 +69,8 @@ def queue_daily_heavy_insight_refresh(force: bool = False):
         if not force and _has_daily_heavy_snapshot(account):
             skipped += 1
             continue
-        refresh_account_insights_snapshot.delay(account.id, force=force)
+        # Keep daily-heavy refresh in lower priority than user-facing publish jobs.
+        refresh_account_insights_snapshot.apply_async(args=[account.id], kwargs={"force": force}, priority=1)
         queued += 1
 
     logger.info(

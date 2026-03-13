@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="card hero-card hero-split">
+  <div class="hero-main">
+    <p class="eyebrow">AI Analyst</p>
+    <h1>Get profile-wise growth diagnosis and next-step recommendations.</h1>
+    <p class="hero-copy">Select an account ID, run AI analysis on latest insights data, and get practical actions to improve views, reach, engagement, and posting strategy.</p>
+    <div class="hero-pill-row">
+      <span class="hero-pill">Pros + cons detection</span>
+      <span class="hero-pill">Cadence guidance</span>
+      <span class="hero-pill">7-day action plan</span>
+    </div>
+  </div>
+  <div class="hero-rail">
+    <article class="hero-stat">
+      <span class="hero-stat-label">Data source</span>
+      <strong>Latest stored profile snapshots</strong>
+      <p>AI advice uses your cached insights and recent published post metrics.</p>
+    </article>
+  </div>
+</section>
+
+<section class="card">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">Run Analysis</p>
+      <h2>Profile AI Insights</h2>
+      <p class="section-copy">Enter connected account ID and optional business goal, then generate profile analysis.</p>
+    </div>
+  </div>
+  <div class="ai-form-grid">
+    <label>Account ID
+      <input type="number" id="aiInsightAccountId" placeholder="Enter account id">
+    </label>
+    <label>Focus Goal (optional)
+      <textarea id="aiInsightGoal" rows="4" placeholder="Example: Increase reel plays and comments in next 30 days."></textarea>
+    </label>
+    <label class="ai-toggle">
+      <input type="checkbox" id="aiInsightForceRefresh">
+      <span>Use Force Refresh before AI analysis</span>
+    </label>
+    <button id="runAiInsightsBtn" class="btn">Generate AI Insights</button>
+  </div>
+  <div class="status-stack">
+    <p id="aiInsightError" class="error-text"></p>
+    <p id="aiInsightMeta" class="meta-note"></p>
+  </div>
+</section>
+
+<section class="card">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">Output</p>
+      <h2>AI Profile Report</h2>
+      <p class="section-copy">This report includes strengths, problems, risks, and execution-level improvement suggestions.</p>
+    </div>
+  </div>
+  <div id="aiInsightResult" class="ai-output-empty">Run analysis to view AI insights.</div>
+</section>
+{% endblock %}

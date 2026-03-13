@@ -619,7 +619,14 @@ class MetaClient:
             details.append(f"user_msg={user_msg}")
         if details:
             message = f"{message} ({', '.join(details)})"
-        if code == -2 or subcode == 2207003 or (user_title or "").lower() == "timeout":
+        if (
+            code == -2
+            or subcode == 2207003
+            or (user_title or "").lower() == "timeout"
+            or code == 9007
+            or subcode == 2207027
+            or "media is not ready" in (user_msg or "").lower()
+        ):
             raise MetaTransientError(message, status_code=response.status_code, payload=payload)
         if response.status_code >= 500 or response.status_code == 429:
             raise MetaTransientError(message, status_code=response.status_code, payload=payload)

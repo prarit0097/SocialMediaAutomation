@@ -12,6 +12,7 @@ This file is the high-level source of truth for what the project does, how the m
 - Publish due posts automatically through Celery workers.
 - Store cached insights snapshots for operator review and future analytics.
 - Run a daily heavy insights collection job so dashboards rely on stored data instead of repeated live API pulls.
+- Generate profile-wise AI insights (pros/cons/risks/action plan) from stored snapshots.
 - Expose project-aware MCP servers for file, browser, queue, and analytics operations.
 
 ## Main User Areas
@@ -61,10 +62,14 @@ What happens:
 - post is stored in UTC internally
 - Celery beat checks every minute for due posts
 - Celery worker publishes due jobs to Meta Graph
+- Celery uses fair scheduling (`prefetch=1`) and task priority routing so due publishing jobs are not starved by heavy analytics queues
+- due publish jobs are enqueued explicitly with higher priority while daily-heavy analytics refresh is queued with lower priority
+- publish task is idempotent against delayed duplicate deliveries (already-published rows are skipped safely)
 - failed jobs can be retried if the account row is current
 - invalid Meta token failures are stored with reconnect guidance so the operator knows to reconnect before retrying
 - Instagram video / reel publishing waits for container processing to finish before final publish
 - Meta media download timeouts are treated as transient and automatically retried
+- Instagram "media not ready to publish" responses (`code=9007`, `subcode=2207027`) are treated as transient and retried automatically
 - failed Instagram retries also re-apply IG media optimization before requeueing
 
 Common failure pattern:
@@ -79,6 +84,7 @@ What it shows:
 - total following
 - total post share
 - published posts table
+- published posts message text trimmed to first 3 lines in-table for readable layout (full text available on hover)
 - FB vs IG comparison table
 - top-nav Meta token health indicator with green/red blinking status and reconnect guidance
 - warnings for partial upstream failures
@@ -95,12 +101,34 @@ Important runtime meaning:
 - force refresh is optimized to avoid excessively slow page loads
 - some FB comparison rows use best-available Meta equivalents because exact IG-style metrics do not always exist on Facebook
 
+### AI Insights
+The AI Insights page is the profile-wise recommendation layer.
+
+What it shows:
+- AI executive summary for selected profile
+- strengths (pros) and weaknesses (cons)
+- risks and improvement opportunities
+- recommended posting strategy (current vs suggested cadence)
+- 7-day action plan and KPI growth targets
+- content ideas aligned to current profile data
+
+What it supports:
+- account-id based analysis for any connected profile
+- optional force-refresh before analysis
+- optional operator goal/focus prompt
+- OpenAI-backed JSON report generation from latest stored insight snapshot + recent published posts
+
+Important runtime meaning:
+- AI advice is generated from available snapshot/post data; missing metrics are marked as unavailable
+- OpenAI key must be configured in `.env` (`OPENAI_API_KEY`) for AI generation
+
 ## Background Automation
 
 ### Scheduled Publishing Automation
 - task: `publishing.tasks.process_due_posts`
 - frequency: every minute
 - purpose: move due scheduled posts into publish tasks
+- priority behavior: publishing tasks run at higher queue priority than heavy analytics refresh tasks
 
 ### Daily Heavy Insights Automation
 - task: `analytics.tasks.queue_daily_heavy_insight_refresh`
@@ -226,6 +254,8 @@ This project includes local MCP servers under `mcp_servers/` so Codex or future 
 - Instagram publishing requires public HTTPS media URLs.
 - `PUBLIC_BASE_URL` must point to a reachable public HTTPS base.
 - Celery worker and Celery beat must be running for scheduled publishing and daily heavy insights automation.
+- Celery workers must be restarted after Celery config changes so new prefetch/priority behavior is applied.
+- OpenAI credentials (`OPENAI_API_KEY`) must be set for AI Insights report generation.
 - reconnecting a subset of pages does not automatically refresh every older stored account row.
 
 ## Future Direction

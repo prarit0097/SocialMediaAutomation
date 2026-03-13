@@ -1,4 +1,5 @@
-﻿from unittest.mock import patch
+import json
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.http import JsonResponse
@@ -6,6 +7,7 @@ from django.test import Client, TestCase, override_settings
 from django.utils import timezone
 
 from analytics.models import InsightSnapshot
+from analytics.ai_service import AIInsightsError
 from analytics.services import _aggregate_recent_post_metric, build_comparison_rows, build_insight_response
 from analytics.tasks import DAILY_HEAVY_COLLECTION_MODE, queue_daily_heavy_insight_refresh, refresh_account_insights_snapshot
 from analytics.views import _build_combined_response, _extract_error_message
@@ -74,6 +76,82 @@ class AnalyticsApiTests(TestCase):
             post_limit=20,
             post_stats_limit=20,
         )
+
+    @patch("analytics.views.generate_profile_ai_insights")
+    def test_ai_profile_insights_returns_structured_report(self, mock_generate):
+        InsightSnapshot.objects.create(
+            account=self.account,
+            platform=FACEBOOK,
+            payload={
+                "insights": [{"name": "followers_count", "values": [{"value": 1200}]}],
+                "published_posts_count": 20,
+                "published_posts": [
+                    {
+                        "id": "p1",
+                        "message": "Sample post",
+                        "published_at": timezone.now().isoformat(),
+                        "total_views": 200,
+                        "total_likes": 15,
+                        "total_comments": 3,
+                        "total_shares": 2,
+                        "total_saves": 1,
+                    }
+                ],
+                "metadata": {},
+            },
+        )
+        mock_generate.return_value = {
+            "executive_summary": "Growth is stable with room for better cadence.",
+            "pros": ["Profile has consistent likes."],
+            "cons": ["Comment rate is low."],
+            "risks": [],
+            "opportunities": ["Push more reels."],
+            "posting_strategy": {
+                "current_posting": "0.8/day",
+                "recommended_posting": "1.5/day",
+                "reasoning": "Increase frequency for distribution lift.",
+            },
+            "action_plan_7d": [],
+            "kpi_growth_plan": [],
+            "content_ideas": [],
+        }
+
+        response = self.client.post(
+            f"/api/ai-insights/{self.account.id}/",
+            data=json.dumps({"focus": "Increase comments", "force_refresh": False}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertIn("analysis", body)
+        self.assertEqual(body["analysis"]["executive_summary"], "Growth is stable with room for better cadence.")
+        self.assertEqual(body["page_name"], self.account.page_name)
+
+    @patch("analytics.views.generate_profile_ai_insights")
+    def test_ai_profile_insights_handles_openai_errors(self, mock_generate):
+        InsightSnapshot.objects.create(
+            account=self.account,
+            platform=FACEBOOK,
+            payload={
+                "insights": [],
+                "published_posts_count": 0,
+                "published_posts": [],
+                "metadata": {},
+            },
+        )
+        mock_generate.side_effect = AIInsightsError("OPENAI_API_KEY is missing")
+
+        response = self.client.post(
+            f"/api/ai-insights/{self.account.id}/",
+            data=json.dumps({"focus": ""}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 502)
+        body = response.json()
+        self.assertEqual(body["error"], "AI insights unavailable")
+        self.assertIn("OPENAI_API_KEY", body["details"])
 
     @patch("analytics.services._get_published_posts")
     @patch("analytics.services.MetaClient.fetch_facebook_published_posts_count")
@@ -426,17 +504,17 @@ class AnalyticsAutomationTaskTests(TestCase):
             access_token="",
         )
 
-    @patch("analytics.tasks.refresh_account_insights_snapshot.delay")
-    def test_queue_daily_heavy_refresh_enqueues_accounts_without_snapshot(self, mock_delay):
+    @patch("analytics.tasks.refresh_account_insights_snapshot.apply_async")
+    def test_queue_daily_heavy_refresh_enqueues_accounts_without_snapshot(self, mock_apply_async):
         result = queue_daily_heavy_insight_refresh()
 
         self.assertEqual(result["total_accounts"], 2)
         self.assertEqual(result["queued"], 1)
         self.assertEqual(result["skipped"], 1)
-        mock_delay.assert_called_once_with(self.account.id, force=False)
+        mock_apply_async.assert_called_once_with(args=[self.account.id], kwargs={"force": False}, priority=1)
 
-    @patch("analytics.tasks.refresh_account_insights_snapshot.delay")
-    def test_queue_daily_heavy_refresh_skips_existing_daily_heavy_snapshot(self, mock_delay):
+    @patch("analytics.tasks.refresh_account_insights_snapshot.apply_async")
+    def test_queue_daily_heavy_refresh_skips_existing_daily_heavy_snapshot(self, mock_apply_async):
         snapshot = InsightSnapshot.objects.create(
             account=self.account,
             platform=FACEBOOK,
@@ -449,7 +527,7 @@ class AnalyticsAutomationTaskTests(TestCase):
 
         self.assertEqual(result["queued"], 0)
         self.assertEqual(result["skipped"], 2)
-        mock_delay.assert_not_called()
+        mock_apply_async.assert_not_called()
 
     @patch("analytics.tasks.fetch_and_store_insights")
     def test_refresh_account_insights_snapshot_uses_heavy_limits_and_metadata(self, mock_fetch):

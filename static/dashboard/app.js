@@ -868,6 +868,13 @@
   const insightComparisonTitle = document.getElementById("insightComparisonTitle");
   const insightPostsTable = document.getElementById("insightPostsTable");
   const insightMetricsTable = document.getElementById("insightMetricsTable");
+  const aiInsightAccountId = document.getElementById("aiInsightAccountId");
+  const aiInsightGoal = document.getElementById("aiInsightGoal");
+  const aiInsightForceRefresh = document.getElementById("aiInsightForceRefresh");
+  const runAiInsightsBtn = document.getElementById("runAiInsightsBtn");
+  const aiInsightError = document.getElementById("aiInsightError");
+  const aiInsightMeta = document.getElementById("aiInsightMeta");
+  const aiInsightResult = document.getElementById("aiInsightResult");
   const tokenHealthNav = document.getElementById("tokenHealthNav");
   const tokenHealthButton = document.getElementById("tokenHealthButton");
   const tokenHealthDot = document.getElementById("tokenHealthDot");
@@ -1117,7 +1124,9 @@
             <td>${escapeHtml(row.id)}</td>
             ${hasPlatform ? `<td>${platformBadge(row.platform)}</td>` : ""}
             ${hasSourceName ? `<td>${escapeHtml(row.source_page_name || "-")}</td>` : ""}
-            <td>${escapeHtml(row.message)}</td>
+            <td class="insight-post-message-cell" title="${escapeHtml(row.message)}">
+              <span class="insight-post-message-clamp">${escapeHtml(row.message)}</span>
+            </td>
             <td>${mediaPreviewHtml(row.media_url)}</td>
             <td>${metricCell(row.total_views, row.reason)}</td>
             <td>${metricCell(row.total_likes, row.reason)}</td>
@@ -1216,6 +1225,162 @@
     renderTable(insightMetricsTable, comparisonRows);
   }
 
+  function renderAiListCard(title, rows, tone) {
+    const items = Array.isArray(rows) ? rows.filter((item) => String(item || "").trim()) : [];
+    if (!items.length) {
+      return `
+        <article class="ai-report-card ${tone}">
+          <h3>${escapeHtml(title)}</h3>
+          <p class="ai-empty">No specific items available.</p>
+        </article>
+      `;
+    }
+    return `
+      <article class="ai-report-card ${tone}">
+        <h3>${escapeHtml(title)}</h3>
+        <ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+      </article>
+    `;
+  }
+
+  function renderAiPlanTable(title, rows) {
+    const safeRows = Array.isArray(rows) ? rows : [];
+    if (!safeRows.length) {
+      return `
+        <article class="ai-report-card">
+          <h3>${escapeHtml(title)}</h3>
+          <p class="ai-empty">No detailed plan generated.</p>
+        </article>
+      `;
+    }
+    return `
+      <article class="ai-report-card">
+        <h3>${escapeHtml(title)}</h3>
+        <div class="table-wrap table-wrap-strong">
+          <table class="ai-table">
+            <tr>
+              <th>action</th>
+              <th>why</th>
+              <th>expected_impact</th>
+              <th>timeline</th>
+            </tr>
+            ${safeRows
+              .map(
+                (row) => `
+                  <tr>
+                    <td>${escapeHtml(row.action)}</td>
+                    <td>${escapeHtml(row.why)}</td>
+                    <td>${escapeHtml(row.expected_impact)}</td>
+                    <td>${escapeHtml(row.timeline)}</td>
+                  </tr>
+                `
+              )
+              .join("")}
+          </table>
+        </div>
+      </article>
+    `;
+  }
+
+  function renderAiKpiTable(rows) {
+    const safeRows = Array.isArray(rows) ? rows : [];
+    if (!safeRows.length) {
+      return `
+        <article class="ai-report-card">
+          <h3>7-day KPI growth plan</h3>
+          <p class="ai-empty">No KPI target table generated.</p>
+        </article>
+      `;
+    }
+    return `
+      <article class="ai-report-card">
+        <h3>7-day KPI growth plan</h3>
+        <div class="table-wrap table-wrap-strong">
+          <table class="ai-table">
+            <tr>
+              <th>metric</th>
+              <th>current</th>
+              <th>target_7d</th>
+              <th>how</th>
+            </tr>
+            ${safeRows
+              .map(
+                (row) => `
+                  <tr>
+                    <td>${escapeHtml(row.metric)}</td>
+                    <td>${escapeHtml(row.current)}</td>
+                    <td>${escapeHtml(row.target_7d)}</td>
+                    <td>${escapeHtml(row.how)}</td>
+                  </tr>
+                `
+              )
+              .join("")}
+          </table>
+        </div>
+      </article>
+    `;
+  }
+
+  function renderAiInsights(data) {
+    if (!aiInsightResult || !aiInsightMeta) return;
+    const analysis = data && data.analysis ? data.analysis : {};
+    const cadence = (data && data.source_overview && data.source_overview.posting_cadence) || {};
+    const perf = (data && data.source_overview && data.source_overview.performance_last_7d) || {};
+
+    const cadenceText = [
+      `Posts 24h: ${cadence.posts_last_24h ?? "-"}`,
+      `Posts 7d: ${cadence.posts_last_7d ?? "-"}`,
+      `Posts 30d: ${cadence.posts_last_30d ?? "-"}`,
+      `Avg/day (7d): ${cadence.avg_posts_per_day_last_7d ?? "-"}`,
+      `FB posts 7d: ${cadence.facebook_posts_last_7d ?? "-"}`,
+      `IG posts 7d: ${cadence.instagram_posts_last_7d ?? "-"}`,
+    ].join(" | ");
+
+    const perfText = [
+      `Views: ${perf.views ?? "-"}`,
+      `Likes: ${perf.likes ?? "-"}`,
+      `Comments: ${perf.comments ?? "-"}`,
+      `Shares: ${perf.shares ?? "-"}`,
+      `Saves: ${perf.saves ?? "-"}`,
+    ].join(" | ");
+
+    aiInsightMeta.textContent = `Profile: ${data.page_name || "-"} | Platform: ${data.platform || "-"} | Model: ${
+      data.model || "-"
+    } | Snapshot fetched: ${toIndianDateTime(data.fetched_at) || "-"} | AI generated: ${
+      toIndianDateTime(data.generated_at) || "-"
+    } | Cached: ${data.cached ? "Yes" : "No"}`;
+
+    aiInsightResult.innerHTML = `
+      <div class="ai-report-header">
+        <h3>Executive summary</h3>
+        <p>${escapeHtml(analysis.executive_summary || "No summary generated.")}</p>
+      </div>
+      <div class="ai-report-meta">
+        <span>${escapeHtml(cadenceText)}</span>
+        <span>${escapeHtml(perfText)}</span>
+      </div>
+      <div class="ai-report-grid">
+        ${renderAiListCard("Pros", analysis.pros || [], "tone-good")}
+        ${renderAiListCard("Cons", analysis.cons || [], "tone-bad")}
+        ${renderAiListCard("Risks", analysis.risks || [], "tone-bad")}
+        ${renderAiListCard("Opportunities", analysis.opportunities || [], "tone-good")}
+      </div>
+      <article class="ai-report-card">
+        <h3>Posting strategy</h3>
+        <p><strong>Current:</strong> ${escapeHtml(
+          (analysis.posting_strategy || {}).current_posting || "Not specified"
+        )}</p>
+        <p><strong>Recommended:</strong> ${escapeHtml(
+          (analysis.posting_strategy || {}).recommended_posting || "Not specified"
+        )}</p>
+        <p><strong>Reasoning:</strong> ${escapeHtml((analysis.posting_strategy || {}).reasoning || "Not specified")}</p>
+      </article>
+      ${renderAiPlanTable("7-day action plan", analysis.action_plan_7d || [])}
+      ${renderAiKpiTable(analysis.kpi_growth_plan || [])}
+      ${renderAiListCard("Content ideas", analysis.content_ideas || [], "")}
+    `;
+  }
+
   async function loadPublicUrlStatus() {
     if (!publicUrlStatus) return;
     try {
@@ -1272,6 +1437,50 @@
     if (prefillInsightAccountId && !insightAccountId.value) {
       insightAccountId.value = prefillInsightAccountId;
       loadInsights(false);
+    }
+  }
+
+  async function loadAiInsights() {
+    if (!aiInsightAccountId) return;
+    const accountId = Number(aiInsightAccountId.value);
+    if (!accountId) {
+      if (aiInsightError) aiInsightError.textContent = "Enter valid account id";
+      return;
+    }
+
+    const focus = aiInsightGoal ? String(aiInsightGoal.value || "").trim() : "";
+    const forceRefresh = !!(aiInsightForceRefresh && aiInsightForceRefresh.checked);
+    try {
+      const data = await fetchJSON(`/api/ai-insights/${accountId}/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrfToken,
+        },
+        body: JSON.stringify({
+          focus,
+          force_refresh: forceRefresh,
+        }),
+      });
+      if (aiInsightError) aiInsightError.textContent = "";
+      renderAiInsights(data);
+    } catch (err) {
+      if (aiInsightError) aiInsightError.textContent = err.message;
+      if (aiInsightResult) aiInsightResult.innerHTML = "<p class='ai-output-empty'>Unable to generate AI insights.</p>";
+      if (aiInsightMeta) aiInsightMeta.textContent = "";
+    }
+  }
+
+  if (runAiInsightsBtn) {
+    const runWithAiLoading = withButtonLoading(runAiInsightsBtn, "Generate AI Insights", "Analyzing...");
+    runAiInsightsBtn.addEventListener("click", () => runWithAiLoading(loadAiInsights));
+  }
+
+  if (aiInsightAccountId) {
+    const params = new URLSearchParams(window.location.search);
+    const prefillAccountId = params.get("account_id");
+    if (prefillAccountId && !aiInsightAccountId.value) {
+      aiInsightAccountId.value = prefillAccountId;
     }
   }
 

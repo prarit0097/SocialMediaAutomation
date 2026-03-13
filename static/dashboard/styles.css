@@ -861,6 +861,21 @@ td {
   line-height: 1.55;
 }
 
+.insight-post-message-cell {
+  min-width: 230px;
+  max-width: 340px;
+}
+
+.insight-post-message-clamp {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  white-space: normal;
+  word-break: break-word;
+}
+
 th {
   position: sticky;
   top: 0;
@@ -1140,6 +1155,113 @@ pre {
   background: linear-gradient(135deg, #b96a43 0%, #9b4d2b 100%);
 }
 
+.ai-form-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.ai-form-grid label {
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  font-weight: 700;
+}
+
+.ai-form-grid textarea {
+  resize: vertical;
+  min-height: 90px;
+}
+
+.ai-toggle {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 10px;
+}
+
+.ai-output-empty {
+  padding: 14px;
+  border-radius: 12px;
+  background: rgba(249, 247, 242, 0.9);
+  border: 1px solid rgba(56, 78, 92, 0.12);
+  color: var(--muted);
+}
+
+.ai-report-header {
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(244, 242, 236, 0.75);
+  border: 1px solid rgba(56, 78, 92, 0.12);
+}
+
+.ai-report-header h3 {
+  margin: 0 0 8px;
+}
+
+.ai-report-header p {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.ai-report-meta {
+  margin-top: 10px;
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ai-report-grid {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ai-report-card {
+  margin-top: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(56, 78, 92, 0.12);
+  background: rgba(255, 255, 255, 0.82);
+  padding: 14px;
+}
+
+.ai-report-card h3 {
+  margin: 0 0 10px;
+  font-size: 18px;
+}
+
+.ai-report-card ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+}
+
+.ai-report-card li {
+  color: var(--ink-soft);
+  line-height: 1.45;
+}
+
+.ai-report-card.tone-good {
+  border-color: rgba(57, 123, 78, 0.25);
+  background: rgba(240, 250, 244, 0.72);
+}
+
+.ai-report-card.tone-bad {
+  border-color: rgba(178, 58, 50, 0.2);
+  background: rgba(255, 244, 241, 0.72);
+}
+
+.ai-table {
+  min-width: 100%;
+}
+
+.ai-empty {
+  margin: 0;
+  color: var(--muted);
+}
+
 @keyframes rise-in {
   from {
     opacity: 0;
@@ -1215,7 +1337,8 @@ pre {
 
   .accounts-toolbar,
   .inline-controls,
-  .insight-summary-grid {
+  .insight-summary-grid,
+  .ai-report-grid {
     grid-template-columns: 1fr;
   }
 

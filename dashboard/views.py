@@ -280,6 +280,11 @@ def insights_page(request):
 
 
 @login_required
+def ai_insights_page(request):
+    return render(request, "dashboard/ai_insights.html")
+
+
+@login_required
 def public_url_status(request):
     return JsonResponse(_public_url_status_payload(request))
 
