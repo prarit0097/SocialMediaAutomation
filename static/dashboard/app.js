@@ -71,6 +71,41 @@
     };
   }
 
+  function formatScheduleDateTime(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) return raw;
+    return parsed.toLocaleString("en-IN", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    });
+  }
+
+  function showAppToast(message, variant = "success") {
+    const text = String(message || "").trim();
+    if (!text) return;
+    let root = document.getElementById("appToastRoot");
+    if (!root) {
+      root = document.createElement("div");
+      root.id = "appToastRoot";
+      document.body.appendChild(root);
+    }
+    const toast = document.createElement("div");
+    toast.className = `app-toast ${variant === "error" ? "is-error" : "is-success"}`;
+    toast.textContent = text;
+    root.appendChild(toast);
+    window.setTimeout(() => {
+      toast.classList.add("is-exit");
+      window.setTimeout(() => toast.remove(), 260);
+    }, 3600);
+  }
+
   function renderTable(container, rows) {
     if (!container) return;
     if (!rows.length) {
@@ -856,9 +891,16 @@
         } else {
           resultEl.textContent = `Scheduled: #${data.id}`;
         }
+        const scheduledFor = formatScheduleDateTime(formData.get("scheduled_for"));
+        if (scheduledFor) {
+          showAppToast(`Your post is scheduled for ${scheduledFor}.`, "success");
+        } else {
+          showAppToast("Your post is scheduled successfully.", "success");
+        }
         await loadScheduledPosts();
       } catch (err) {
         resultEl.textContent = `Error: ${err.message}`;
+        showAppToast(`Scheduling failed: ${err.message}`, "error");
       }
     });
   }

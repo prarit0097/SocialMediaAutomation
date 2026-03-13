@@ -986,6 +986,54 @@ small,
   font-weight: 700;
 }
 
+#appToastRoot {
+  position: fixed;
+  top: 88px;
+  right: 20px;
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.app-toast {
+  max-width: min(90vw, 420px);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.45;
+  color: #fff;
+  box-shadow: 0 16px 28px rgba(12, 22, 31, 0.28);
+  animation: appToastIn 180ms ease-out;
+}
+
+.app-toast.is-success {
+  background: linear-gradient(135deg, #1b7a58 0%, #0f5e43 100%);
+}
+
+.app-toast.is-error {
+  background: linear-gradient(135deg, #bb4d35 0%, #93311d 100%);
+}
+
+.app-toast.is-exit {
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: all 240ms ease;
+}
+
+@keyframes appToastIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 button,
 .btn,
 .inline-link-btn {
