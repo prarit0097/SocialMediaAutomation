@@ -57,6 +57,7 @@ What happens:
 - app validates account freshness and rejects stale account rows
 - local Instagram image uploads are auto-optimized to a lighter JPG variant for more reliable Meta download
 - app preflights public media URLs before Instagram publish attempts
+- Instagram/FB+IG scheduling stores optimized IG-safe media URLs at schedule time (not only at publish time)
 - post is stored in UTC internally
 - Celery beat checks every minute for due posts
 - Celery worker publishes due jobs to Meta Graph
@@ -64,6 +65,7 @@ What happens:
 - invalid Meta token failures are stored with reconnect guidance so the operator knows to reconnect before retrying
 - Instagram video / reel publishing waits for container processing to finish before final publish
 - Meta media download timeouts are treated as transient and automatically retried
+- failed Instagram retries also re-apply IG media optimization before requeueing
 
 Common failure pattern:
 - if a page was not refreshed in the latest reconnect, old stored tokens can still exist in the database

@@ -19,6 +19,7 @@ from core.exceptions import MetaAPIError
 from core.services.meta_client import MetaClient
 from integrations.models import ConnectedAccount
 from integrations.sync_state import build_account_sync_state
+from publishing.media_utils import prepare_instagram_media_url
 
 from .models import ScheduledPost
 from .services import is_invalid_token_error, token_reconnect_message
@@ -120,6 +121,16 @@ def _ensure_account_token_is_valid(account: ConnectedAccount):
     return None
 
 
+def _prepare_media_for_instagram_schedule(media_url: str | None) -> tuple[str | None, JsonResponse | None]:
+    if not media_url:
+        return media_url, None
+    try:
+        prepared = prepare_instagram_media_url(media_url)
+    except Exception as exc:  # noqa: BLE001
+        return None, _bad_request(str(exc))
+    return prepared, None
+
+
 @require_POST
 @login_required
 def schedule_post(request: HttpRequest) -> JsonResponse:
@@ -174,6 +185,9 @@ def schedule_post(request: HttpRequest) -> JsonResponse:
     if platform == "both":
         if not media_url:
             return _bad_request("media_url or media_file is required when platform is both")
+        media_url, media_error = _prepare_media_for_instagram_schedule(media_url)
+        if media_error:
+            return media_error
         fb_account, ig_account, resolve_error = _resolve_dual_accounts(account)
         if resolve_error:
             return _bad_request(resolve_error)
@@ -228,6 +242,11 @@ def schedule_post(request: HttpRequest) -> JsonResponse:
         )
 
     post = ScheduledPost(account=account, platform=platform, message=message, media_url=media_url, scheduled_for=dt)
+    if platform == INSTAGRAM:
+        media_url, media_error = _prepare_media_for_instagram_schedule(media_url)
+        if media_error:
+            return media_error
+        post.media_url = media_url
 
     try:
         post.save()
@@ -299,12 +318,28 @@ def retry_failed_post(request: HttpRequest, post_id: int) -> JsonResponse:
             dt = timezone.make_aware(dt, timezone=dt_timezone.utc)
         retry_time = dt
 
+    if post.platform == INSTAGRAM and post.media_url:
+        prepared_media_url, media_error = _prepare_media_for_instagram_schedule(post.media_url)
+        if media_error:
+            return media_error
+        post.media_url = prepared_media_url
+
     post.status = POST_STATUS_PENDING
     post.error_message = ""
     post.external_post_id = ""
     post.published_at = None
     post.scheduled_for = retry_time
-    post.save(update_fields=["status", "error_message", "external_post_id", "published_at", "scheduled_for", "updated_at"])
+    post.save(
+        update_fields=[
+            "status",
+            "error_message",
+            "external_post_id",
+            "published_at",
+            "scheduled_for",
+            "media_url",
+            "updated_at",
+        ]
+    )
 
     logger.info("failed post retried id=%s by_user=%s scheduled_for=%s", post.id, request.user.id, post.scheduled_for)
     return JsonResponse({"id": post.id, "status": post.status, "scheduled_for": post.scheduled_for.isoformat()})

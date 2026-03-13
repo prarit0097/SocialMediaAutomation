@@ -192,6 +192,76 @@ class PublishingApiTests(TestCase):
         post.refresh_from_db()
         self.assertEqual(post.status, POST_STATUS_PENDING)
 
+    @override_settings(PUBLIC_BASE_URL="https://public.example.com")
+    @patch("publishing.views.MetaClient.debug_token", return_value={"data": {"is_valid": True}})
+    def test_schedule_instagram_optimizes_local_png_url(self, _mock_debug_token):
+        from PIL import Image
+
+        image = Image.new("RGB", (1200, 1600), color=(230, 230, 230))
+        temp = default_storage.save("scheduled_uploads/test_schedule_instagram.png", ContentFile(b"placeholder"))
+        temp_path = default_storage.path(temp)
+        image.save(temp_path, format="PNG")
+        media_url = "https://public.example.com/media/scheduled_uploads/test_schedule_instagram.png"
+
+        try:
+            response = self.client.post(
+                reverse("schedule_post"),
+                data={
+                    "account_id": self.ig_account.id,
+                    "platform": INSTAGRAM,
+                    "message": "Hello",
+                    "media_url": media_url,
+                    "scheduled_for": (timezone.now() + timedelta(minutes=10)).isoformat(),
+                },
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 201)
+            created = ScheduledPost.objects.get(id=response.json()["id"])
+            self.assertTrue(created.media_url.endswith("_ig.jpg"))
+        finally:
+            if default_storage.exists(temp):
+                default_storage.delete(temp)
+            derived = "scheduled_uploads/test_schedule_instagram_ig.jpg"
+            if default_storage.exists(derived):
+                default_storage.delete(derived)
+
+    @override_settings(PUBLIC_BASE_URL="https://public.example.com")
+    @patch("publishing.views.MetaClient.debug_token", return_value={"data": {"is_valid": True}})
+    def test_retry_failed_instagram_optimizes_local_png_url(self, _mock_debug_token):
+        from PIL import Image
+
+        image = Image.new("RGB", (1200, 1600), color=(220, 220, 220))
+        temp = default_storage.save("scheduled_uploads/test_retry_instagram.png", ContentFile(b"placeholder"))
+        temp_path = default_storage.path(temp)
+        image.save(temp_path, format="PNG")
+        media_url = "https://public.example.com/media/scheduled_uploads/test_retry_instagram.png"
+        post = ScheduledPost.objects.create(
+            account=self.ig_account,
+            platform=INSTAGRAM,
+            message="Hello",
+            media_url=media_url,
+            scheduled_for=timezone.now(),
+            status=POST_STATUS_FAILED,
+            error_message="Timeout (code=-2, subcode=2207003, title=Timeout)",
+        )
+
+        try:
+            response = self.client.post(
+                reverse("retry_failed_post", args=[post.id]),
+                data={},
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 200)
+            post.refresh_from_db()
+            self.assertEqual(post.status, POST_STATUS_PENDING)
+            self.assertTrue(post.media_url.endswith("_ig.jpg"))
+        finally:
+            if default_storage.exists(temp):
+                default_storage.delete(temp)
+            derived = "scheduled_uploads/test_retry_instagram_ig.jpg"
+            if default_storage.exists(derived):
+                default_storage.delete(derived)
+
 
 class PublishingTaskTests(TestCase):
     def setUp(self):
