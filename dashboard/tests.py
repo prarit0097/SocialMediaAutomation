@@ -3,7 +3,9 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import Client, TestCase, override_settings
+from django.utils import timezone
 
+from core.exceptions import MetaAPIError
 from integrations.models import ConnectedAccount
 
 
@@ -109,3 +111,32 @@ class DashboardAuthTests(TestCase):
         self.assertEqual(body["level"], "bad")
         self.assertEqual(body["invalid_accounts"][0]["page_name"], "Broken FB")
         self.assertIn("Connect Facebook + Instagram", body["next_steps"][0])
+
+    @patch("dashboard.views.MetaClient.debug_token")
+    def test_token_health_status_stays_green_on_meta_rate_limit_without_confirmed_invalid_token(self, mock_debug_token):
+        user_model = get_user_model()
+        user = user_model.objects.create_user(username="admin", password="pass12345")
+        self.client.login(username="admin", password="pass12345")
+        ConnectedAccount.objects.create(
+            platform="facebook",
+            page_id="fb-1",
+            page_name="Recent FB",
+            access_token="recent-token",
+        )
+        cache.set(
+            f"meta_last_sync:{user.id}",
+            {
+                "synced_at": timezone.now().isoformat(),
+            },
+            timeout=600,
+        )
+        mock_debug_token.side_effect = MetaAPIError("(#4) Application request limit reached (code=4)")
+
+        response = self.client.get("/dashboard/token-health-status/")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["level"], "ok")
+        self.assertEqual(body["scope"], "recent_sync")
+        self.assertIn("rate limit", body["summary"].lower())

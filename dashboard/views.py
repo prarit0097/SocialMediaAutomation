@@ -1,3 +1,4 @@
+from datetime import timedelta
 from urllib.parse import urlparse
 
 from django.conf import settings
@@ -5,6 +6,7 @@ from django.core.cache import cache
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.shortcuts import render
+from django.utils import timezone
 
 from core.exceptions import MetaAPIError
 from core.services.meta_client import MetaClient
@@ -68,12 +70,26 @@ def _account_label(account: ConnectedAccount) -> str:
     return f"{account.page_name} ({account.platform})"
 
 
-def _token_health_payload():
+def _sync_scoped_accounts(user) -> tuple[list[ConnectedAccount], str]:
+    sync_data = cache.get(f"meta_last_sync:{user.id}") if getattr(user, "id", None) else None
+    synced_at_raw = (sync_data or {}).get("synced_at")
+    if synced_at_raw:
+        synced_at = timezone.datetime.fromisoformat(str(synced_at_raw).replace("Z", "+00:00"))
+        if timezone.is_naive(synced_at):
+            synced_at = timezone.make_aware(synced_at, timezone=timezone.utc)
+        window_start = synced_at - timedelta(minutes=10)
+        scoped = list(ConnectedAccount.objects.exclude(access_token="").filter(updated_at__gte=window_start).order_by("id"))
+        if scoped:
+            return scoped, "recent_sync"
+    return list(ConnectedAccount.objects.exclude(access_token="").order_by("id")), "all_connected"
+
+
+def _token_health_payload(user):
     cached = cache.get(TOKEN_HEALTH_CACHE_KEY)
     if cached:
         return {**cached, "cached": True}
 
-    accounts = list(ConnectedAccount.objects.exclude(access_token="").order_by("id"))
+    accounts, scope = _sync_scoped_accounts(user)
     if not accounts:
         payload = {
             "ok": True,
@@ -84,6 +100,7 @@ def _token_health_payload():
             "next_steps": ["Connect Facebook + Instagram from the Accounts page to start token monitoring."],
             "checked_accounts": 0,
             "checked_tokens": 0,
+            "scope": scope,
             "invalid_accounts": [],
             "validation_error": None,
         }
@@ -119,7 +136,48 @@ def _token_health_payload():
                 }
             )
 
-    if not validation_error and not invalid_accounts:
+    validation_error_text = str(validation_error or "")
+    is_rate_limited = "code=4" in validation_error_text.lower()
+
+    if invalid_accounts:
+        summary = "One or more Meta tokens are invalid or expired."
+        reason = invalid_accounts[0]["reason"]
+        payload = {
+            "ok": False,
+            "level": "bad",
+            "label": "Needs reconnect",
+            "summary": summary,
+            "reason": reason,
+            "next_steps": [
+                "Open Accounts and click Connect Facebook + Instagram.",
+                "Complete Meta reconnect so fresh page tokens are stored.",
+                "Click Refresh List after reconnect.",
+                "Retry failed posts or run insights refresh again.",
+            ],
+            "checked_accounts": len(accounts),
+            "checked_tokens": len(token_groups),
+            "scope": scope,
+            "invalid_accounts": invalid_accounts[:6],
+            "validation_error": validation_error,
+        }
+    elif is_rate_limited:
+        payload = {
+            "ok": True,
+            "level": "ok",
+            "label": "Healthy",
+            "summary": "Recent reconnect completed. Meta health check hit app rate limit before any invalid token was confirmed.",
+            "reason": validation_error_text,
+            "next_steps": [
+                "Wait 1-2 minutes and refresh once if you want a fresh validation pass.",
+                "If publishing still fails, reconnect the affected profile from Accounts.",
+            ],
+            "checked_accounts": len(accounts),
+            "checked_tokens": len(token_groups),
+            "scope": scope,
+            "invalid_accounts": [],
+            "validation_error": validation_error,
+        }
+    elif not validation_error:
         payload = {
             "ok": True,
             "level": "ok",
@@ -135,22 +193,17 @@ def _token_health_payload():
             ],
             "checked_accounts": len(accounts),
             "checked_tokens": len(token_groups),
+            "scope": scope,
             "invalid_accounts": [],
             "validation_error": None,
         }
     else:
-        if validation_error and not invalid_accounts:
-            summary = "Meta token health could not be fully validated right now."
-            reason = validation_error
-        else:
-            summary = "One or more Meta tokens are invalid or expired."
-            reason = invalid_accounts[0]["reason"] if invalid_accounts else validation_error
         payload = {
             "ok": False,
             "level": "bad",
             "label": "Needs reconnect",
-            "summary": summary,
-            "reason": reason,
+            "summary": "Meta token health could not be fully validated right now.",
+            "reason": validation_error,
             "next_steps": [
                 "Open Accounts and click Connect Facebook + Instagram.",
                 "Complete Meta reconnect so fresh page tokens are stored.",
@@ -159,7 +212,8 @@ def _token_health_payload():
             ],
             "checked_accounts": len(accounts),
             "checked_tokens": len(token_groups),
-            "invalid_accounts": invalid_accounts[:6],
+            "scope": scope,
+            "invalid_accounts": [],
             "validation_error": validation_error,
         }
 
@@ -193,5 +247,5 @@ def public_url_status(request):
 
 
 @login_required
-def token_health_status(_request):
-    return JsonResponse(_token_health_payload())
+def token_health_status(request):
+    return JsonResponse(_token_health_payload(request.user))
