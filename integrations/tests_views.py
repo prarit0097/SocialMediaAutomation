@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from analytics.models import InsightSnapshot
 from publishing.models import ScheduledPost
-from integrations.models import ConnectedAccount
+from integrations.models import ConnectedAccount, MetaUserToken
 from core.exceptions import MetaAPIError
 
 
@@ -308,6 +308,7 @@ class IntegrationsViewTests(TestCase):
         self.assertEqual(by_id["58"]["status"], "connected")
         self.assertEqual(by_id["58"]["connectability"], "connected")
         self.assertTrue(any("global-user-token" in str(call) for call in mock_get.call_args_list))
+        self.assertTrue(MetaUserToken.objects.filter(user=self.user).exists())
 
     @patch("integrations.views.MetaClient._get")
     @patch("integrations.views.MetaClient.debug_token")
@@ -342,6 +343,39 @@ class IntegrationsViewTests(TestCase):
         self.assertEqual(by_id["58"]["status"], "connected")
         self.assertEqual(by_id["58"]["connectability"], "connected")
         self.assertTrue(any("session-user-token" in str(call) for call in mock_get.call_args_list))
+        self.assertTrue(MetaUserToken.objects.filter(user=self.user).exists())
+
+    @patch("integrations.views.MetaClient._get")
+    @patch("integrations.views.MetaClient.debug_token")
+    def test_meta_pages_catalog_uses_db_user_token_fallback(self, mock_debug_token, mock_get):
+        ConnectedAccount.objects.create(
+            platform="facebook",
+            page_id="10",
+            page_name="Connected Page",
+            access_token="token",
+        )
+        MetaUserToken.objects.create(user=self.user, access_token="db-user-token")
+
+        mock_debug_token.return_value = {
+            "data": {
+                "granular_scopes": [
+                    {"scope": "pages_show_list", "target_ids": ["10", "58"]},
+                ]
+            }
+        }
+        mock_get.return_value = {
+            "id": "58",
+            "name": "DB Token Page",
+            "access_token": "page-token-58",
+        }
+
+        response = self.client.get("/api/accounts/meta-pages/?refresh=1")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        by_id = {row["page_id"]: row for row in payload["rows"]}
+        self.assertEqual(by_id["58"]["status"], "connected")
+        self.assertEqual(by_id["58"]["connectability"], "connected")
+        self.assertTrue(any("db-user-token" in str(call) for call in mock_get.call_args_list))
 
     @patch("integrations.views.MetaClient._get")
     @patch("integrations.views.MetaClient.debug_token")
@@ -415,3 +449,4 @@ class IntegrationsViewTests(TestCase):
         self.assertTrue(ConnectedAccount.objects.filter(platform="instagram", page_id="new-ig").exists())
         self.assertTrue(bool(self.client.session.get("meta_user_access_token")))
         self.assertIsNone(cache.get(f"meta_pages_catalog:{self.user.id}"))
+        self.assertTrue(MetaUserToken.objects.filter(user=self.user).exists())

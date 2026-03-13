@@ -200,6 +200,18 @@ Operational meaning:
 - `is_active` tracks whether a stored row is part of the latest usable reconnect set
 - encrypted token text itself is not used for DB filtering decisions; active/inactive state is managed with `is_active`
 
+### Meta User OAuth Token
+Model: `integrations.MetaUserToken`
+
+Stores:
+- per-user Meta OAuth user access token in encrypted form
+- created and updated timestamps
+
+Operational meaning:
+- catalog detail lookups can recover after cache/server restarts
+- token resolution order is session token -> per-user cache -> encrypted DB token -> global cache token
+- when catalog API sees a valid session/cache/global token, it auto-persists that token into DB for durability
+
 ### Scheduled Posts
 Model: `publishing.ScheduledPost`
 

@@ -1,4 +1,5 @@
-﻿from django.db import models
+from django.conf import settings
+from django.db import models
 
 from core.constants import PLATFORM_CHOICES
 from core.fields import EncryptedTextField
@@ -23,3 +24,16 @@ class ConnectedAccount(models.Model):
 
     def __str__(self) -> str:
         return f"{self.page_name} ({self.platform})"
+
+
+class MetaUserToken(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="meta_user_token")
+    access_token = EncryptedTextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+
+    def __str__(self) -> str:
+        return f"Meta token for user {self.user_id}"
