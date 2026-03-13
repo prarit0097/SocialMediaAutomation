@@ -13,7 +13,11 @@
   const csrfToken = getCookie("csrftoken");
 
   async function fetchJSON(url, options = {}) {
-    const response = await fetch(url, options);
+    const requestOptions = { ...options };
+    if (!requestOptions.method || String(requestOptions.method).toUpperCase() === "GET") {
+      requestOptions.cache = requestOptions.cache || "no-store";
+    }
+    const response = await fetch(url, requestOptions);
     const contentType = response.headers.get("content-type") || "";
     const data = contentType.includes("application/json") ? await response.json() : await response.text();
 
