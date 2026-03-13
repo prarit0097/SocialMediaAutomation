@@ -157,3 +157,18 @@ Services:
 - Existing legacy Node directories (`backend/`, `frontend/`) are not used by this Django app.
 - For production, complete Meta App Review for required permissions.
 - Keep `DEBUG=False` and strong secrets in production.
+
+## 11) Codex MCP helpers
+This repo now includes project-local MCP launchers and custom monitoring servers under `mcp_servers/`.
+
+Included MCPs:
+- `social-filesystem` for project files and temporary local logs
+- `social-playwright` for browser-based Accounts / Scheduler / Insights validation
+- `social-redis-celery` for Redis queue, Celery worker, daily-heavy refresh, and publishing pipeline monitoring
+- `social-meta-insights` for cached snapshot summaries, stale profile detection, posting-gap detection, and FB vs IG comparison
+
+Register them in the local Codex config with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\mcp_servers\setup_codex_mcp.ps1
+```

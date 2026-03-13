@@ -157,6 +157,30 @@ Stores:
 - Celery beat
 - Meta Graph API
 - Docker Compose for deployment setup
+- Codex MCP servers for local operations and future agent tooling
+
+## Codex MCP Tooling
+This project now includes four local MCP servers under `mcp_servers/` so Codex or future agents can inspect and operate the workspace more directly.
+
+### Filesystem MCP
+- reads and updates project files
+- can inspect temporary local log files used during local runs
+
+### Browser / Playwright MCP
+- opens the dashboard in a real browser
+- validates Accounts, Scheduler, and Insights flows
+
+### Redis / Celery MCP
+- checks Redis queue keys and queue sizes
+- checks Celery workers and active queues
+- reports daily heavy insights automation progress
+- reports scheduled publishing pipeline health and failed jobs
+
+### Meta Insights MCP
+- summarizes latest cached snapshots
+- flags stale profiles
+- detects posting gaps
+- builds cached FB vs IG comparison data from stored snapshots
 
 ## Current Operational Assumptions
 - Meta app permissions must be valid.
@@ -172,6 +196,7 @@ Planned/expected future direction:
 - AI agent analyzes trends across FB and IG
 - AI agent suggests content and posting improvements
 - UI can rely more on stored snapshots and less on expensive live pulls
+- MCP-based tools can give agents direct structured access to cached analytics, queue health, and browser validation workflows
 
 ## Rule For Maintenance
 This file must be updated whenever project behavior, workflow, automation, stored data, or important UI meaning changes.
