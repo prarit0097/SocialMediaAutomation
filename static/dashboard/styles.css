@@ -1196,19 +1196,6 @@ pre {
   transform: translateY(-1px);
 }
 
-.account-action-primary::after {
-  content: "Priority";
-  margin-left: 6px;
-  padding: 1px 5px;
-  border-radius: 999px;
-  font-size: 9px;
-  font-weight: 900;
-  background: rgba(255, 255, 255, 0.24);
-}
-
-.account-action-btn.disabled::after {
-  content: none;
-}
 
 .ai-form-grid {
   display: grid;
