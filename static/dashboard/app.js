@@ -137,9 +137,14 @@
       const lastPostIsStale = lastPostAt ? isOlderThanHours(lastPostAt, 24) : true;
       const syncIsStale = Boolean(row.is_sync_stale) || Boolean(linkedIg?.is_sync_stale);
       const syncStateReason = linkedIg?.is_sync_stale ? linkedIg.sync_state_reason : row.sync_state_reason;
+      const fbName = cleanProfileName(row.page_name);
+      const igName = linkedIg ? cleanProfileName(linkedIg.page_name) : "";
+      const displayName = linkedIg ? `${fbName} + ${igName}` : fbName;
 
       merged.push({
-        profile_name: cleanProfileName(linkedIg?.page_name || row.page_name),
+        profile_name: displayName,
+        fb_page_name: fbName,
+        ig_page_name: igName,
         account_id: Number(row.id),
         platform: linkedIg ? "fb_ig" : "fb",
         page_id: String(row.page_id || ""),
@@ -163,6 +168,8 @@
 
       merged.push({
         profile_name: cleanProfileName(row.page_name),
+        fb_page_name: "",
+        ig_page_name: cleanProfileName(row.page_name),
         account_id: Number(row.id),
         platform: "ig",
         page_id: "",
@@ -250,27 +257,38 @@
       const platformOk = filterValue === "all" ? true : String(row.platform || "").toLowerCase() === filterValue;
       if (!platformOk) return false;
       if (!query) return true;
-      const bag = [row.account_id, row.platform, row.profile_name, row.page_id, row.ig_user_id]
+      const bag = [
+        row.account_id,
+        row.fb_account_id,
+        row.ig_account_id,
+        row.platform,
+        row.profile_name,
+        row.fb_page_name,
+        row.ig_page_name,
+        row.page_id,
+        row.ig_user_id,
+      ]
         .map((v) => String(v ?? "").toLowerCase())
         .join(" ");
       return bag.includes(query);
     });
   }
 
-  function updateAccountsViewMeta(filteredRows, totalRows) {
+  function updateAccountsViewMeta(filteredRows, totalRows, rawTotalRows) {
     const meta = document.getElementById("accountsViewMeta");
     if (!meta) return;
     const fbOnly = filteredRows.filter((r) => String(r.platform).toLowerCase() === "fb").length;
     const igOnly = filteredRows.filter((r) => String(r.platform).toLowerCase() === "ig").length;
     const both = filteredRows.filter((r) => String(r.platform).toLowerCase() === "fb_ig").length;
-    meta.textContent = `Showing: ${filteredRows.length}/${totalRows} | FB only: ${fbOnly} | IG only: ${igOnly} | FB_IG: ${both}`;
+    const rawText = Number.isFinite(Number(rawTotalRows)) ? ` | Active raw rows: ${rawTotalRows}` : "";
+    meta.textContent = `Showing merged: ${filteredRows.length}/${totalRows} | FB only: ${fbOnly} | IG only: ${igOnly} | FB_IG: ${both}${rawText}`;
   }
 
-  function renderAccountsTable(container, rows, totalRows) {
+  function renderAccountsTable(container, rows, totalRows, rawTotalRows) {
     if (!container) return;
     if (!rows.length) {
       container.innerHTML = "<p>No records found.</p>";
-      updateAccountsViewMeta([], totalRows || 0);
+      updateAccountsViewMeta([], totalRows || 0, rawTotalRows || 0);
       return;
     }
 
@@ -326,7 +344,7 @@
       .join("");
 
     container.innerHTML = `<table>${head}${body}</table>`;
-    updateAccountsViewMeta(rows, totalRows || rows.length);
+    updateAccountsViewMeta(rows, totalRows || rows.length, rawTotalRows || rows.length);
   }
 
   function escapeHtml(value) {
@@ -454,7 +472,7 @@
     if (!table) return;
     const mergedRows = mergeAccountRows(cachedAccountsRows);
     const filtered = applyAccountFilters(mergedRows);
-    renderAccountsTable(table, filtered, mergedRows.length);
+    renderAccountsTable(table, filtered, mergedRows.length, cachedAccountsRows.length);
   }
 
   async function loadAccounts(options = {}) {

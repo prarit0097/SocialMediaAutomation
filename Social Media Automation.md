@@ -21,12 +21,14 @@ The Accounts page is the operator view for connected Meta assets.
 
 What it shows:
 - merged FB / IG profile rows where a link exists
+- merged profile label shows both names (`FB page + IG profile`) to avoid hidden-page confusion
 - account IDs used by scheduler and insights
 - Facebook Page ID and Instagram user ID
 - connected timestamp
 - latest detected posting time (`last_post_at`)
 - stale posting indicator when no recent post was detected in the last 24 hours
 - stale sync indicator when a stored account row was not refreshed in the latest Meta reconnect
+- view meta shows both merged-row count and active raw connected-row count
 
 What it does:
 - starts the Meta connect flow
