@@ -2,11 +2,12 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime, timezone as dt_timezone
+from datetime import datetime, timedelta, timezone as dt_timezone
 from urllib.parse import urljoin
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
+from django.core.cache import cache
 from django.core.files.storage import default_storage
 from django.db import transaction
 from django.http import HttpRequest, JsonResponse
@@ -14,7 +15,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.http import require_GET, require_POST
 
-from core.constants import FACEBOOK, INSTAGRAM, PLATFORM_CHOICES, POST_STATUS_FAILED, POST_STATUS_PENDING
+from core.constants import FACEBOOK, INSTAGRAM, PLATFORM_CHOICES, POST_STATUS_FAILED, POST_STATUS_PENDING, POST_STATUS_PROCESSING
 from core.exceptions import MetaAPIError
 from core.services.meta_client import MetaClient
 from integrations.models import ConnectedAccount
@@ -23,6 +24,7 @@ from publishing.media_utils import prepare_instagram_media_url
 
 from .models import ScheduledPost
 from .services import is_invalid_token_error, token_reconnect_message
+from .tasks import process_due_posts
 
 logger = logging.getLogger("publishing")
 ALLOWED_MEDIA_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".mov", ".webm", ".m4v"}
@@ -129,6 +131,46 @@ def _prepare_media_for_instagram_schedule(media_url: str | None) -> tuple[str | 
     except Exception as exc:  # noqa: BLE001
         return None, _bad_request(str(exc))
     return prepared, None
+
+
+def _auto_dispatch_due_posts_guarded() -> None:
+    """
+    Self-healing fallback:
+    If beat misses a cycle and due pending posts exist, kick dispatcher from API path
+    with a short cache lock to avoid repeated duplicate dispatch.
+    """
+    now = timezone.now()
+    has_due_pending = ScheduledPost.objects.filter(status=POST_STATUS_PENDING, scheduled_for__lte=now).exists()
+    if not has_due_pending:
+        return
+
+    lock_key = "publishing:auto_dispatch_due_posts_lock"
+    if not cache.add(lock_key, now.isoformat(), timeout=12):
+        return
+
+    try:
+        # Fallback path runs inline from API thread so scheduler still progresses
+        # even when celery beat/worker is unavailable.
+        process_due_posts(run_inline=True)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("auto dispatcher inline fallback failed error=%s", str(exc))
+
+
+def _recover_stale_processing_posts(stale_minutes: int = 5) -> int:
+    cutoff = timezone.now() - timedelta(minutes=stale_minutes)
+    stale_qs = ScheduledPost.objects.filter(
+        status=POST_STATUS_PROCESSING,
+        updated_at__lt=cutoff,
+    )
+    stale_ids = list(stale_qs.values_list("id", flat=True))
+    if not stale_ids:
+        return 0
+    ScheduledPost.objects.filter(id__in=stale_ids).update(
+        status=POST_STATUS_PENDING,
+        error_message="Recovered from stale processing state; auto re-queued.",
+    )
+    logger.warning("recovered stale processing posts count=%s ids=%s", len(stale_ids), stale_ids[:20])
+    return len(stale_ids)
 
 
 @require_POST
@@ -266,6 +308,8 @@ def schedule_post(request: HttpRequest) -> JsonResponse:
 @require_GET
 @login_required
 def list_scheduled_posts(_request: HttpRequest) -> JsonResponse:
+    _recover_stale_processing_posts()
+    _auto_dispatch_due_posts_guarded()
     rows = list(
         ScheduledPost.objects.select_related("account").values(
             "id",

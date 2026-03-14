@@ -103,6 +103,8 @@ What happens:
 - post is stored in UTC internally
 - Celery beat checks every minute for due posts
 - Celery worker publishes due jobs to Meta Graph
+- scheduler list API now includes a self-healing dispatcher fallback: if due pending jobs exist (beat miss case), it auto-triggers due processing so queue does not stay stuck
+- stale `processing` rows are auto-recovered back to `pending` after safety window and re-queued, reducing long-lived stuck jobs
 - Celery uses fair scheduling (`prefetch=1`) and task priority routing so due publishing jobs are not starved by heavy analytics queues
 - due publish jobs are enqueued explicitly with higher priority while daily-heavy analytics refresh is queued with lower priority
 - publish task is idempotent against delayed duplicate deliveries (already-published rows are skipped safely)

@@ -2,6 +2,7 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.test import Client, TestCase
@@ -21,6 +22,7 @@ from publishing.tasks import publish_post_task
 
 class PublishingApiTests(TestCase):
     def setUp(self):
+        cache.clear()
         self.client = Client()
         self.user = get_user_model().objects.create_user(username="admin", password="pass12345")
         self.client.login(username="admin", password="pass12345")
@@ -54,6 +56,21 @@ class PublishingApiTests(TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(ScheduledPost.objects.count(), 1)
         self.assertEqual(ScheduledPost.objects.first().status, POST_STATUS_PENDING)
+
+    @patch("publishing.views.process_due_posts")
+    def test_list_scheduled_posts_triggers_auto_dispatch_for_due_pending(self, mock_process_due_posts):
+        ScheduledPost.objects.create(
+            account=self.account,
+            platform=FACEBOOK,
+            message="Due post",
+            scheduled_for=timezone.now() - timedelta(minutes=3),
+            status=POST_STATUS_PENDING,
+        )
+
+        response = self.client.get(reverse("list_scheduled_posts"))
+
+        self.assertEqual(response.status_code, 200)
+        mock_process_due_posts.assert_called_once_with(run_inline=True)
 
     def test_schedule_post_rejects_account_platform_mismatch(self):
         response = self.client.post(

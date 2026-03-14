@@ -36,7 +36,7 @@ def _get_due_posts(batch_size: int = 20) -> list[ScheduledPost]:
 
 
 @shared_task(name="publishing.tasks.process_due_posts")
-def process_due_posts():
+def process_due_posts(run_inline: bool = False):
     try:
         due_posts = _get_due_posts()
     except DatabaseError:
@@ -54,6 +54,9 @@ def process_due_posts():
             post.save(update_fields=["status", "error_message", "updated_at"])
 
     for post in due_posts:
+        if run_inline:
+            publish_post_task(post.id)
+            continue
         # Keep due publishing jobs ahead of heavy background analytics work.
         publish_post_task.apply_async(args=[post.id], priority=9)
 
