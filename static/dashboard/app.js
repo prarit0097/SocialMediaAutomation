@@ -1528,6 +1528,7 @@
       ${renderAiPlanTable("7-day action plan", analysis.action_plan_7d || [])}
       ${renderAiKpiTable(analysis.kpi_growth_plan || [])}
       ${renderAiListCard("Content ideas", analysis.content_ideas || [], "")}
+      ${renderAiListCard("Best recommendation for grow your profile", analysis.best_recommendations_for_growth || [], "tone-good")}
     `;
   }
 

@@ -152,6 +152,7 @@ What it shows:
 - recommended posting strategy (current vs suggested cadence) with mandatory separate FB/IG current cadence using last-7-days posts and avg/day
 - 7-day action plan and KPI growth targets
 - content ideas aligned to current profile data
+- final section: **Best recommendation for grow your profile** (bullet points), tied to profile data and trend-aware execution with serious source references (for example Meta for Creators / Instagram Creators)
 
 What it supports:
 - account-id based analysis for any connected profile

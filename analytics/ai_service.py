@@ -214,6 +214,41 @@ def _default_posting_strategy(payload: dict[str, Any]) -> dict[str, str]:
     }
 
 
+def _default_best_recommendations(payload: dict[str, Any]) -> list[str]:
+    perf = payload.get("performance_last_7d") if isinstance(payload.get("performance_last_7d"), dict) else {}
+    cadence = payload.get("posting_cadence") if isinstance(payload.get("posting_cadence"), dict) else {}
+
+    views = _format_number(_to_number(perf.get("views")), 0)
+    likes = _format_number(_to_number(perf.get("likes")), 0)
+    comments = _format_number(_to_number(perf.get("comments")), 0)
+    shares = _format_number(_to_number(perf.get("shares")), 0)
+    fb_7d = _format_number(_to_number(cadence.get("facebook_posts_last_7d")), 0)
+    ig_7d = _format_number(_to_number(cadence.get("instagram_posts_last_7d")), 0)
+
+    return [
+        (
+            "Use a reels-first + strong-hook format for Instagram and test at least 4-5 short videos in 7 days; "
+            "prioritize opening 2 seconds and retention-focused edits. "
+            "Reference: Instagram Creators / Meta for Creators best practices."
+        ),
+        (
+            f"Keep platform-separated consistency: Facebook {fb_7d} posts (last 7d) and Instagram {ig_7d} posts (last 7d) "
+            "should move toward daily publishing with fixed posting slots. "
+            "Reference: Meta Business Suite publishing guidance."
+        ),
+        (
+            f"Build engagement loops from current baseline (views={views}, likes={likes}, comments={comments}, shares={shares}) "
+            "by adding CTA prompts, question captions, and comment reply within first 60 minutes of posting. "
+            "Reference: Meta performance/engagement documentation."
+        ),
+        (
+            "Create weekly content mix: 60% educational problem-solution posts, 25% proof/results/social trust posts, "
+            "15% authority/personal brand posts. Track saves + shares as primary quality signal. "
+            "Reference: creator-led content strategy playbooks."
+        ),
+    ]
+
+
 def generate_profile_ai_insights(payload: dict[str, Any], focus: str | None = None) -> dict[str, Any]:
     api_key = (settings.OPENAI_API_KEY or "").strip()
     if not api_key:
@@ -262,7 +297,8 @@ def generate_profile_ai_insights(payload: dict[str, Any], focus: str | None = No
         '  "kpi_growth_plan": [\n'
         '    {"metric": string, "current": string, "target_7d": string, "how": string}\n'
         "  ],\n"
-        '  "content_ideas": string[]\n'
+        '  "content_ideas": string[],\n'
+        '  "best_recommendations_for_growth": string[]\n'
         "}\n"
         "\n"
         "Output requirements:\n"
@@ -280,6 +316,12 @@ def generate_profile_ai_insights(payload: dict[str, Any], focus: str | None = No
         "- kpi_growth_plan: include at least these metrics when available: views, reach, likes, comments, shares, saves, interactions, post cadence.\n"
         "  For each metric: give current (or 'not available'), realistic 7-day target, and method.\n"
         "- content_ideas: 8-15 practical ideas aligned to current profile performance.\n"
+        "- best_recommendations_for_growth:\n"
+        "  - MUST provide 5-10 high-impact recommendations as clear bullets.\n"
+        "  - MUST be tied to provided profile data (cadence + performance metrics).\n"
+        "  - MUST mention trend-aware execution for current social behavior (short-form video hooks, retention, saves/shares, strong CTA loops).\n"
+        "  - MUST include credible resource references inside each bullet when possible (for example: Meta for Creators, Instagram Creators, Meta Business Help Center).\n"
+        "  - Do not add fake URLs; if specific source link is not known, use source name only.\n"
         "\n"
         "Important reasoning constraints:\n"
         "- Use profile-level and post-level evidence from input.\n"
@@ -327,6 +369,7 @@ def generate_profile_ai_insights(payload: dict[str, Any], focus: str | None = No
 
     parsed = _json_from_text(content)
     fallback_posting_strategy = _default_posting_strategy(payload)
+    fallback_best_recommendations = _default_best_recommendations(payload)
     parsed_posting_strategy = parsed.get("posting_strategy") if isinstance(parsed.get("posting_strategy"), dict) else {}
 
     current_posting = str(parsed_posting_strategy.get("current_posting") or "").strip()
@@ -356,5 +399,8 @@ def generate_profile_ai_insights(payload: dict[str, Any], focus: str | None = No
         "action_plan_7d": _normalize_plan_rows(parsed.get("action_plan_7d")),
         "kpi_growth_plan": _normalize_kpi_rows(parsed.get("kpi_growth_plan")),
         "content_ideas": _normalize_list(parsed.get("content_ideas")),
+        "best_recommendations_for_growth": _normalize_list(parsed.get("best_recommendations_for_growth")),
     }
+    if not normalized["best_recommendations_for_growth"]:
+        normalized["best_recommendations_for_growth"] = fallback_best_recommendations
     return normalized
