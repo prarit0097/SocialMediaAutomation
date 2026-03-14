@@ -279,6 +279,16 @@ Stores:
   - `CELERY_WORKER_MAX_TASKS_PER_CHILD`
   - `CELERY_TASK_SOFT_TIME_LIMIT`, `CELERY_TASK_TIME_LIMIT`
 - Restart web + worker processes after config changes so new concurrency controls apply.
+
+### One-command Celery Startup (Windows)
+- Script: `start_celery_cluster.ps1` (project root)
+- Purpose: start these 3 processes automatically in separate PowerShell windows:
+  - `worker_a` (`--pool=threads -c 12`)
+  - `worker_b` (`--pool=threads -c 8`)
+  - `beat`
+- Usage:
+  - from project root: `.\start_celery_cluster.ps1`
+  - optional custom path: `.\start_celery_cluster.ps1 -ProjectPath "E:\Social Media Automation"`
 5. App creates or updates connected FB and IG account rows.
 6. App records the latest reconnect time for stale-account detection.
 
