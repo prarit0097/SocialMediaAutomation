@@ -145,10 +145,11 @@
       <details class="meta-guide-details" open>
         <summary>Part 4: Add permissions/scopes (important)</summary>
         <ol class="meta-howto-list">
-          <li>Meta App Dashboard kholo.</li>
-          <li><strong>App Review / Permissions and Features</strong> section me jao.</li>
-          <li>Neeche diye gaye scopes ko add/enable karo.</li>
-          <li>Jitne scopes enable karoge, utne features app me kaam karenge.</li>
+          <li>Meta app dashboard kholo, left menu me <strong>App Review</strong> ya <strong>Permissions and Features</strong> section me jao.</li>
+          <li>Search box me permission ka naam type karo (example: <code>pages_show_list</code>), phir <strong>Add</strong> ya <strong>Request</strong> button click karo.</li>
+          <li>Agar Meta "Advanced Access" mange, to us permission ke card me jaake access request complete karo.</li>
+          <li>Same process neeche diye gaye har scope ke liye repeat karo. Koi scope miss hua to related feature kaam nahi karega.</li>
+          <li>Sab add karne ke baad setup save karo, phir app me <strong>Connect Facebook + Instagram</strong> dobara run karo.</li>
         </ol>
 
         <div class="meta-scope-box">
@@ -170,16 +171,26 @@
         <div class="meta-scope-explain">
           <p class="meta-scope-title">What each scope does (simple meaning)</p>
           <ul class="meta-howto-list">
-            <li><code>pages_show_list</code> -> app ko aapke Facebook Pages ki list dikhata hai.</li>
-            <li><code>pages_read_engagement</code> + <code>read_insights</code> -> page insights/analytics read karne ke liye.</li>
-            <li><code>pages_manage_posts</code> + <code>pages_read_user_content</code> -> post publish/read ke liye.</li>
-            <li><code>instagram_basic</code> -> connected Instagram profile details read karne ke liye.</li>
-            <li><code>instagram_content_publish</code> -> Instagram post/reel publish karne ke liye.</li>
-            <li><code>instagram_manage_insights</code> -> Instagram insights read karne ke liye.</li>
+            <li><code>pages_show_list</code> -> app ko aapke Facebook Pages ki list dikhata hai (page pick karne ke liye must).</li>
+            <li><code>pages_read_engagement</code> + <code>read_insights</code> -> page reach/likes/comments analytics read karne ke liye.</li>
+            <li><code>pages_manage_posts</code> + <code>pages_read_user_content</code> -> Facebook pe post publish karne aur post data read karne ke liye.</li>
+            <li><code>instagram_basic</code> -> connected Instagram profile ka basic data read karne ke liye.</li>
+            <li><code>instagram_content_publish</code> -> Instagram post/reel publish karne ke liye (missing hua to scheduling fail ho sakti hai).</li>
+            <li><code>instagram_manage_insights</code> -> Instagram insights (views, reach, interactions) read karne ke liye.</li>
           </ul>
         </div>
 
-        <p class="meta-check-note"><strong>Final check before connect:</strong> Upar wale required scopes enabled hone chahiye, warna connect ke baad profiles missing aa sakti hain ya scheduling fail ho sakti hai.</p>
+        <div class="meta-scope-explain">
+          <p class="meta-scope-title">Quick self-check (before connect)</p>
+          <ul class="meta-howto-list">
+            <li>Kya list ke sab scopes added/enabled hain? Agar nahi, pehle complete karo.</li>
+            <li>Kya aapke FB profile ko page par admin/full-control access hai?</li>
+            <li>Kya Instagram profile Professional hai aur FB page se linked hai?</li>
+            <li>Agar sab yes hai, tabhi Connect flow run karo.</li>
+          </ul>
+        </div>
+
+        <p class="meta-check-note"><strong>Final check before connect:</strong> Required scopes + page access + IG professional link tino correct hone chahiye, warna profiles missing, token errors, ya scheduling failure aa sakti hai.</p>
       </details>
 
       <details class="meta-guide-details" open>

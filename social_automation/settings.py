@@ -15,6 +15,13 @@ env = environ.Env(
     DAILY_INSIGHTS_POST_STATS_LIMIT=(int, 40),
     OPENAI_MODEL=(str, "gpt-4o-mini"),
     OPENAI_TIMEOUT_SECONDS=(int, 45),
+    CACHE_BACKEND=(str, "locmem"),
+    CACHE_DEFAULT_TIMEOUT_SECONDS=(int, 300),
+    INSIGHTS_RESPONSE_CACHE_TTL=(int, 90),
+    ACCOUNTS_LIST_CACHE_TTL=(int, 20),
+    META_REQUEST_RETRY_ATTEMPTS=(int, 2),
+    META_POST_STATS_TIMEOUT=(int, 12),
+    META_POST_STATS_RETRIES=(int, 2),
 )
 environ.Env.read_env(BASE_DIR / ".env")
 
@@ -137,6 +144,11 @@ DAILY_INSIGHTS_POST_STATS_LIMIT = env("DAILY_INSIGHTS_POST_STATS_LIMIT")
 OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 OPENAI_MODEL = env("OPENAI_MODEL")
 OPENAI_TIMEOUT_SECONDS = env("OPENAI_TIMEOUT_SECONDS")
+INSIGHTS_RESPONSE_CACHE_TTL = env("INSIGHTS_RESPONSE_CACHE_TTL")
+ACCOUNTS_LIST_CACHE_TTL = env("ACCOUNTS_LIST_CACHE_TTL")
+META_REQUEST_RETRY_ATTEMPTS = env("META_REQUEST_RETRY_ATTEMPTS")
+META_POST_STATS_TIMEOUT = env("META_POST_STATS_TIMEOUT")
+META_POST_STATS_RETRIES = env("META_POST_STATS_RETRIES")
 CELERY_BEAT_SCHEDULE = {
     "process-due-posts-every-minute": {
         "task": "publishing.tasks.process_due_posts",
@@ -149,12 +161,25 @@ if DAILY_INSIGHTS_ENABLED:
         "schedule": crontab(hour=DAILY_INSIGHTS_SCHEDULE_HOUR, minute=DAILY_INSIGHTS_SCHEDULE_MINUTE),
     }
 
-CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-        "LOCATION": "social-automation-cache",
+CACHE_BACKEND = env("CACHE_BACKEND").strip().lower()
+CACHE_DEFAULT_TIMEOUT_SECONDS = env("CACHE_DEFAULT_TIMEOUT_SECONDS")
+
+if CACHE_BACKEND == "redis":
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": REDIS_URL,
+            "TIMEOUT": CACHE_DEFAULT_TIMEOUT_SECONDS,
+        }
     }
-}
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "social-automation-cache",
+            "TIMEOUT": CACHE_DEFAULT_TIMEOUT_SECONDS,
+        }
+    }
 
 LOGGING = {
     "version": 1,

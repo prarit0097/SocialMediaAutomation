@@ -659,11 +659,13 @@
     const catalogTable = document.getElementById("metaCatalogTable");
     const catalogStatus = document.getElementById("metaCatalogStatus");
     const refreshCatalog = options.refreshCatalog === true;
+    const refreshAccounts = options.refreshAccounts === true;
     if (!table) return;
     let rows = [];
     try {
       // Primary table should load fast and independently.
-      rows = await fetchJSON("/api/accounts/");
+      const accountsEndpoint = refreshAccounts ? "/api/accounts/?refresh=1" : "/api/accounts/";
+      rows = await fetchJSON(accountsEndpoint);
       cachedAccountsRows = rows;
       renderAccountsFromCache();
     } catch (err) {
@@ -800,7 +802,7 @@
   if (refreshAccountsBtn) {
     const runWithRefreshAccountsLoading = withButtonLoading(refreshAccountsBtn, "Refresh List", "Refreshing...");
     refreshAccountsBtn.addEventListener("click", () =>
-      runWithRefreshAccountsLoading(() => loadAccounts({ refreshCatalog: true }))
+      runWithRefreshAccountsLoading(() => loadAccounts({ refreshCatalog: true, refreshAccounts: true }))
     );
     loadAccounts();
   }

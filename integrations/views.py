@@ -215,6 +215,7 @@ def meta_callback(request: HttpRequest) -> HttpResponse:
             timeout=60 * 60 * 12,
         )
         cache.delete(f"meta_pages_catalog:{user_id}")
+        cache.delete(f"accounts_list_v1:{user_id}")
 
     request.session[META_USER_SESSION_TOKEN_KEY] = token_data["access_token"]
     request.session.modified = True
@@ -225,7 +226,15 @@ def meta_callback(request: HttpRequest) -> HttpResponse:
 
 @require_GET
 @login_required
-def list_accounts(_request: HttpRequest) -> JsonResponse:
+def list_accounts(request: HttpRequest) -> JsonResponse:
+    force_refresh = request.GET.get("refresh") == "1"
+    user_id = getattr(request.user, "id", None)
+    cache_key = f"accounts_list_v1:{user_id}"
+    if not force_refresh:
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return JsonResponse(cached, safe=False)
+
     account_rows = list(
         ConnectedAccount.objects.filter(is_active=True).values(
             "id",
@@ -240,7 +249,6 @@ def list_accounts(_request: HttpRequest) -> JsonResponse:
     )
     last_post_map = _latest_published_post_times([row["id"] for row in account_rows])
     stale_cutoff = timezone.now() - timedelta(hours=24)
-    user_id = getattr(_request.user, "id", None)
     rows = []
     for row in account_rows:
         last_post = last_post_map.get(row["id"])
@@ -263,6 +271,7 @@ def list_accounts(_request: HttpRequest) -> JsonResponse:
                 **sync_state,
             }
         )
+    cache.set(cache_key, rows, timeout=getattr(settings, "ACCOUNTS_LIST_CACHE_TTL", 20))
     return JsonResponse(rows, safe=False)
 
 

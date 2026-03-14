@@ -67,7 +67,7 @@ What it shows:
 What it does:
 - starts the Meta connect flow
 - refreshes the connected account list
-- `Refresh List` now also forces Meta catalog refresh (not only cached catalog read)
+- `Refresh List` now forces fresh reads for both connected accounts list and Meta catalog (`?refresh=1`), so operators see latest reconnect state immediately
 - shows current sync status and Meta page catalog data
 - can queue force-refresh jobs for all active connected profiles to pull latest Meta insights into snapshots
 - uses user-token fallback for catalog detail checks (session token first, then current user cache, then latest global reconnect token)
@@ -138,6 +138,7 @@ What it supports:
 Important runtime meaning:
 - UI primarily uses stored snapshots
 - force refresh is optimized to avoid excessively slow page loads
+- non-force insights responses are short-cached by snapshot identity to reduce repeated payload rebuild cost without serving stale snapshots
 - some FB comparison rows use best-available Meta equivalents because exact IG-style metrics do not always exist on Facebook
 
 ### AI Insights

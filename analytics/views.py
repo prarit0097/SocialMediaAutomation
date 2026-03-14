@@ -22,6 +22,31 @@ from .tasks import refresh_account_insights_snapshot
 logger = logging.getLogger("analytics")
 
 
+def _insight_cache_ttl() -> int:
+    try:
+        return max(5, int(getattr(settings, "INSIGHTS_RESPONSE_CACHE_TTL", 90)))
+    except (TypeError, ValueError):
+        return 90
+
+
+def _single_insight_cache_key(account_id: int, snapshot_id: int, fetched_at_iso: str | None) -> str:
+    return f"insight_response:v2:single:{account_id}:{snapshot_id}:{fetched_at_iso or 'na'}"
+
+
+def _combined_insight_cache_key(
+    primary_account_id: int,
+    primary_snapshot_id,
+    primary_fetched_at_iso: str | None,
+    secondary_account_id: int,
+    secondary_snapshot_id,
+    secondary_fetched_at_iso: str | None,
+) -> str:
+    return (
+        f"insight_response:v2:combined:{primary_account_id}:{primary_snapshot_id}:{primary_fetched_at_iso or 'na'}:"
+        f"{secondary_account_id}:{secondary_snapshot_id}:{secondary_fetched_at_iso or 'na'}"
+    )
+
+
 def _sanitize_error_text(value: str | None, fallback: str) -> str:
     text = str(value or "").strip()
     if not text:
@@ -95,6 +120,12 @@ def _load_single_account_insights(
 
     latest = InsightSnapshot.objects.filter(account=account).order_by("-fetched_at").first()
     if latest:
+        fetched_at_iso = latest.fetched_at.isoformat() if latest.fetched_at else None
+        cache_key = _single_insight_cache_key(account.id, latest.id, fetched_at_iso)
+        cached_response = cache.get(cache_key)
+        if cached_response:
+            return cached_response, None
+
         payload = latest.payload or {}
         published_posts = payload.get("published_posts") if "published_posts" in payload else None
         if published_posts == []:
@@ -110,6 +141,7 @@ def _load_single_account_insights(
             include_generated_post_stats=False,
             total_post_share_override=payload.get("published_posts_count"),
         )
+        cache.set(cache_key, data, timeout=_insight_cache_ttl())
         return data, None
 
     try:
@@ -231,7 +263,22 @@ def _load_account_or_combined_insights(request: HttpRequest, account: ConnectedA
         primary_data["warning"] = f"Linked {linked_account.platform} insights unavailable: {secondary_error}"
         return primary_data, None
 
+    if not force_refresh:
+        cache_key = _combined_insight_cache_key(
+            account.id,
+            primary_data.get("snapshot_id"),
+            primary_data.get("fetched_at"),
+            linked_account.id,
+            secondary_data.get("snapshot_id"),
+            secondary_data.get("fetched_at"),
+        )
+        cached_response = cache.get(cache_key)
+        if cached_response:
+            return cached_response, None
+
     combined = _build_combined_response(primary_data, secondary_data)
+    if not force_refresh:
+        cache.set(cache_key, combined, timeout=_insight_cache_ttl())
     return combined, None
 
 
