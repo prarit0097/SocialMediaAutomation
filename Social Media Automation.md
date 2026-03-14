@@ -113,6 +113,9 @@ What happens:
 - Instagram video / reel publishing waits for container processing to finish before final publish
 - Meta media download timeouts are treated as transient and automatically retried
 - Instagram "media not ready to publish" responses (`code=9007`, `subcode=2207027`) are treated as transient and retried automatically
+- Meta Graph application/page rate-limit responses (`code=4`, plus common transient throttle codes) are treated as transient instead of permanent failures
+- Instagram media-ready polling now tolerates transient API failures/rate limits with backoff and continues polling instead of immediate hard-fail
+- publishing retries now use longer cooldown for Graph rate-limit errors to reduce repeated burst failures during multi-profile scheduling
 - failed Instagram retries also re-apply IG media optimization before requeueing
 - after a successful schedule action, UI shows an immediate toast notification with the scheduled local date-time
 - force-refresh post-stat calls retry transient Meta/network timeouts and backfill missing values from latest cached snapshot when possible

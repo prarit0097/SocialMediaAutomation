@@ -315,6 +315,18 @@ class PublishingTaskTests(TestCase):
         self.assertEqual(self.post.status, POST_STATUS_FAILED)
         self.assertIn("Reconnect the profile from Accounts", self.post.error_message)
 
+    @patch("publishing.tasks.publish_post_task.retry")
+    @patch("publishing.tasks.publish_scheduled_post")
+    def test_publish_post_task_uses_longer_backoff_for_graph_rate_limit(self, mock_publish, mock_retry):
+        mock_publish.side_effect = MetaTransientError("(#4) Application request limit reached (code=4)")
+        mock_retry.side_effect = RuntimeError("retry-invoked")
+
+        with self.assertRaises(RuntimeError):
+            publish_post_task(self.post.id)
+
+        mock_retry.assert_called_once()
+        self.assertGreaterEqual(mock_retry.call_args.kwargs["countdown"], 90)
+
 
 class PublishingServiceTests(TestCase):
     def setUp(self):
@@ -446,6 +458,14 @@ class PublishingServiceTests(TestCase):
             b'{"error":{"message":"Timeout","code":-2,"error_subcode":2207003,'
             b'"error_user_title":"Timeout","error_user_msg":"It takes too long to download the media."}}'
         )
+
+        with self.assertRaises(MetaTransientError):
+            MetaClient()._handle_response(response)
+
+    def test_handle_response_classifies_app_request_limit_as_transient(self):
+        response = Response()
+        response.status_code = 400
+        response._content = b'{"error":{"message":"Application request limit reached","code":4}}'
 
         with self.assertRaises(MetaTransientError):
             MetaClient()._handle_response(response)

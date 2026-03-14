@@ -10,6 +10,9 @@ from django.utils import timezone
 from core.constants import META_SCOPES
 from core.exceptions import MetaAPIError, MetaPermanentError, MetaTransientError
 
+TRANSIENT_GRAPH_ERROR_CODES = {4, 17, 32, 613}
+TRANSIENT_GRAPH_ERROR_SUBCODES = {2207003, 2207027}
+
 
 class MetaClient:
     def __init__(self):
@@ -191,14 +194,21 @@ class MetaClient:
     ) -> dict:
         started = time.monotonic()
         latest_payload = {}
+        latest_transient_error: MetaTransientError | None = None
         while time.monotonic() - started < timeout:
-            latest_payload = self._get(
-                f"/{creation_id}",
-                {
-                    "access_token": page_access_token,
-                    "fields": "status,status_code",
-                },
-            )
+            try:
+                latest_payload = self._get(
+                    f"/{creation_id}",
+                    {
+                        "access_token": page_access_token,
+                        "fields": "status,status_code",
+                    },
+                )
+                latest_transient_error = None
+            except MetaTransientError as exc:
+                latest_transient_error = exc
+                time.sleep(min(max(poll_interval + 1, 3), 12))
+                continue
             status_code = str(latest_payload.get("status_code") or "").upper()
             status = str(latest_payload.get("status") or "").upper()
             if status_code in {"FINISHED", "PUBLISHED"} or status in {"FINISHED", "PUBLISHED"}:
@@ -209,6 +219,10 @@ class MetaClient:
                 )
             time.sleep(poll_interval)
 
+        if latest_transient_error:
+            raise MetaTransientError(
+                f"Instagram media status checks were rate-limited/transiently failing. Last error: {latest_transient_error}"
+            )
         raise MetaTransientError("Instagram media processing did not finish in time. Retry will try again.")
 
     def fetch_facebook_insights(self, page_id: str, page_access_token: str) -> list[dict]:
@@ -676,10 +690,10 @@ class MetaClient:
             message = f"{message} ({', '.join(details)})"
         if (
             code == -2
-            or subcode == 2207003
+            or code in TRANSIENT_GRAPH_ERROR_CODES
+            or subcode in TRANSIENT_GRAPH_ERROR_SUBCODES
             or (user_title or "").lower() == "timeout"
             or code == 9007
-            or subcode == 2207027
             or "media is not ready" in (user_msg or "").lower()
         ):
             raise MetaTransientError(message, status_code=response.status_code, payload=payload)

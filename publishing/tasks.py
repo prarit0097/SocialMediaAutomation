@@ -63,7 +63,7 @@ def process_due_posts(run_inline: bool = False):
     return {"queued": len(due_posts)}
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=60, name="publishing.tasks.publish_post_task")
+@shared_task(bind=True, max_retries=6, default_retry_delay=60, name="publishing.tasks.publish_post_task")
 def publish_post_task(self, post_id: int):
     post = ScheduledPost.objects.select_related("account").filter(id=post_id).first()
     if not post:
@@ -94,7 +94,12 @@ def publish_post_task(self, post_id: int):
             post.save(update_fields=["status", "error_message", "updated_at"])
             logger.exception("post failed after retries id=%s", post.id)
             return
-        countdown = 2 ** attempts * 30
+        message = str(exc).lower()
+        if "code=4" in message or "code=17" in message or "code=32" in message or "code=613" in message:
+            # Graph app/page rate-limit needs longer cool-down.
+            countdown = min(1800, 2 ** attempts * 90)
+        else:
+            countdown = min(900, 2 ** attempts * 30)
         logger.warning("transient error post id=%s retry_in=%s", post.id, countdown)
         raise self.retry(exc=exc, countdown=countdown)
     except MetaPermanentError as exc:
