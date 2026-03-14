@@ -1287,15 +1287,21 @@
 
     if (insightMeta) {
       const fetchedAt = toIndianDateTime(data.fetched_at);
+      const stats = data.post_stats_summary || {};
+      const statsText = `Post stats - Live: ${stats.live_stats_posts ?? "-"} | Cached fallback: ${
+        stats.cached_fallback_posts ?? "-"
+      } | Missing: ${stats.missing_stats_posts ?? "-"}`;
       if (data.combined && Array.isArray(data.accounts)) {
         const ids = data.accounts.map((row) => `${row.platform}:${row.account_id}`).join(", ");
         insightMeta.textContent = `Accounts: ${ids} | Platform: ${data.platform || "-"} | Snapshot: ${
           data.snapshot_id || "-"
-        } | Fetched: ${fetchedAt || "-"} | Cached: ${data.cached ? "Yes" : "No"}`;
+        } | Fetched: ${fetchedAt || "-"} | Cached: ${data.cached ? "Yes" : "No"} | ${statsText}`;
       } else {
         insightMeta.textContent = `Account ID: ${data.account_id || "-"} | Platform: ${
           data.platform || "-"
-        } | Snapshot: ${data.snapshot_id || "-"} | Fetched: ${fetchedAt || "-"} | Cached: ${data.cached ? "Yes" : "No"}`;
+        } | Snapshot: ${data.snapshot_id || "-"} | Fetched: ${fetchedAt || "-"} | Cached: ${
+          data.cached ? "Yes" : "No"
+        } | ${statsText}`;
       }
     }
     if (insightPageHero && insightPageName) {

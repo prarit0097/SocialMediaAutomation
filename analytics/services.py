@@ -163,6 +163,40 @@ def _comparison_display_value(value):
     return "N/A" if value is None else value
 
 
+def build_post_stats_summary(published_posts: list[dict] | None) -> dict:
+    rows = published_posts or []
+    total = len(rows)
+    live_count = 0
+    cached_fallback_count = 0
+    missing_count = 0
+
+    for row in rows:
+        reason = str(row.get("reason") or "").lower()
+        metrics = [
+            row.get("total_views"),
+            row.get("total_likes"),
+            row.get("total_comments"),
+            row.get("total_shares"),
+            row.get("total_saves"),
+        ]
+        has_any_metric = any(value is not None and value != "" for value in metrics)
+
+        if "showing last cached stats" in reason:
+            cached_fallback_count += 1
+            continue
+        if has_any_metric:
+            live_count += 1
+            continue
+        missing_count += 1
+
+    return {
+        "total_posts": total,
+        "live_stats_posts": live_count,
+        "cached_fallback_posts": cached_fallback_count,
+        "missing_stats_posts": missing_count,
+    }
+
+
 def _latest_cached_post_stats_map(account: ConnectedAccount) -> dict[str, dict]:
     latest = InsightSnapshot.objects.filter(account=account).order_by("-fetched_at").only("payload").first()
     if not latest:
@@ -581,6 +615,7 @@ def build_insight_response(
         "snapshot_id": snapshot_id,
         "fetched_at": fetched_at.isoformat() if fetched_at else None,
         "cached": cached,
+        "post_stats_summary": build_post_stats_summary(published_posts),
     }
     response["comparison_rows"] = build_comparison_rows(
         [response],

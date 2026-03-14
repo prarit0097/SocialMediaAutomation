@@ -16,7 +16,7 @@ from integrations.models import ConnectedAccount
 
 from .ai_service import AIInsightsError, generate_profile_ai_insights
 from .models import InsightSnapshot
-from .services import build_comparison_rows, build_insight_response, fetch_and_store_insights
+from .services import build_comparison_rows, build_insight_response, build_post_stats_summary, fetch_and_store_insights
 
 logger = logging.getLogger("analytics")
 
@@ -203,6 +203,7 @@ def _build_combined_response(primary: dict, secondary: dict) -> dict:
         "snapshot_id": f"{primary.get('snapshot_id')},{secondary.get('snapshot_id')}",
         "fetched_at": latest_fetched.isoformat() if latest_fetched else primary.get("fetched_at") or secondary.get("fetched_at"),
         "cached": bool(primary.get("cached")) and bool(secondary.get("cached")),
+        "post_stats_summary": build_post_stats_summary(published_posts),
     }
     response["comparison_rows"] = build_comparison_rows(accounts, published_posts)
     return response

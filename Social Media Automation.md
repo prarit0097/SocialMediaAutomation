@@ -123,6 +123,7 @@ What it shows:
 - FB vs IG comparison table
 - top-nav Meta token health indicator with green/red blinking status and reconnect guidance
 - warnings for partial upstream failures
+- post-stats health counters (`Live`, `Cached fallback`, `Missing`) in insight meta line for force-refresh transparency
 
 What it supports:
 - fetch cached/latest snapshot

@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from analytics.models import InsightSnapshot
 from analytics.ai_service import AIInsightsError
-from analytics.services import _aggregate_recent_post_metric, build_comparison_rows, build_insight_response
+from analytics.services import _aggregate_recent_post_metric, build_comparison_rows, build_insight_response, build_post_stats_summary
 from analytics.tasks import DAILY_HEAVY_COLLECTION_MODE, queue_daily_heavy_insight_refresh, refresh_account_insights_snapshot
 from analytics.views import _build_combined_response, _extract_error_message
 from core.constants import FACEBOOK, INSTAGRAM
@@ -260,6 +260,21 @@ class AnalyticsApiTests(TestCase):
 
         self.assertEqual(data["summary"]["total_followers"], 146234)
         self.assertEqual(data["summary"]["total_following"], 0)
+        self.assertEqual(data["post_stats_summary"]["total_posts"], 0)
+
+    def test_build_post_stats_summary_counts_live_cached_and_missing(self):
+        summary = build_post_stats_summary(
+            [
+                {"id": "1", "total_likes": 10, "reason": None},
+                {"id": "2", "total_likes": None, "reason": "Live post stats timed out; showing last cached stats."},
+                {"id": "3", "total_likes": None, "reason": "Metric unavailable"},
+            ]
+        )
+
+        self.assertEqual(summary["total_posts"], 3)
+        self.assertEqual(summary["live_stats_posts"], 1)
+        self.assertEqual(summary["cached_fallback_posts"], 1)
+        self.assertEqual(summary["missing_stats_posts"], 1)
 
     def test_combined_published_posts_are_sorted_by_latest_published_at_first(self):
         combined = _build_combined_response(
@@ -294,6 +309,7 @@ class AnalyticsApiTests(TestCase):
         )
 
         self.assertEqual([row["id"] for row in combined["published_posts"]], ["ig-newer", "fb-older"])
+        self.assertIn("post_stats_summary", combined)
 
     def test_combined_published_posts_sort_handles_missing_publish_time(self):
         combined = _build_combined_response(
