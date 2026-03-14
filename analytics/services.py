@@ -163,6 +163,40 @@ def _comparison_display_value(value):
     return "N/A" if value is None else value
 
 
+def _latest_cached_post_stats_map(account: ConnectedAccount) -> dict[str, dict]:
+    latest = InsightSnapshot.objects.filter(account=account).order_by("-fetched_at").only("payload").first()
+    if not latest:
+        return {}
+
+    rows = ((latest.payload or {}).get("published_posts") or [])
+    stats_by_id: dict[str, dict] = {}
+    for row in rows:
+        post_id = str(row.get("id") or "").strip()
+        if not post_id:
+            continue
+        stats_by_id[post_id] = {
+            "total_views": row.get("total_views"),
+            "total_likes": row.get("total_likes"),
+            "total_comments": row.get("total_comments"),
+            "total_shares": row.get("total_shares"),
+            "total_saves": row.get("total_saves"),
+        }
+    return stats_by_id
+
+
+def _hydrate_missing_stats_from_cache(stats: dict, cached_stats: dict | None) -> bool:
+    if not cached_stats:
+        return False
+    hydrated = False
+    for key in ("total_views", "total_likes", "total_comments", "total_shares", "total_saves"):
+        if stats.get(key) is None and cached_stats.get(key) is not None:
+            stats[key] = cached_stats.get(key)
+            hydrated = True
+    if hydrated and stats.get("stats_error"):
+        stats["stats_error"] = "Live post stats timed out; showing last cached stats."
+    return hydrated
+
+
 def build_comparison_rows(accounts: list[dict], published_posts: list[dict]) -> list[dict]:
     fb = next((row for row in accounts if row.get("platform") == FACEBOOK), {})
     ig = next((row for row in accounts if row.get("platform") == "instagram"), {})
@@ -287,6 +321,7 @@ def _get_published_posts(
     stats_limit: int | None = None,
 ) -> list[dict]:
     client = MetaClient()
+    cached_stats_map = _latest_cached_post_stats_map(account)
 
     if account.platform == FACEBOOK:
         try:
@@ -330,6 +365,12 @@ def _get_published_posts(
                             str(exc),
                         )
                         stats["stats_error"] = str(exc)
+                    finally:
+                        cached_stats = cached_stats_map.get(str(post.get("id") or ""))
+                        _hydrate_missing_stats_from_cache(stats, cached_stats)
+                else:
+                    cached_stats = cached_stats_map.get(str(post.get("id") or ""))
+                    _hydrate_missing_stats_from_cache(stats, cached_stats)
 
                 attachment_data = ((post.get("attachments") or {}).get("data") or [{}])[0]
                 subattachments = ((attachment_data.get("subattachments") or {}).get("data") or [{}])[0]
@@ -407,6 +448,12 @@ def _get_published_posts(
                             str(exc),
                         )
                         stats["stats_error"] = str(exc)
+                    finally:
+                        cached_stats = cached_stats_map.get(str(post.get("id") or ""))
+                        _hydrate_missing_stats_from_cache(stats, cached_stats)
+                else:
+                    cached_stats = cached_stats_map.get(str(post.get("id") or ""))
+                    _hydrate_missing_stats_from_cache(stats, cached_stats)
 
                 enriched_rows.append(
                     {
@@ -469,6 +516,12 @@ def _get_published_posts(
                     str(exc),
                 )
                 stats["stats_error"] = str(exc)
+            finally:
+                cached_stats = cached_stats_map.get(str(row.get("external_post_id") or ""))
+                _hydrate_missing_stats_from_cache(stats, cached_stats)
+        else:
+            cached_stats = cached_stats_map.get(str(row.get("external_post_id") or ""))
+            _hydrate_missing_stats_from_cache(stats, cached_stats)
 
         enriched_rows.append(
             {

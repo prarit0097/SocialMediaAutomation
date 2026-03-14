@@ -105,6 +105,7 @@ What happens:
 - Instagram "media not ready to publish" responses (`code=9007`, `subcode=2207027`) are treated as transient and retried automatically
 - failed Instagram retries also re-apply IG media optimization before requeueing
 - after a successful schedule action, UI shows an immediate toast notification with the scheduled local date-time
+- force-refresh post-stat calls retry transient Meta/network timeouts and backfill missing values from latest cached snapshot when possible
 
 Common failure pattern:
 - if a page was not refreshed in the latest reconnect, old stored tokens can still exist in the database

@@ -393,16 +393,16 @@ class MetaClient:
         shares_count = None
         saves_count = None
         errors: list[str] = []
-        stats_timeout = 8
+        stats_timeout = max(8, int(getattr(settings, "META_POST_STATS_TIMEOUT", 12)))
 
         try:
-            media_data = self._get(
+            media_data = self._get_with_transient_retry(
                 f"/{media_id}",
                 {
                     "access_token": page_access_token,
                     "fields": "like_count,comments_count",
                 },
-                timeout=stats_timeout,
+                stats_timeout,
             )
             likes_count = media_data.get("like_count")
             comments_count = media_data.get("comments_count")
@@ -430,7 +430,7 @@ class MetaClient:
             metric_value = None
             for params in params_list:
                 try:
-                    insight_data = self._get(f"/{media_id}/insights", params, timeout=stats_timeout)
+                    insight_data = self._get_with_transient_retry(f"/{media_id}/insights", params, stats_timeout)
                     items = insight_data.get("data", [])
                     if not items:
                         continue
@@ -490,17 +490,17 @@ class MetaClient:
         views_count = None
         shares_count = None
         errors: list[str] = []
-        stats_timeout = 8
+        stats_timeout = max(8, int(getattr(settings, "META_POST_STATS_TIMEOUT", 12)))
 
         # Secondary fallback.
         try:
-            post_data = self._get(
+            post_data = self._get_with_transient_retry(
                 f"/{post_id}",
                 {
                     "access_token": page_access_token,
                     "fields": "reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0)",
                 },
-                timeout=stats_timeout,
+                stats_timeout,
             )
             if likes_count is None:
                 likes_count = (post_data.get("reactions") or {}).get("summary", {}).get("total_count")
@@ -518,13 +518,13 @@ class MetaClient:
         ]
         for metric in insight_metrics:
             try:
-                insight_data = self._get(
+                insight_data = self._get_with_transient_retry(
                     f"/{post_id}/insights",
                     {
                         "access_token": page_access_token,
                         "metric": metric,
                     },
-                    timeout=stats_timeout,
+                    stats_timeout,
                 )
                 insights = insight_data.get("data", [])
                 if not insights:
@@ -580,16 +580,71 @@ class MetaClient:
             },
         )
 
+    def _retry_attempts(self) -> int:
+        try:
+            configured = int(getattr(settings, "META_REQUEST_RETRY_ATTEMPTS", 2))
+        except (TypeError, ValueError):
+            configured = 2
+        return 1 if configured < 1 else configured
+
+    def _request_with_retry(self, method: str, url: str, *, timeout: int, params: dict | None = None, data: dict | None = None):
+        attempts = self._retry_attempts()
+        last_error: Exception | None = None
+        for attempt in range(1, attempts + 1):
+            try:
+                if method == "GET":
+                    return requests.get(url, params=params, timeout=timeout)
+                return requests.post(url, data=data, timeout=timeout)
+            except requests.RequestException as exc:
+                last_error = exc
+                if attempt < attempts:
+                    time.sleep(0.35 * attempt)
+                    continue
+                raise MetaTransientError(
+                    f"Meta API network error after {attempts} attempts: {exc}"
+                ) from exc
+
+        # Safety fallback; execution should have already raised above.
+        raise MetaTransientError(f"Meta API network error: {last_error}")
+
+    def _transient_retry_attempts(self) -> int:
+        try:
+            configured = int(getattr(settings, "META_POST_STATS_RETRIES", 2))
+        except (TypeError, ValueError):
+            configured = 2
+        return 1 if configured < 1 else configured
+
+    def _get_with_transient_retry(self, path: str, params: dict, timeout: int) -> dict:
+        attempts = self._transient_retry_attempts()
+        for attempt in range(1, attempts + 1):
+            try:
+                return self._get(path, params, timeout=timeout)
+            except MetaTransientError:
+                if attempt < attempts:
+                    time.sleep(0.45 * attempt)
+                    continue
+                raise
+
     def _get(self, path: str, params: dict, timeout: int = 20) -> dict:
-        response = requests.get(f"{self.base_url}{path}", params=params, timeout=timeout)
+        response = self._request_with_retry(
+            "GET",
+            f"{self.base_url}{path}",
+            params=params,
+            timeout=timeout,
+        )
         return self._handle_response(response)
 
     def _get_by_url(self, url: str, timeout: int = 20) -> dict:
-        response = requests.get(url, timeout=timeout)
+        response = self._request_with_retry("GET", url, timeout=timeout)
         return self._handle_response(response)
 
     def _post(self, path: str, data: dict, timeout: int = 60) -> dict:
-        response = requests.post(f"{self.base_url}{path}", data=data, timeout=timeout)
+        response = self._request_with_retry(
+            "POST",
+            f"{self.base_url}{path}",
+            data=data,
+            timeout=timeout,
+        )
         return self._handle_response(response)
 
     def _handle_response(self, response: requests.Response) -> dict:

@@ -1,5 +1,6 @@
 import json
 from unittest.mock import patch
+import requests
 
 from django.contrib.auth import get_user_model
 from django.http import JsonResponse
@@ -12,7 +13,7 @@ from analytics.services import _aggregate_recent_post_metric, build_comparison_r
 from analytics.tasks import DAILY_HEAVY_COLLECTION_MODE, queue_daily_heavy_insight_refresh, refresh_account_insights_snapshot
 from analytics.views import _build_combined_response, _extract_error_message
 from core.constants import FACEBOOK, INSTAGRAM
-from core.exceptions import MetaPermanentError
+from core.exceptions import MetaPermanentError, MetaTransientError
 from core.services.meta_client import MetaClient
 from integrations.models import ConnectedAccount
 
@@ -415,6 +416,13 @@ class AnalyticsApiTests(TestCase):
 
 
 class MetaClientTests(TestCase):
+    @patch("core.services.meta_client.requests.get")
+    def test_get_raises_transient_error_on_network_timeout(self, mock_get):
+        mock_get.side_effect = requests.exceptions.ConnectTimeout("connect timeout")
+
+        with self.assertRaises(MetaTransientError):
+            MetaClient()._get("/test", {"access_token": "token"}, timeout=1)
+
     @patch.object(MetaClient, "_get_by_url")
     @patch.object(MetaClient, "_get")
     def test_fetch_facebook_published_posts_count_counts_all_pages(self, mock_get, mock_get_by_url):
@@ -566,3 +574,56 @@ class AnalyticsAutomationTaskTests(TestCase):
         snapshot = InsightSnapshot.objects.get(id=result["snapshot_id"])
         self.assertEqual(snapshot.payload["metadata"]["collection_mode"], DAILY_HEAVY_COLLECTION_MODE)
         self.assertEqual(snapshot.payload["metadata"]["collection_source"], "test")
+
+
+class PublishedPostsStatsFallbackTests(TestCase):
+    def setUp(self):
+        self.account = ConnectedAccount.objects.create(
+            platform=FACEBOOK,
+            page_id="fb-page-1",
+            page_name="Fallback Page",
+            access_token="token",
+        )
+        InsightSnapshot.objects.create(
+            account=self.account,
+            platform=FACEBOOK,
+            payload={
+                "insights": [],
+                "published_posts": [
+                    {
+                        "id": "fb_post_1",
+                        "total_views": 777,
+                        "total_likes": 88,
+                        "total_comments": 9,
+                        "total_shares": 5,
+                        "total_saves": 0,
+                    }
+                ],
+                "metadata": {},
+            },
+        )
+
+    @patch("analytics.services.MetaClient.fetch_facebook_post_stats")
+    @patch("analytics.services.MetaClient.fetch_facebook_published_posts")
+    def test_get_published_posts_uses_cached_stats_when_live_fetch_times_out(self, mock_posts, mock_stats):
+        mock_posts.return_value = [
+            {
+                "id": "fb_post_1",
+                "message": "test",
+                "created_time": "2026-03-14T04:00:00+0000",
+                "attachments": {"data": [{}]},
+            }
+        ]
+        mock_stats.side_effect = MetaTransientError("Connection to graph.facebook.com timed out.")
+
+        from analytics.services import _get_published_posts
+
+        rows = _get_published_posts(self.account, include_post_stats=True, limit=1, stats_limit=1)
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["id"], "fb_post_1")
+        self.assertEqual(rows[0]["total_views"], 777)
+        self.assertEqual(rows[0]["total_likes"], 88)
+        self.assertEqual(rows[0]["total_comments"], 9)
+        self.assertEqual(rows[0]["total_shares"], 5)
+        self.assertIn("showing last cached stats", str(rows[0].get("reason", "")).lower())
