@@ -144,6 +144,13 @@
     <article class="meta-guide-card">
       <details class="meta-guide-details" open>
         <summary>Part 4: Add permissions/scopes (important)</summary>
+        <ol class="meta-howto-list">
+          <li>Meta App Dashboard kholo.</li>
+          <li><strong>App Review / Permissions and Features</strong> section me jao.</li>
+          <li>Neeche diye gaye scopes ko add/enable karo.</li>
+          <li>Jitne scopes enable karoge, utne features app me kaam karenge.</li>
+        </ol>
+
         <div class="meta-scope-box">
           <p class="meta-scope-title">Required permissions/scopes for this app</p>
           <ul class="meta-scope-list">
@@ -159,7 +166,20 @@
           </ul>
           <p class="meta-scope-note">Note: some tutorials say <code>instagram_content_publishing</code>; this project uses <code>instagram_content_publish</code>.</p>
         </div>
-        <p class="meta-check-note"><strong>Checkpoint:</strong> Required scopes enabled hone chahiye, warna connect ke baad profiles missing aa सकती हैं.</p>
+
+        <div class="meta-scope-explain">
+          <p class="meta-scope-title">What each scope does (simple meaning)</p>
+          <ul class="meta-howto-list">
+            <li><code>pages_show_list</code> -> app ko aapke Facebook Pages ki list dikhata hai.</li>
+            <li><code>pages_read_engagement</code> + <code>read_insights</code> -> page insights/analytics read karne ke liye.</li>
+            <li><code>pages_manage_posts</code> + <code>pages_read_user_content</code> -> post publish/read ke liye.</li>
+            <li><code>instagram_basic</code> -> connected Instagram profile details read karne ke liye.</li>
+            <li><code>instagram_content_publish</code> -> Instagram post/reel publish karne ke liye.</li>
+            <li><code>instagram_manage_insights</code> -> Instagram insights read karne ke liye.</li>
+          </ul>
+        </div>
+
+        <p class="meta-check-note"><strong>Final check before connect:</strong> Upar wale required scopes enabled hone chahiye, warna connect ke baad profiles missing aa sakti hain ya scheduling fail ho sakti hai.</p>
       </details>
 
       <details class="meta-guide-details" open>
