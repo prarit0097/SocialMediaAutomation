@@ -536,6 +536,15 @@ textarea {
   gap: 12px;
 }
 
+.meta-setup-cta .inline-link-btn {
+  margin-top: 10px;
+  align-self: flex-start;
+  min-height: 38px;
+  padding: 0 14px;
+  font-size: 12px;
+  border-radius: 11px;
+}
+
 .meta-config-form {
   margin-top: 6px;
   display: grid;
@@ -592,6 +601,62 @@ textarea {
   color: var(--muted);
   font-size: 12.5px;
   line-height: 1.55;
+}
+
+.meta-guide-shell {
+  border-color: rgba(23, 53, 72, 0.16);
+  background:
+    linear-gradient(132deg, rgba(255, 252, 247, 0.98), rgba(248, 243, 235, 0.9) 50%, rgba(237, 245, 240, 0.92) 100%);
+}
+
+.meta-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.meta-guide-card {
+  display: grid;
+  gap: 10px;
+}
+
+.meta-guide-details {
+  border: 1px solid rgba(23, 53, 72, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.76);
+  padding: 10px 12px;
+}
+
+.meta-guide-details summary {
+  list-style: none;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--navy);
+  position: relative;
+  padding-right: 22px;
+}
+
+.meta-guide-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.meta-guide-details summary::after {
+  content: "+";
+  position: absolute;
+  right: 0;
+  top: 0;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--amber-strong);
+}
+
+.meta-guide-details[open] summary::after {
+  content: "-";
+}
+
+.meta-guide-details > *:not(summary) {
+  margin-top: 8px;
 }
 
 .meta-scope-box {
@@ -1658,6 +1723,10 @@ pre {
   .hero-split,
   .meta-config-shell,
   .split-highlights {
+    grid-template-columns: 1fr;
+  }
+
+  .meta-guide-grid {
     grid-template-columns: 1fr;
   }
 
