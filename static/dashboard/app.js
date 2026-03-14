@@ -124,9 +124,29 @@
 
   function platformBadge(platform) {
     const value = String(platform || "").toLowerCase();
-    if (value === "fb_ig") return "<span class='platform-badge both'>FB_IG</span>";
-    if (value === "ig" || value === "instagram") return "<span class='platform-badge instagram'>IG</span>";
-    return "<span class='platform-badge facebook'>FB</span>";
+    if (value === "fb_ig") {
+      return (
+        "<span class='platform-badge both'>" +
+        "<img class='platform-logo' src='/static/dashboard/brand/meta-logo.jpg' alt='Meta logo'>" +
+        "<img class='platform-logo' src='/static/dashboard/brand/instagram-logo.webp' alt='Instagram logo'>" +
+        "<span>FB_IG</span>" +
+        "</span>"
+      );
+    }
+    if (value === "ig" || value === "instagram") {
+      return (
+        "<span class='platform-badge instagram'>" +
+        "<img class='platform-logo' src='/static/dashboard/brand/instagram-logo.webp' alt='Instagram logo'>" +
+        "<span>IG</span>" +
+        "</span>"
+      );
+    }
+    return (
+      "<span class='platform-badge facebook'>" +
+      "<img class='platform-logo' src='/static/dashboard/brand/meta-logo.jpg' alt='Meta logo'>" +
+      "<span>FB</span>" +
+      "</span>"
+    );
   }
 
   function cleanProfileName(value) {

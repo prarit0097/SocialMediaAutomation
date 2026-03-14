@@ -15,7 +15,10 @@
     <header class="topbar">
       <div class="topbar-inner">
         <a class="brand" href="{% if request.user.is_authenticated %}{% url 'dashboard:home' %}{% else %}{% url 'landing' %}{% endif %}">
-          <span class="brand-mark">SA</span>
+          <span class="brand-mark">
+            <img class="brand-logo" src="{% static 'dashboard/brand/meta-logo.jpg' %}" alt="Meta logo">
+            <span class="brand-mark-fallback">SA</span>
+          </span>
           <span class="brand-copy">
             <span class="brand-text">Social Automation</span>
             <span class="brand-subtext">Meta operations workspace</span>

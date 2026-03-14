@@ -31,6 +31,7 @@ What it shows:
 What it does:
 - helps first-time users understand app value before authentication
 - routes authenticated users directly to Dashboard Home to continue operations
+- uses project media logos across UI touchpoints: Meta logo in global brand/top identity and Meta/Instagram logos in platform badges and Meta-connect CTA where context is platform-specific
 
 ### Home
 The Home page is now the workspace setup + navigation surface.
