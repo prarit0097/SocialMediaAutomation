@@ -135,6 +135,15 @@ def _load_single_account_insights(
     if force_refresh:
         if not cache.add(throttle_key, 1, timeout=30):
             return None, JsonResponse({"error": "Too many refresh requests"}, status=429)
+        refresh_lock_key = f"insight-live-refresh-lock:{account.id}"
+        if not cache.add(refresh_lock_key, request.user.id, timeout=120):
+            return None, JsonResponse(
+                {
+                    "error": "Refresh already in progress for this profile",
+                    "details": "Another refresh is currently running for this profile. Please wait a few seconds.",
+                },
+                status=429,
+            )
         try:
             data = fetch_and_store_insights(
                 account,
@@ -151,6 +160,8 @@ def _load_single_account_insights(
                 },
                 status=502,
             )
+        finally:
+            cache.delete(refresh_lock_key)
         logger.info("insights refreshed account_id=%s user_id=%s", account.id, request.user.id)
         return data, None
 

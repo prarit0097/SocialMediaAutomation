@@ -589,6 +589,7 @@ class MetaClientTests(TestCase):
 )
 class AnalyticsAutomationTaskTests(TestCase):
     def setUp(self):
+        cache.clear()
         self.account = ConnectedAccount.objects.create(
             platform=FACEBOOK,
             page_id="auto-1",
@@ -645,6 +646,13 @@ class AnalyticsAutomationTaskTests(TestCase):
         self.assertEqual(kwargs["payload_metadata"]["collection_mode"], DAILY_HEAVY_COLLECTION_MODE)
         self.assertEqual(kwargs["payload_metadata"]["collection_source"], "celery_beat")
         self.assertEqual(kwargs["payload_metadata"]["collection_timezone"], "Asia/Kolkata")
+
+    def test_refresh_account_insights_snapshot_skips_when_lock_exists(self):
+        cache.set(f"insight_refresh_lock:{self.account.id}", "busy", timeout=60)
+
+        task_result = refresh_account_insights_snapshot.apply(args=[self.account.id], kwargs={"force": False}).result
+
+        self.assertEqual(task_result["status"], "skipped_locked")
 
     @patch("analytics.services._get_published_posts")
     @patch("analytics.services.MetaClient.fetch_facebook_published_posts_count")

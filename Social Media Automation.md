@@ -15,6 +15,7 @@ This file is the high-level source of truth for what the project does, how the m
 - Run a daily heavy insights collection job so dashboards rely on stored data instead of repeated live API pulls.
 - Generate profile-wise AI insights (pros/cons/risks/action plan) from stored snapshots.
 - Expose project-aware MCP servers for file, browser, queue, and analytics operations.
+- Include concurrency-hardening controls (locks, queue shaping, retry/backoff) for high parallel multi-user usage.
 
 ## Main User Areas
 
@@ -108,6 +109,7 @@ What happens:
 - Celery uses fair scheduling (`prefetch=1`) and task priority routing so due publishing jobs are not starved by heavy analytics queues
 - due publish jobs are enqueued explicitly with higher priority while daily-heavy analytics refresh is queued with lower priority
 - publish task is idempotent against delayed duplicate deliveries (already-published rows are skipped safely)
+- publish task now uses a per-post execution lock (`publish_task_lock:<post_id>`) so duplicate deliveries do not run in parallel
 - failed jobs can be retried if the account row is current
 - invalid Meta token failures are stored with reconnect guidance so the operator knows to reconnect before retrying
 - Instagram video / reel publishing waits for container processing to finish before final publish
@@ -148,6 +150,7 @@ What it supports:
 Important runtime meaning:
 - UI primarily uses stored snapshots
 - force refresh is optimized to avoid excessively slow page loads
+- force refresh now uses a per-account short live lock to avoid simultaneous duplicate Meta pulls for the same profile
 - non-force insights responses are short-cached by snapshot identity to reduce repeated payload rebuild cost without serving stale snapshots
 - some FB comparison rows use best-available Meta equivalents because exact IG-style metrics do not always exist on Facebook
 
@@ -191,6 +194,7 @@ Important runtime meaning:
 - timezone source: `CELERY_TIMEZONE`
 - intended timezone: `Asia/Kolkata`
 - purpose: fetch the heaviest practical insights snapshot for every connected profile and store it for UI and future analytics
+- each account refresh task uses a per-account lock (`insight_refresh_lock:<account_id>`) so duplicate queued jobs are safely skipped
 
 Heavy insights collection currently stores:
 - account-level insights returned by Meta
@@ -264,6 +268,17 @@ Stores:
 2. Meta returns a code.
 3. App exchanges the code for a token.
 4. App fetches managed pages.
+
+## Scale Readiness (1000+ Concurrent Users)
+- Use PostgreSQL via `DATABASE_URL` (SQLite is not suitable for high concurrent writes).
+- Use Redis for cache (`CACHE_BACKEND=redis`) and Celery broker/result backend.
+- Keep multiple web workers + multiple Celery workers (separate worker pool for publishing vs analytics is recommended).
+- Tune runtime env knobs:
+  - `DB_CONN_MAX_AGE`, `DB_CONN_HEALTH_CHECKS`
+  - `CELERY_PUBLISH_RATE_LIMIT`, `CELERY_INSIGHTS_REFRESH_RATE_LIMIT`
+  - `CELERY_WORKER_MAX_TASKS_PER_CHILD`
+  - `CELERY_TASK_SOFT_TIME_LIMIT`, `CELERY_TASK_TIME_LIMIT`
+- Restart web + worker processes after config changes so new concurrency controls apply.
 5. App creates or updates connected FB and IG account rows.
 6. App records the latest reconnect time for stale-account detection.
 

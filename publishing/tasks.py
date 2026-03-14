@@ -2,6 +2,7 @@
 
 from celery import shared_task
 from django.db import DatabaseError, transaction
+from django.core.cache import cache
 from django.utils import timezone
 
 from core.constants import (
@@ -65,20 +66,24 @@ def process_due_posts(run_inline: bool = False):
 
 @shared_task(bind=True, max_retries=6, default_retry_delay=60, name="publishing.tasks.publish_post_task")
 def publish_post_task(self, post_id: int):
-    post = ScheduledPost.objects.select_related("account").filter(id=post_id).first()
-    if not post:
-        return {"status": "missing", "post_id": post_id}
-
-    # Guard against duplicate queue deliveries or delayed retries after the
-    # row was already finalized by another worker.
-    if post.status == POST_STATUS_PUBLISHED:
-        return {"status": "already_published", "post_id": post.id}
-    if post.status == POST_STATUS_FAILED:
-        return {"status": "already_failed", "post_id": post.id}
-    if post.status not in {POST_STATUS_PENDING, POST_STATUS_PROCESSING}:
-        return {"status": "skipped_state", "post_id": post.id, "state": post.status}
+    lock_key = f"publish_task_lock:{post_id}"
+    if not cache.add(lock_key, timezone.now().isoformat(), timeout=600):
+        return {"status": "locked", "post_id": post_id}
 
     try:
+        post = ScheduledPost.objects.select_related("account").filter(id=post_id).first()
+        if not post:
+            return {"status": "missing", "post_id": post_id}
+
+        # Guard against duplicate queue deliveries or delayed retries after the
+        # row was already finalized by another worker.
+        if post.status == POST_STATUS_PUBLISHED:
+            return {"status": "already_published", "post_id": post.id}
+        if post.status == POST_STATUS_FAILED:
+            return {"status": "already_failed", "post_id": post.id}
+        if post.status not in {POST_STATUS_PENDING, POST_STATUS_PROCESSING}:
+            return {"status": "skipped_state", "post_id": post.id, "state": post.status}
+
         external_post_id = publish_scheduled_post(post)
         post.status = POST_STATUS_PUBLISHED
         post.external_post_id = external_post_id
@@ -112,3 +117,5 @@ def publish_post_task(self, post_id: int):
         post.error_message = str(exc)
         post.save(update_fields=["status", "error_message", "updated_at"])
         logger.exception("unexpected publish failure post id=%s", post.id)
+    finally:
+        cache.delete(lock_key)

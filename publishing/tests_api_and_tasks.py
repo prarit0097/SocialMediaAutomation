@@ -303,6 +303,13 @@ class PublishingTaskTests(TestCase):
         self.assertEqual(self.post.status, POST_STATUS_PUBLISHED)
         self.assertEqual(self.post.external_post_id, "meta-post-id")
 
+    def test_publish_post_task_skips_when_lock_exists(self):
+        cache.set(f"publish_task_lock:{self.post.id}", "busy", timeout=30)
+        result = publish_post_task(self.post.id)
+        self.assertEqual(result.get("status"), "locked")
+        self.post.refresh_from_db()
+        self.assertEqual(self.post.status, "processing")
+
     @patch("publishing.tasks.publish_scheduled_post")
     def test_publish_post_task_stores_reconnect_guidance_for_invalid_token(self, mock_publish):
         mock_publish.side_effect = MetaPermanentError(

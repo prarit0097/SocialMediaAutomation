@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo
 
 from celery import shared_task
 from django.conf import settings
+from django.core.cache import cache
 from django.db import close_old_connections, transaction
 from django.utils import timezone
 
@@ -126,17 +127,24 @@ def queue_daily_heavy_insight_refresh(force: bool = False):
 @shared_task(bind=True, max_retries=2, default_retry_delay=300, name="analytics.tasks.refresh_account_insights_snapshot")
 def refresh_account_insights_snapshot(self, account_id: int, force: bool = False, bulk_run_id: int | None = None):
     close_old_connections()
-    outcome = None
-    account = ConnectedAccount.objects.filter(id=account_id).first()
-    if not account:
-        outcome = "missing"
-        return {"status": "missing", "account_id": account_id}
-
-    if not force and _has_daily_heavy_snapshot(account):
+    lock_key = f"insight_refresh_lock:{account_id}"
+    lock_acquired = cache.add(lock_key, timezone.now().isoformat(), timeout=20 * 60)
+    if not lock_acquired:
         outcome = "skipped_existing"
-        return {"status": "skipped_existing", "account_id": account.id}
+        _record_bulk_run_outcome(bulk_run_id, outcome)
+        return {"status": "skipped_locked", "account_id": account_id}
 
+    outcome = None
     try:
+        account = ConnectedAccount.objects.filter(id=account_id).first()
+        if not account:
+            outcome = "missing"
+            return {"status": "missing", "account_id": account_id}
+
+        if not force and _has_daily_heavy_snapshot(account):
+            outcome = "skipped_existing"
+            return {"status": "skipped_existing", "account_id": account.id}
+
         data = fetch_and_store_insights(
             account,
             include_post_stats=True,
@@ -175,4 +183,5 @@ def refresh_account_insights_snapshot(self, account_id: int, force: bool = False
         return {"status": "failed", "account_id": account.id, "error": str(exc)}
     finally:
         _record_bulk_run_outcome(bulk_run_id, outcome or "")
+        cache.delete(lock_key)
         close_old_connections()
