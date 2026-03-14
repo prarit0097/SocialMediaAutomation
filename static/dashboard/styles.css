@@ -1084,6 +1084,37 @@ button[disabled],
   box-shadow: 0 16px 28px rgba(17, 45, 60, 0.24);
 }
 
+.btn.force-refresh-all {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, #0b6a77 0%, #0e4f6f 52%, #14385d 100%);
+  box-shadow:
+    0 16px 28px rgba(15, 63, 89, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  letter-spacing: 0.2px;
+}
+
+.btn.force-refresh-all::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent 18%, rgba(255, 255, 255, 0.22) 44%, transparent 72%);
+  transform: translateX(-140%);
+  transition: transform 0.52s ease;
+}
+
+.btn.force-refresh-all:hover {
+  transform: translateY(-2px);
+  filter: none;
+  box-shadow:
+    0 22px 34px rgba(15, 63, 89, 0.36),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+
+.btn.force-refresh-all:hover::before {
+  transform: translateX(140%);
+}
+
 .retry-failed-btn {
   width: auto;
   min-height: 36px;

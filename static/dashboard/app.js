@@ -795,12 +795,37 @@
   }
 
   const refreshAccountsBtn = document.getElementById("refreshAccountsBtn");
+  const forceRefreshAllBtn = document.getElementById("forceRefreshAllBtn");
+  const accountsBulkRefreshStatus = document.getElementById("accountsBulkRefreshStatus");
   if (refreshAccountsBtn) {
     const runWithRefreshAccountsLoading = withButtonLoading(refreshAccountsBtn, "Refresh List", "Refreshing...");
     refreshAccountsBtn.addEventListener("click", () =>
       runWithRefreshAccountsLoading(() => loadAccounts({ refreshCatalog: true }))
     );
     loadAccounts();
+  }
+  if (forceRefreshAllBtn) {
+    const runWithForceRefreshAllLoading = withButtonLoading(
+      forceRefreshAllBtn,
+      "Force Refresh All Profiles",
+      "Queuing Force Refresh..."
+    );
+    forceRefreshAllBtn.addEventListener("click", () =>
+      runWithForceRefreshAllLoading(async () => {
+        const data = await fetchJSON("/api/insights/force-refresh-all/", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": csrfToken,
+          },
+          body: JSON.stringify({}),
+        });
+        const queuedAt = toIndianDateTime(data.queued_at) || "-";
+        const message = `${data.message || "Force refresh request queued."} Queued at: ${queuedAt}`;
+        if (accountsBulkRefreshStatus) accountsBulkRefreshStatus.textContent = message;
+        showAppToast(message, "success");
+      })
+    );
   }
   const accountsPlatformFilter = document.getElementById("accountsPlatformFilter");
   const accountsSearchInput = document.getElementById("accountsSearchInput");

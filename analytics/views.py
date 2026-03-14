@@ -17,6 +17,7 @@ from integrations.models import ConnectedAccount
 from .ai_service import AIInsightsError, generate_profile_ai_insights
 from .models import InsightSnapshot
 from .services import build_comparison_rows, build_insight_response, build_post_stats_summary, fetch_and_store_insights
+from .tasks import refresh_account_insights_snapshot
 
 logger = logging.getLogger("analytics")
 
@@ -453,5 +454,59 @@ def ai_profile_insights(request: HttpRequest, account_id: int) -> JsonResponse:
                 "comparison_rows_count": len(ai_context.get("comparison_rows") or []),
                 "top_posts_count": len(ai_context.get("top_posts") or []),
             },
+        }
+    )
+
+
+@require_POST
+@login_required
+def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
+    accounts = list(ConnectedAccount.objects.filter(is_active=True).order_by("id"))
+    total_accounts = len(accounts)
+    queued = 0
+    skipped_no_token = 0
+    enqueue_failed = 0
+
+    for account in accounts:
+        if not account.access_token:
+            skipped_no_token += 1
+            continue
+        try:
+            refresh_account_insights_snapshot.apply_async(
+                args=[account.id],
+                kwargs={"force": True},
+                priority=1,
+            )
+            queued += 1
+        except Exception as exc:  # noqa: BLE001
+            enqueue_failed += 1
+            logger.warning(
+                "bulk force refresh enqueue failed account_id=%s user_id=%s error=%s",
+                account.id,
+                request.user.id,
+                str(exc),
+            )
+
+    logger.info(
+        "bulk force refresh queued user_id=%s total_accounts=%s queued=%s skipped_no_token=%s enqueue_failed=%s",
+        request.user.id,
+        total_accounts,
+        queued,
+        skipped_no_token,
+        enqueue_failed,
+    )
+
+    return JsonResponse(
+        {
+            "status": "queued",
+            "total_accounts": total_accounts,
+            "queued": queued,
+            "skipped_no_token": skipped_no_token,
+            "enqueue_failed": enqueue_failed,
+            "message": (
+                f"Force refresh queued for {queued}/{total_accounts} connected profiles. "
+                f"Skipped (no token): {skipped_no_token}. Queue errors: {enqueue_failed}."
+            ),
+            "queued_at": timezone.now().isoformat(),
         }
     )

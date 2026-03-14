@@ -61,12 +61,14 @@ What it shows:
 - view meta shows both merged-row count and active raw connected-row count
 - per-row quick actions: Schedule, Insights, and AI Insights
 - actions UI uses a priority-styled Schedule button with compact Insights/AI Insights secondary buttons
+- one-click `Force Refresh All Profiles` button to queue a full connected-account refresh sweep
 
 What it does:
 - starts the Meta connect flow
 - refreshes the connected account list
 - `Refresh List` now also forces Meta catalog refresh (not only cached catalog read)
 - shows current sync status and Meta page catalog data
+- can queue force-refresh jobs for all active connected profiles to pull latest Meta insights into snapshots
 - uses user-token fallback for catalog detail checks (session token first, then current user cache, then latest global reconnect token)
 - keeps only latest reconnect profiles active in scheduling/health
 - blocks scheduling from stale or inactive account rows until the profile is refreshed in a new reconnect

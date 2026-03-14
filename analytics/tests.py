@@ -54,6 +54,42 @@ class AnalyticsApiTests(TestCase):
         body = response.json()
         self.assertEqual(body["error"], "Failed to fetch insights from Meta")
 
+    @patch("analytics.views.refresh_account_insights_snapshot.apply_async")
+    def test_force_refresh_all_accounts_insights_queues_active_profiles(self, mock_apply_async):
+        ConnectedAccount.objects.create(
+            platform=FACEBOOK,
+            page_id="active-no-token",
+            page_name="No Token",
+            access_token="",
+            is_active=True,
+        )
+        ConnectedAccount.objects.create(
+            platform=FACEBOOK,
+            page_id="inactive-token",
+            page_name="Inactive Token",
+            access_token="token-2",
+            is_active=False,
+        )
+
+        response = self.client.post(
+            "/api/insights/force-refresh-all/",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["status"], "queued")
+        self.assertEqual(body["total_accounts"], 2)
+        self.assertEqual(body["queued"], 1)
+        self.assertEqual(body["skipped_no_token"], 1)
+        self.assertEqual(body["enqueue_failed"], 0)
+        mock_apply_async.assert_called_once_with(
+            args=[self.account.id],
+            kwargs={"force": True},
+            priority=1,
+        )
+
     @patch("analytics.views.fetch_and_store_insights")
     def test_force_refresh_fetches_stats_for_visible_posts(self, mock_fetch_and_store):
         mock_fetch_and_store.return_value = {
