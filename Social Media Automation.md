@@ -74,6 +74,7 @@ What it does:
 - shows current sync status and Meta page catalog data
 - can queue force-refresh jobs for all active connected profiles to pull latest Meta insights into snapshots
 - force-refresh-all now uses persistent per-user run tracking with live progress (%) and completion state, so the button stays disabled until that user's run finishes (even after page reload or re-login)
+- force-refresh-all now asks for operator confirmation before starting, because full refresh can take significant time based on connected FB/IG profile count
 - uses user-token fallback for catalog detail checks (session token first, then current user cache, then latest global reconnect token)
 - keeps only latest reconnect profiles active in scheduling/health
 - blocks scheduling from stale or inactive account rows until the profile is refreshed in a new reconnect

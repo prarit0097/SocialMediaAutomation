@@ -887,6 +887,10 @@
 
     forceRefreshAllBtn.addEventListener("click", async () => {
       if (forceRefreshAllBtn.disabled) return;
+      const confirmed = window.confirm(
+        "Are you sure? It can take significant time to collect all data from Meta and depends on your connected profiles (FB Pages + Insta profiles)."
+      );
+      if (!confirmed) return;
       forceRefreshAllBtn.disabled = true;
       forceRefreshAllBtn.textContent = "Queuing Force Refresh...";
       try {
