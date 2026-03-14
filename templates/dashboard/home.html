@@ -98,18 +98,22 @@
       <details class="meta-guide-details" open>
         <summary>Part 1: Create Meta App (what to click)</summary>
         <ol class="meta-howto-list">
-          <li>Open <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener noreferrer">developers.facebook.com/apps</a>.</li>
-          <li>Click <strong>Create App</strong>.</li>
-          <li>When asked for use case, choose <strong>Business</strong>.</li>
-          <li>Add product <strong>Facebook Login</strong>.</li>
-          <li>Open Facebook Login settings and add your callback URL in <strong>Valid OAuth Redirect URIs</strong>.</li>
-          <li>Open <strong>App Settings -> Basic</strong>. Keep this page open; we will copy values from here.</li>
+          <li>Chrome me ye website kholo: <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener noreferrer">developers.facebook.com/apps</a>.</li>
+          <li>Apne Facebook account se login karo (same account jisme aap pages/profiles manage karte ho).</li>
+          <li>Top-right me <strong>Create App</strong> button dabao.</li>
+          <li>Meta poochega app kis kaam ke liye hai: <strong>Business</strong> choose karo.</li>
+          <li>App ka naam do (example: <code>My Social Automation App</code>) aur create complete karo.</li>
+          <li>Ab app dashboard open hoga. Left side me products me <strong>Facebook Login</strong> add karo.</li>
+          <li><strong>Facebook Login -> Settings</strong> kholo aur <strong>Valid OAuth Redirect URIs</strong> box dhoondo.</li>
+          <li>Wahan apna callback URL daalo (example: <code>https://your-domain/auth/meta/callback</code>) aur save karo.</li>
+          <li>Phir <strong>App Settings -> Basic</strong> kholo. Yahi screen se App ID aur App Secret milta hai.</li>
         </ol>
-        <p class="meta-check-note"><strong>Checkpoint:</strong> You can see App ID and App Secret screen.</p>
+        <p class="meta-check-note"><strong>Checkpoint:</strong> Aapko ek screen dikhni chahiye jahan <strong>App ID</strong> visible ho aur <strong>App Secret</strong> ko Show kar sakte ho.</p>
       </details>
 
       <details class="meta-guide-details" open>
         <summary>Part 2: Copy -> Paste map (exact)</summary>
+        <p class="meta-check-note"><strong>Rule:</strong> Jo value Meta me hai, wahi value yahan paste karo. Extra space ya typo mat karo.</p>
         <div class="meta-map-table">
           <div class="meta-map-row">
             <span class="meta-map-left">Copy from Meta: <strong>App ID</strong></span>
@@ -127,17 +131,26 @@
             <span class="meta-map-right">Paste in dashboard: <code>META_REDIRECT_URI</code></span>
           </div>
         </div>
-        <p class="meta-check-note"><strong>Redirect URI example:</strong> <code>https://your-domain/auth/meta/callback</code> (same value Meta Login settings me bhi hona chahiye).</p>
+        <ol class="meta-howto-list">
+          <li>Meta app basic screen se <strong>App ID</strong> copy karo -> is Home form me <code>META_APP_ID</code> me paste karo.</li>
+          <li>Wahi screen par <strong>Show</strong> click karke <strong>App Secret</strong> copy karo -> <code>META_APP_SECRET</code> me paste karo.</li>
+          <li>Apna public domain + callback path banao -> <code>META_REDIRECT_URI</code> me paste karo.</li>
+          <li>Important: Redirect URI ka same exact value Meta ke Facebook Login settings me bhi hona chahiye.</li>
+        </ol>
+        <p class="meta-check-note"><strong>Redirect URI example:</strong> <code>https://your-domain/auth/meta/callback</code> (https required, http se Meta login fail ho sakta hai).</p>
       </details>
 
       <details class="meta-guide-details" open>
         <summary>Part 3: Save in this dashboard</summary>
         <ol class="meta-howto-list">
-          <li>Fill all 3 fields above in this Home page form.</li>
-          <li>Click <strong>Save Meta Configuration</strong>.</li>
-          <li>Wait for success message.</li>
+          <li>Home page ke form me tino fields check karo: <code>META_APP_ID</code>, <code>META_APP_SECRET</code>, <code>META_REDIRECT_URI</code>.</li>
+          <li><strong>Save Meta Configuration</strong> button click karo.</li>
+          <li>2-3 second wait karo aur green/success message ka wait karo.</li>
+          <li>Save ke baad Accounts page me jaake <strong>Connect Facebook + Instagram</strong> click karo.</li>
+          <li>Meta popup me jitne pages/profiles chahiye, sab select karke continue karo.</li>
+          <li>Back aane ke baad <strong>Refresh List</strong> dabao taaki connected rows update ho jaye.</li>
         </ol>
-        <p class="meta-check-note"><strong>Checkpoint:</strong> Save ke baad error nahi aana chahiye. Agar error aaye to redirect URI dobara check karo.</p>
+        <p class="meta-check-note"><strong>Checkpoint:</strong> Save error-free ho, aur Accounts page me rows dikhne lage. Agar error aaye to pehle redirect URI aur App Secret dobara verify karo.</p>
       </details>
     </article>
 
