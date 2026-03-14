@@ -66,6 +66,7 @@ What it shows:
 - view meta shows both merged-row count and active raw connected-row count
 - per-row quick actions: Schedule, Insights, and AI Insights
 - actions UI uses a priority-styled Schedule button with compact Insights/AI Insights secondary buttons
+- Connected Accounts table layout is compacted so action buttons stay inside table width without forcing right-side horizontal scrolling in normal desktop view
 - one-click `Force Refresh All Profiles` button to queue a full connected-account refresh sweep
 
 What it does:

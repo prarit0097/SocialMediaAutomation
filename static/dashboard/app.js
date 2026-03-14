@@ -406,7 +406,7 @@
       })
       .join("");
 
-    container.innerHTML = `<table>${head}${body}</table>`;
+    container.innerHTML = `<table class="accounts-table">${head}${body}</table>`;
     updateAccountsViewMeta(rows, totalRows || rows.length, rawTotalRows || rows.length);
   }
 

@@ -2095,6 +2095,94 @@ pre {
   transform: translateY(-1px);
 }
 
+.accounts-table {
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.accounts-table th,
+.accounts-table td {
+  padding: 11px 10px;
+}
+
+.accounts-table th:nth-child(1),
+.accounts-table td:nth-child(1) {
+  width: 48px;
+}
+
+.accounts-table th:nth-child(2),
+.accounts-table td:nth-child(2) {
+  width: 21%;
+}
+
+.accounts-table th:nth-child(3),
+.accounts-table td:nth-child(3) {
+  width: 92px;
+}
+
+.accounts-table th:nth-child(4),
+.accounts-table td:nth-child(4) {
+  width: 122px;
+}
+
+.accounts-table th:nth-child(5),
+.accounts-table td:nth-child(5),
+.accounts-table th:nth-child(6),
+.accounts-table td:nth-child(6) {
+  width: 140px;
+}
+
+.accounts-table th:nth-child(7),
+.accounts-table td:nth-child(7),
+.accounts-table th:nth-child(8),
+.accounts-table td:nth-child(8) {
+  width: 118px;
+}
+
+.accounts-table th:nth-child(9),
+.accounts-table td:nth-child(9) {
+  width: 198px;
+}
+
+.accounts-table td:nth-child(5),
+.accounts-table td:nth-child(6) {
+  word-break: break-all;
+}
+
+.accounts-table .profile-cell {
+  min-width: 0;
+  width: 100%;
+}
+
+.accounts-table .profile-name {
+  display: block;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.accounts-table .account-actions-stack {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.accounts-table .account-action-btn {
+  font-size: 11px;
+  min-height: 36px;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+
+@media (max-width: 1320px) {
+  .accounts-table th:nth-child(9),
+  .accounts-table td:nth-child(9) {
+    width: 176px;
+  }
+
+  .accounts-table .account-actions-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 
 .ai-form-grid {
   display: grid;
