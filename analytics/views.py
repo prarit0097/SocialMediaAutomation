@@ -20,6 +20,7 @@ from .services import build_comparison_rows, build_insight_response, build_post_
 from .tasks import refresh_account_insights_snapshot
 
 logger = logging.getLogger("analytics")
+FORCE_REFRESH_ALL_COOLDOWN_SECONDS = 90
 
 
 def _insight_cache_ttl() -> int:
@@ -508,6 +509,21 @@ def ai_profile_insights(request: HttpRequest, account_id: int) -> JsonResponse:
 @require_POST
 @login_required
 def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
+    user_id = getattr(request.user, "id", None)
+    lock_key = f"force_refresh_all_lock:{user_id}"
+    if not cache.add(lock_key, timezone.now().isoformat(), timeout=FORCE_REFRESH_ALL_COOLDOWN_SECONDS):
+        return JsonResponse(
+            {
+                "error": "Force refresh already queued recently",
+                "details": (
+                    "A force refresh-all request is already in progress or was just queued. "
+                    "Please wait before submitting again."
+                ),
+                "retry_after_seconds": FORCE_REFRESH_ALL_COOLDOWN_SECONDS,
+            },
+            status=429,
+        )
+
     accounts = list(ConnectedAccount.objects.filter(is_active=True).order_by("id"))
     total_accounts = len(accounts)
     queued = 0
@@ -554,6 +570,7 @@ def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
                 f"Force refresh queued for {queued}/{total_accounts} connected profiles. "
                 f"Skipped (no token): {skipped_no_token}. Queue errors: {enqueue_failed}."
             ),
+            "cooldown_seconds": FORCE_REFRESH_ALL_COOLDOWN_SECONDS,
             "queued_at": timezone.now().isoformat(),
         }
     )

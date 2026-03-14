@@ -3,6 +3,7 @@ from unittest.mock import patch
 import requests
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.http import JsonResponse
 from django.test import Client, TestCase, override_settings
 from django.utils import timezone
@@ -20,6 +21,7 @@ from integrations.models import ConnectedAccount
 
 class AnalyticsApiTests(TestCase):
     def setUp(self):
+        cache.clear()
         self.client = Client()
         user_model = get_user_model()
         self.user = user_model.objects.create_user(username="admin", password="pass12345")
@@ -89,6 +91,27 @@ class AnalyticsApiTests(TestCase):
             kwargs={"force": True},
             priority=1,
         )
+
+    @patch("analytics.views.refresh_account_insights_snapshot.apply_async")
+    def test_force_refresh_all_accounts_insights_is_rate_limited(self, mock_apply_async):
+        response1 = self.client.post(
+            "/api/insights/force-refresh-all/",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        self.assertEqual(response1.status_code, 200)
+        self.assertEqual(mock_apply_async.call_count, 1)
+
+        response2 = self.client.post(
+            "/api/insights/force-refresh-all/",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        self.assertEqual(response2.status_code, 429)
+        body = response2.json()
+        self.assertIn("retry_after_seconds", body)
+        self.assertGreaterEqual(int(body["retry_after_seconds"]), 1)
+        self.assertEqual(mock_apply_async.call_count, 1)
 
     @patch("analytics.views.fetch_and_store_insights")
     def test_force_refresh_fetches_stats_for_visible_posts(self, mock_fetch_and_store):

@@ -819,6 +819,8 @@
   const refreshAccountsBtn = document.getElementById("refreshAccountsBtn");
   const forceRefreshAllBtn = document.getElementById("forceRefreshAllBtn");
   const accountsBulkRefreshStatus = document.getElementById("accountsBulkRefreshStatus");
+  let forceRefreshCooldownTimer = null;
+  const forceRefreshLabel = "Force Refresh All Profiles";
   if (refreshAccountsBtn) {
     const runWithRefreshAccountsLoading = withButtonLoading(refreshAccountsBtn, "Refresh List", "Refreshing...");
     refreshAccountsBtn.addEventListener("click", () =>
@@ -827,14 +829,34 @@
     loadAccounts();
   }
   if (forceRefreshAllBtn) {
-    const runWithForceRefreshAllLoading = withButtonLoading(
-      forceRefreshAllBtn,
-      "Force Refresh All Profiles",
-      "Queuing Force Refresh..."
-    );
-    forceRefreshAllBtn.addEventListener("click", () =>
-      runWithForceRefreshAllLoading(async () => {
-        const data = await fetchJSON("/api/insights/force-refresh-all/", {
+    const startForceRefreshCooldown = (seconds) => {
+      const safeSeconds = Number(seconds) > 0 ? Number(seconds) : 90;
+      if (forceRefreshCooldownTimer) {
+        window.clearInterval(forceRefreshCooldownTimer);
+        forceRefreshCooldownTimer = null;
+      }
+      let remaining = safeSeconds;
+      forceRefreshAllBtn.disabled = true;
+      forceRefreshAllBtn.textContent = `Wait ${remaining}s`;
+      forceRefreshCooldownTimer = window.setInterval(() => {
+        remaining -= 1;
+        if (remaining <= 0) {
+          window.clearInterval(forceRefreshCooldownTimer);
+          forceRefreshCooldownTimer = null;
+          forceRefreshAllBtn.disabled = false;
+          forceRefreshAllBtn.textContent = forceRefreshLabel;
+          return;
+        }
+        forceRefreshAllBtn.textContent = `Wait ${remaining}s`;
+      }, 1000);
+    };
+
+    forceRefreshAllBtn.addEventListener("click", async () => {
+      if (forceRefreshAllBtn.disabled) return;
+      forceRefreshAllBtn.disabled = true;
+      forceRefreshAllBtn.textContent = "Queuing Force Refresh...";
+      try {
+        const response = await fetch("/api/insights/force-refresh-all/", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -842,12 +864,35 @@
           },
           body: JSON.stringify({}),
         });
-        const queuedAt = toIndianDateTime(data.queued_at) || "-";
-        const message = `${data.message || "Force refresh request queued."} Queued at: ${queuedAt}`;
+        const contentType = response.headers.get("content-type") || "";
+        const data = contentType.includes("application/json") ? await response.json() : {};
+
+        if (response.ok) {
+          const queuedAt = toIndianDateTime(data.queued_at) || "-";
+          const message = `${data.message || "Force refresh request queued."} Queued at: ${queuedAt}`;
+          if (accountsBulkRefreshStatus) accountsBulkRefreshStatus.textContent = message;
+          showAppToast(message, "success");
+          startForceRefreshCooldown(data.cooldown_seconds || 90);
+          return;
+        }
+
+        const retrySeconds = Number(data.retry_after_seconds || 0);
+        const errorMessage = sanitizeUiError((data && (data.details || data.error)) || "Force refresh request failed.");
+        if (accountsBulkRefreshStatus) accountsBulkRefreshStatus.textContent = errorMessage;
+        showAppToast(errorMessage, "error");
+        if (response.status === 429) {
+          startForceRefreshCooldown(retrySeconds || 90);
+          return;
+        }
+      } catch (err) {
+        const message = sanitizeUiError(err && err.message ? err.message : "Force refresh request failed.");
         if (accountsBulkRefreshStatus) accountsBulkRefreshStatus.textContent = message;
-        showAppToast(message, "success");
-      })
-    );
+        showAppToast(message, "error");
+      }
+
+      forceRefreshAllBtn.disabled = false;
+      forceRefreshAllBtn.textContent = forceRefreshLabel;
+    });
   }
   const accountsPlatformFilter = document.getElementById("accountsPlatformFilter");
   const accountsSearchInput = document.getElementById("accountsSearchInput");
