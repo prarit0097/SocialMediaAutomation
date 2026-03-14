@@ -15,12 +15,11 @@ from core.exceptions import MetaAPIError
 from integrations.models import ConnectedAccount
 
 from .ai_service import AIInsightsError, generate_profile_ai_insights
-from .models import InsightSnapshot
+from .models import BulkInsightRefreshRun, InsightSnapshot
 from .services import build_comparison_rows, build_insight_response, build_post_stats_summary, fetch_and_store_insights
 from .tasks import refresh_account_insights_snapshot
 
 logger = logging.getLogger("analytics")
-FORCE_REFRESH_ALL_COOLDOWN_SECONDS = 90
 
 
 def _insight_cache_ttl() -> int:
@@ -28,6 +27,42 @@ def _insight_cache_ttl() -> int:
         return max(5, int(getattr(settings, "INSIGHTS_RESPONSE_CACHE_TTL", 90)))
     except (TypeError, ValueError):
         return 90
+
+
+def _serialize_bulk_run(run: BulkInsightRefreshRun | None) -> dict:
+    if not run:
+        return {
+            "has_active_run": False,
+            "status": "idle",
+            "progress_percent": 0,
+        }
+
+    completed = int(run.completed_count or 0)
+    failed = int(run.failed_count or 0)
+    queued = int(run.queued_count or 0)
+    skipped = int(run.skipped_no_token or 0)
+    enqueue_failed = int(run.enqueue_failed or 0)
+    total = int(run.total_accounts or 0)
+    processed = completed + failed + skipped + enqueue_failed
+    denominator = total if total > 0 else max(queued, 1)
+    progress_percent = min(100, int(round((processed / max(denominator, 1)) * 100)))
+    in_progress = run.status == BulkInsightRefreshRun.STATUS_RUNNING
+
+    return {
+        "run_id": run.id,
+        "has_active_run": in_progress,
+        "status": run.status,
+        "total_accounts": total,
+        "queued_count": queued,
+        "skipped_no_token": skipped,
+        "enqueue_failed": enqueue_failed,
+        "completed_count": completed,
+        "failed_count": failed,
+        "processed_count": processed,
+        "progress_percent": progress_percent,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+    }
 
 
 def _single_insight_cache_key(account_id: int, snapshot_id: int, fetched_at_iso: str | None) -> str:
@@ -509,26 +544,30 @@ def ai_profile_insights(request: HttpRequest, account_id: int) -> JsonResponse:
 @require_POST
 @login_required
 def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
-    user_id = getattr(request.user, "id", None)
-    lock_key = f"force_refresh_all_lock:{user_id}"
-    if not cache.add(lock_key, timezone.now().isoformat(), timeout=FORCE_REFRESH_ALL_COOLDOWN_SECONDS):
-        return JsonResponse(
+    active_run = BulkInsightRefreshRun.objects.filter(
+        user=request.user,
+        status=BulkInsightRefreshRun.STATUS_RUNNING,
+    ).order_by("-started_at").first()
+    if active_run:
+        payload = _serialize_bulk_run(active_run)
+        payload.update(
             {
-                "error": "Force refresh already queued recently",
-                "details": (
-                    "A force refresh-all request is already in progress or was just queued. "
-                    "Please wait before submitting again."
-                ),
-                "retry_after_seconds": FORCE_REFRESH_ALL_COOLDOWN_SECONDS,
-            },
-            status=429,
+                "error": "Force refresh already running",
+                "details": "A force refresh-all run is already active for this user. Wait for it to complete.",
+            }
         )
+        return JsonResponse(payload, status=409)
 
     accounts = list(ConnectedAccount.objects.filter(is_active=True).order_by("id"))
     total_accounts = len(accounts)
     queued = 0
     skipped_no_token = 0
     enqueue_failed = 0
+    run = BulkInsightRefreshRun.objects.create(
+        user=request.user,
+        status=BulkInsightRefreshRun.STATUS_RUNNING,
+        total_accounts=total_accounts,
+    )
 
     for account in accounts:
         if not account.access_token:
@@ -537,7 +576,7 @@ def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
         try:
             refresh_account_insights_snapshot.apply_async(
                 args=[account.id],
-                kwargs={"force": True},
+                kwargs={"force": True, "bulk_run_id": run.id},
                 priority=1,
             )
             queued += 1
@@ -550,27 +589,53 @@ def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
                 str(exc),
             )
 
+    run.queued_count = queued
+    run.skipped_no_token = skipped_no_token
+    run.enqueue_failed = enqueue_failed
+    if queued == 0:
+        if enqueue_failed > 0:
+            run.status = BulkInsightRefreshRun.STATUS_COMPLETED_WITH_ERRORS
+        else:
+            run.status = BulkInsightRefreshRun.STATUS_COMPLETED
+        run.finished_at = timezone.now()
+    run.save(
+        update_fields=[
+            "queued_count",
+            "skipped_no_token",
+            "enqueue_failed",
+            "status",
+            "finished_at",
+            "updated_at",
+        ]
+    )
+
     logger.info(
-        "bulk force refresh queued user_id=%s total_accounts=%s queued=%s skipped_no_token=%s enqueue_failed=%s",
+        "bulk force refresh queued user_id=%s run_id=%s total_accounts=%s queued=%s skipped_no_token=%s enqueue_failed=%s",
         request.user.id,
+        run.id,
         total_accounts,
         queued,
         skipped_no_token,
         enqueue_failed,
     )
 
-    return JsonResponse(
+    payload = _serialize_bulk_run(run)
+    payload.update(
         {
             "status": "queued",
-            "total_accounts": total_accounts,
             "queued": queued,
-            "skipped_no_token": skipped_no_token,
-            "enqueue_failed": enqueue_failed,
             "message": (
                 f"Force refresh queued for {queued}/{total_accounts} connected profiles. "
                 f"Skipped (no token): {skipped_no_token}. Queue errors: {enqueue_failed}."
             ),
-            "cooldown_seconds": FORCE_REFRESH_ALL_COOLDOWN_SECONDS,
             "queued_at": timezone.now().isoformat(),
         }
     )
+    return JsonResponse(payload)
+
+
+@require_GET
+@login_required
+def force_refresh_all_accounts_status(request: HttpRequest) -> JsonResponse:
+    run = BulkInsightRefreshRun.objects.filter(user=request.user).order_by("-started_at").first()
+    return JsonResponse(_serialize_bulk_run(run))

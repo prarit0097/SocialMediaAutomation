@@ -819,7 +819,10 @@
   const refreshAccountsBtn = document.getElementById("refreshAccountsBtn");
   const forceRefreshAllBtn = document.getElementById("forceRefreshAllBtn");
   const accountsBulkRefreshStatus = document.getElementById("accountsBulkRefreshStatus");
-  let forceRefreshCooldownTimer = null;
+  const forceRefreshProgressWrap = document.getElementById("forceRefreshProgressWrap");
+  const forceRefreshProgressFill = document.getElementById("forceRefreshProgressFill");
+  const forceRefreshProgressText = document.getElementById("forceRefreshProgressText");
+  let forceRefreshPollTimer = null;
   const forceRefreshLabel = "Force Refresh All Profiles";
   if (refreshAccountsBtn) {
     const runWithRefreshAccountsLoading = withButtonLoading(refreshAccountsBtn, "Refresh List", "Refreshing...");
@@ -829,26 +832,57 @@
     loadAccounts();
   }
   if (forceRefreshAllBtn) {
-    const startForceRefreshCooldown = (seconds) => {
-      const safeSeconds = Number(seconds) > 0 ? Number(seconds) : 90;
-      if (forceRefreshCooldownTimer) {
-        window.clearInterval(forceRefreshCooldownTimer);
-        forceRefreshCooldownTimer = null;
+    const clearForceRefreshPolling = () => {
+      if (forceRefreshPollTimer) {
+        window.clearInterval(forceRefreshPollTimer);
+        forceRefreshPollTimer = null;
       }
-      let remaining = safeSeconds;
-      forceRefreshAllBtn.disabled = true;
-      forceRefreshAllBtn.textContent = `Wait ${remaining}s`;
-      forceRefreshCooldownTimer = window.setInterval(() => {
-        remaining -= 1;
-        if (remaining <= 0) {
-          window.clearInterval(forceRefreshCooldownTimer);
-          forceRefreshCooldownTimer = null;
-          forceRefreshAllBtn.disabled = false;
-          forceRefreshAllBtn.textContent = forceRefreshLabel;
-          return;
+    };
+
+    const renderForceRefreshProgress = (state) => {
+      const running = Boolean(state && state.has_active_run);
+      const percent = Math.max(0, Math.min(100, Number((state && state.progress_percent) || 0)));
+      if (running) {
+        forceRefreshAllBtn.disabled = true;
+        forceRefreshAllBtn.textContent = "Force Refresh Running...";
+        if (forceRefreshProgressWrap) forceRefreshProgressWrap.hidden = false;
+        if (forceRefreshProgressFill) forceRefreshProgressFill.style.width = `${percent}%`;
+        if (forceRefreshProgressText) {
+          const done = Number(state.processed_count || 0);
+          const total = Number(state.total_accounts || 0);
+          forceRefreshProgressText.textContent = `${percent}% completed (${done}/${total || "-"})`;
         }
-        forceRefreshAllBtn.textContent = `Wait ${remaining}s`;
-      }, 1000);
+        return;
+      }
+      forceRefreshAllBtn.disabled = false;
+      forceRefreshAllBtn.textContent = forceRefreshLabel;
+      if (forceRefreshProgressWrap) forceRefreshProgressWrap.hidden = true;
+      if (forceRefreshProgressFill) forceRefreshProgressFill.style.width = "0%";
+      if (forceRefreshProgressText) forceRefreshProgressText.textContent = "";
+    };
+
+    const loadForceRefreshStatus = async () => {
+      try {
+        const status = await fetchJSON("/api/insights/force-refresh-all/status/");
+        renderForceRefreshProgress(status);
+        const running = Boolean(status && status.has_active_run);
+        if (running && !forceRefreshPollTimer) {
+          forceRefreshPollTimer = window.setInterval(loadForceRefreshStatus, 4000);
+        }
+        if (!running) {
+          clearForceRefreshPolling();
+          if (status && status.status && status.status !== "idle" && accountsBulkRefreshStatus) {
+            const finalPct = Number(status.progress_percent || 0);
+            if (status.status === "completed_with_errors") {
+              accountsBulkRefreshStatus.textContent = `Force refresh completed with some errors. Progress: ${finalPct}%.`;
+            } else if (status.status === "completed") {
+              accountsBulkRefreshStatus.textContent = `Force refresh completed successfully. Progress: ${finalPct}%.`;
+            }
+          }
+        }
+      } catch (_err) {
+        // Keep UI usable even if status endpoint fails temporarily.
+      }
     };
 
     forceRefreshAllBtn.addEventListener("click", async () => {
@@ -866,33 +900,34 @@
         });
         const contentType = response.headers.get("content-type") || "";
         const data = contentType.includes("application/json") ? await response.json() : {};
-
-        if (response.ok) {
-          const queuedAt = toIndianDateTime(data.queued_at) || "-";
-          const message = `${data.message || "Force refresh request queued."} Queued at: ${queuedAt}`;
-          if (accountsBulkRefreshStatus) accountsBulkRefreshStatus.textContent = message;
-          showAppToast(message, "success");
-          startForceRefreshCooldown(data.cooldown_seconds || 90);
+        if (!response.ok) {
+          const errorMessage = sanitizeUiError((data && (data.details || data.error)) || "Force refresh request failed.");
+          if (accountsBulkRefreshStatus) accountsBulkRefreshStatus.textContent = errorMessage;
+          showAppToast(errorMessage, "error");
+          renderForceRefreshProgress(data);
+          if (data && data.has_active_run && !forceRefreshPollTimer) {
+            forceRefreshPollTimer = window.setInterval(loadForceRefreshStatus, 4000);
+          }
           return;
         }
 
-        const retrySeconds = Number(data.retry_after_seconds || 0);
-        const errorMessage = sanitizeUiError((data && (data.details || data.error)) || "Force refresh request failed.");
-        if (accountsBulkRefreshStatus) accountsBulkRefreshStatus.textContent = errorMessage;
-        showAppToast(errorMessage, "error");
-        if (response.status === 429) {
-          startForceRefreshCooldown(retrySeconds || 90);
-          return;
-        }
+        const queuedAt = toIndianDateTime(data.queued_at) || "-";
+        const message = `${data.message || "Force refresh request queued."} Queued at: ${queuedAt}`;
+        if (accountsBulkRefreshStatus) accountsBulkRefreshStatus.textContent = message;
+        showAppToast(message, "success");
+        renderForceRefreshProgress(data);
+        clearForceRefreshPolling();
+        forceRefreshPollTimer = window.setInterval(loadForceRefreshStatus, 4000);
       } catch (err) {
         const message = sanitizeUiError(err && err.message ? err.message : "Force refresh request failed.");
         if (accountsBulkRefreshStatus) accountsBulkRefreshStatus.textContent = message;
         showAppToast(message, "error");
+        forceRefreshAllBtn.disabled = false;
+        forceRefreshAllBtn.textContent = forceRefreshLabel;
       }
-
-      forceRefreshAllBtn.disabled = false;
-      forceRefreshAllBtn.textContent = forceRefreshLabel;
     });
+
+    loadForceRefreshStatus();
   }
   const accountsPlatformFilter = document.getElementById("accountsPlatformFilter");
   const accountsSearchInput = document.getElementById("accountsSearchInput");

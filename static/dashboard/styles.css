@@ -1604,6 +1604,63 @@ button[disabled],
   transform: translateX(140%);
 }
 
+.force-refresh-shell {
+  display: grid;
+  gap: 6px;
+  min-width: 206px;
+}
+
+.force-refresh-progress-wrap {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+}
+
+.force-refresh-progress-bar {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid rgba(15, 63, 89, 0.26);
+  background: rgba(15, 63, 89, 0.12);
+}
+
+.force-refresh-progress-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background:
+    linear-gradient(90deg, rgba(17, 132, 146, 0.95), rgba(13, 96, 129, 0.95)),
+    repeating-linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.22) 0,
+      rgba(255, 255, 255, 0.22) 8px,
+      rgba(255, 255, 255, 0.04) 8px,
+      rgba(255, 255, 255, 0.04) 16px
+    );
+  background-blend-mode: screen;
+  transition: width 0.35s ease;
+  animation: force-progress-flow 1.1s linear infinite;
+}
+
+.force-refresh-progress-text {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  font-weight: 800;
+  letter-spacing: 0.2px;
+}
+
+@keyframes force-progress-flow {
+  0% {
+    background-position: 0 0, 0 0;
+  }
+  100% {
+    background-position: 0 0, 24px 0;
+  }
+}
+
 .retry-failed-btn {
   width: auto;
   min-height: 36px;

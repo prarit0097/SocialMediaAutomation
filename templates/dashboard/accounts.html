@@ -30,7 +30,15 @@
     <div class="section-actions">
       <button id="connectMetaBtn" class="btn">Connect Facebook + Instagram</button>
       <button id="refreshAccountsBtn" class="btn muted">Refresh List</button>
-      <button id="forceRefreshAllBtn" class="btn force-refresh-all">Force Refresh All Profiles</button>
+      <div class="force-refresh-shell">
+        <button id="forceRefreshAllBtn" class="btn force-refresh-all">Force Refresh All Profiles</button>
+        <div id="forceRefreshProgressWrap" class="force-refresh-progress-wrap" hidden>
+          <div class="force-refresh-progress-bar">
+            <span id="forceRefreshProgressFill" class="force-refresh-progress-fill"></span>
+          </div>
+          <p id="forceRefreshProgressText" class="force-refresh-progress-text"></p>
+        </div>
+      </div>
     </div>
   </div>
   <div class="toolbar-surface">

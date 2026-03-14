@@ -83,17 +83,19 @@ class AnalyticsApiTests(TestCase):
         body = response.json()
         self.assertEqual(body["status"], "queued")
         self.assertEqual(body["total_accounts"], 2)
-        self.assertEqual(body["queued"], 1)
+        self.assertEqual(body["queued_count"], 1)
         self.assertEqual(body["skipped_no_token"], 1)
         self.assertEqual(body["enqueue_failed"], 0)
+        self.assertTrue(body["has_active_run"])
+        self.assertGreater(body["run_id"], 0)
         mock_apply_async.assert_called_once_with(
             args=[self.account.id],
-            kwargs={"force": True},
+            kwargs={"force": True, "bulk_run_id": body["run_id"]},
             priority=1,
         )
 
     @patch("analytics.views.refresh_account_insights_snapshot.apply_async")
-    def test_force_refresh_all_accounts_insights_is_rate_limited(self, mock_apply_async):
+    def test_force_refresh_all_accounts_insights_blocks_duplicate_running_job(self, mock_apply_async):
         response1 = self.client.post(
             "/api/insights/force-refresh-all/",
             data=json.dumps({}),
@@ -107,11 +109,24 @@ class AnalyticsApiTests(TestCase):
             data=json.dumps({}),
             content_type="application/json",
         )
-        self.assertEqual(response2.status_code, 429)
+        self.assertEqual(response2.status_code, 409)
         body = response2.json()
-        self.assertIn("retry_after_seconds", body)
-        self.assertGreaterEqual(int(body["retry_after_seconds"]), 1)
+        self.assertEqual(body["error"], "Force refresh already running")
+        self.assertTrue(body["has_active_run"])
         self.assertEqual(mock_apply_async.call_count, 1)
+
+    @patch("analytics.views.refresh_account_insights_snapshot.apply_async")
+    def test_force_refresh_all_accounts_status_endpoint_returns_current_run(self, mock_apply_async):
+        self.client.post(
+            "/api/insights/force-refresh-all/",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        response = self.client.get("/api/insights/force-refresh-all/status/")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertTrue(body["has_active_run"])
+        self.assertEqual(body["status"], "running")
 
     @patch("analytics.views.fetch_and_store_insights")
     def test_force_refresh_fetches_stats_for_visible_posts(self, mock_fetch_and_store):
