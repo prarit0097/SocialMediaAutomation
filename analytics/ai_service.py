@@ -251,6 +251,25 @@ def _default_best_recommendations(payload: dict[str, Any]) -> list[str]:
     ]
 
 
+def _ensure_profile_name_in_recommendations(payload: dict[str, Any], rows: list[str]) -> list[str]:
+    profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
+    profile_name = str(profile.get("page_name") or "").strip()
+    if not profile_name:
+        return rows
+
+    normalized: list[str] = []
+    profile_name_lower = profile_name.lower()
+    for item in rows:
+        text = str(item or "").strip()
+        if not text:
+            continue
+        if profile_name_lower in text.lower():
+            normalized.append(text)
+        else:
+            normalized.append(f"For {profile_name}, {text}")
+    return normalized
+
+
 def generate_profile_ai_insights(payload: dict[str, Any], focus: str | None = None) -> dict[str, Any]:
     api_key = (settings.OPENAI_API_KEY or "").strip()
     if not api_key:
@@ -409,4 +428,8 @@ def generate_profile_ai_insights(payload: dict[str, Any], focus: str | None = No
     }
     if len(normalized["best_recommendations_for_growth"]) < 3:
         normalized["best_recommendations_for_growth"] = fallback_best_recommendations
+    normalized["best_recommendations_for_growth"] = _ensure_profile_name_in_recommendations(
+        payload,
+        normalized["best_recommendations_for_growth"],
+    )
     return normalized
