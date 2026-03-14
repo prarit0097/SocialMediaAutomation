@@ -217,6 +217,8 @@ def _default_posting_strategy(payload: dict[str, Any]) -> dict[str, str]:
 def _default_best_recommendations(payload: dict[str, Any]) -> list[str]:
     perf = payload.get("performance_last_7d") if isinstance(payload.get("performance_last_7d"), dict) else {}
     cadence = payload.get("posting_cadence") if isinstance(payload.get("posting_cadence"), dict) else {}
+    profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
+    profile_name = str(profile.get("page_name") or "this profile").strip()
 
     views = _format_number(_to_number(perf.get("views")), 0)
     likes = _format_number(_to_number(perf.get("likes")), 0)
@@ -227,22 +229,22 @@ def _default_best_recommendations(payload: dict[str, Any]) -> list[str]:
 
     return [
         (
-            "Use a reels-first + strong-hook format for Instagram and test at least 4-5 short videos in 7 days; "
+            f"For {profile_name}, use a reels-first + strong-hook format on Instagram and test at least 4-5 short videos in 7 days; "
             "prioritize opening 2 seconds and retention-focused edits. "
             "Reference: Instagram Creators / Meta for Creators best practices."
         ),
         (
-            f"Keep platform-separated consistency: Facebook {fb_7d} posts (last 7d) and Instagram {ig_7d} posts (last 7d) "
+            f"Keep platform-separated consistency for {profile_name}: Facebook {fb_7d} posts (last 7d) and Instagram {ig_7d} posts (last 7d) "
             "should move toward daily publishing with fixed posting slots. "
             "Reference: Meta Business Suite publishing guidance."
         ),
         (
-            f"Build engagement loops from current baseline (views={views}, likes={likes}, comments={comments}, shares={shares}) "
+            f"Build engagement loops for {profile_name} from current baseline (views={views}, likes={likes}, comments={comments}, shares={shares}) "
             "by adding CTA prompts, question captions, and comment reply within first 60 minutes of posting. "
             "Reference: Meta performance/engagement documentation."
         ),
         (
-            "Create weekly content mix: 60% educational problem-solution posts, 25% proof/results/social trust posts, "
+            f"For {profile_name}, run weekly content mix: 60% educational problem-solution posts, 25% proof/results/social trust posts, "
             "15% authority/personal brand posts. Track saves + shares as primary quality signal. "
             "Reference: creator-led content strategy playbooks."
         ),
@@ -270,6 +272,8 @@ def generate_profile_ai_insights(payload: dict[str, Any], focus: str | None = No
         "5) Keep language concise, specific, and business-usable; avoid generic fluff.\n"
         "6) Return strict JSON only, no markdown, no code fences, no explanations outside JSON.\n"
         "7) In posting_strategy, never give a blended cadence; always split Facebook and Instagram separately.\n"
+        "8) Tone must be humanized and practical: like a senior growth mentor talking to a real operator, not robotic.\n"
+        "9) Recommendations must explicitly stay profile-wise (for the selected account_id/page_name only).\n"
         "\n"
         "Quality bar:\n"
         "- Give concrete, operator-level guidance for improving views, reach, likes, comments, shares, saves, interactions, and reel/video plays.\n"
@@ -319,6 +323,8 @@ def generate_profile_ai_insights(payload: dict[str, Any], focus: str | None = No
         "- best_recommendations_for_growth:\n"
         "  - MUST provide 5-10 high-impact recommendations as clear bullets.\n"
         "  - MUST be tied to provided profile data (cadence + performance metrics).\n"
+        "  - MUST sound realistic and human (mentor/advisor tone), not robotic or template-like.\n"
+        "  - MUST mention selected profile context (page_name or account_id reference) naturally.\n"
         "  - MUST mention trend-aware execution for current social behavior (short-form video hooks, retention, saves/shares, strong CTA loops).\n"
         "  - MUST include credible resource references inside each bullet when possible (for example: Meta for Creators, Instagram Creators, Meta Business Help Center).\n"
         "  - Do not add fake URLs; if specific source link is not known, use source name only.\n"
@@ -401,6 +407,6 @@ def generate_profile_ai_insights(payload: dict[str, Any], focus: str | None = No
         "content_ideas": _normalize_list(parsed.get("content_ideas")),
         "best_recommendations_for_growth": _normalize_list(parsed.get("best_recommendations_for_growth")),
     }
-    if not normalized["best_recommendations_for_growth"]:
+    if len(normalized["best_recommendations_for_growth"]) < 3:
         normalized["best_recommendations_for_growth"] = fallback_best_recommendations
     return normalized
