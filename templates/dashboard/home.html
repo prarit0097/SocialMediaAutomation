@@ -83,39 +83,69 @@
     <div>
       <p class="eyebrow">Setup Guide</p>
       <h2>Get Meta credentials and connect profiles without confusion.</h2>
-      <p class="section-copy">Follow these steps in order, then connect and verify all selected pages and Instagram profiles from the Accounts page.</p>
+      <p class="section-copy">Read this like a checklist. Do one step, then move to next step. If each checkpoint matches, setup is correct.</p>
     </div>
+  </div>
+
+  <div class="meta-guide-intro">
+    <div class="meta-guide-pill"><strong>Goal:</strong> Fill 3 fields correctly - <code>META_APP_ID</code>, <code>META_APP_SECRET</code>, <code>META_REDIRECT_URI</code></div>
+    <div class="meta-guide-pill"><strong>Need:</strong> Facebook account with access to your Meta app and pages</div>
+    <div class="meta-guide-pill"><strong>Result:</strong> Accounts page starts showing your FB + IG profiles</div>
   </div>
 
   <div class="meta-guide-grid">
     <article class="meta-guide-card">
       <details class="meta-guide-details" open>
-        <summary>Create Meta App + Login setup</summary>
+        <summary>Part 1: Create Meta App (what to click)</summary>
         <ol class="meta-howto-list">
-          <li>Open <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener noreferrer">developers.facebook.com/apps</a> and click <strong>Create App</strong>.</li>
-          <li>Select <strong>Business</strong> as use case.</li>
-          <li>Add <strong>Facebook Login</strong> product.</li>
-          <li>In Facebook Login settings, add your exact callback URL in <strong>Valid OAuth Redirect URIs</strong>.</li>
-          <li>Open <strong>App Settings -> Basic</strong>, copy App ID and App Secret.</li>
+          <li>Open <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener noreferrer">developers.facebook.com/apps</a>.</li>
+          <li>Click <strong>Create App</strong>.</li>
+          <li>When asked for use case, choose <strong>Business</strong>.</li>
+          <li>Add product <strong>Facebook Login</strong>.</li>
+          <li>Open Facebook Login settings and add your callback URL in <strong>Valid OAuth Redirect URIs</strong>.</li>
+          <li>Open <strong>App Settings -> Basic</strong>. Keep this page open; we will copy values from here.</li>
         </ol>
+        <p class="meta-check-note"><strong>Checkpoint:</strong> You can see App ID and App Secret screen.</p>
       </details>
 
       <details class="meta-guide-details" open>
-        <summary>Fill dashboard fields correctly</summary>
+        <summary>Part 2: Copy -> Paste map (exact)</summary>
+        <div class="meta-map-table">
+          <div class="meta-map-row">
+            <span class="meta-map-left">Copy from Meta: <strong>App ID</strong></span>
+            <span class="meta-map-arrow">-></span>
+            <span class="meta-map-right">Paste in dashboard: <code>META_APP_ID</code></span>
+          </div>
+          <div class="meta-map-row">
+            <span class="meta-map-left">Copy from Meta: <strong>App Secret</strong></span>
+            <span class="meta-map-arrow">-></span>
+            <span class="meta-map-right">Paste in dashboard: <code>META_APP_SECRET</code></span>
+          </div>
+          <div class="meta-map-row">
+            <span class="meta-map-left">Use your public URL + callback path</span>
+            <span class="meta-map-arrow">-></span>
+            <span class="meta-map-right">Paste in dashboard: <code>META_REDIRECT_URI</code></span>
+          </div>
+        </div>
+        <p class="meta-check-note"><strong>Redirect URI example:</strong> <code>https://your-domain/auth/meta/callback</code> (same value Meta Login settings me bhi hona chahiye).</p>
+      </details>
+
+      <details class="meta-guide-details" open>
+        <summary>Part 3: Save in this dashboard</summary>
         <ol class="meta-howto-list">
-          <li>Paste App ID into <code>META_APP_ID</code>.</li>
-          <li>Paste App Secret into <code>META_APP_SECRET</code>.</li>
-          <li>Set <code>META_REDIRECT_URI</code> to value like <code>https://your-domain/auth/meta/callback</code>.</li>
+          <li>Fill all 3 fields above in this Home page form.</li>
           <li>Click <strong>Save Meta Configuration</strong>.</li>
+          <li>Wait for success message.</li>
         </ol>
+        <p class="meta-check-note"><strong>Checkpoint:</strong> Save ke baad error nahi aana chahiye. Agar error aaye to redirect URI dobara check karo.</p>
       </details>
     </article>
 
     <article class="meta-guide-card">
       <details class="meta-guide-details" open>
-        <summary>Scopes and profile linking</summary>
+        <summary>Part 4: Add permissions/scopes (important)</summary>
         <div class="meta-scope-box">
-          <p class="meta-scope-title">Required permissions/scopes</p>
+          <p class="meta-scope-title">Required permissions/scopes for this app</p>
           <ul class="meta-scope-list">
             <li><code>pages_show_list</code></li>
             <li><code>pages_read_engagement</code></li>
@@ -129,17 +159,29 @@
           </ul>
           <p class="meta-scope-note">Note: some tutorials say <code>instagram_content_publishing</code>; this project uses <code>instagram_content_publish</code>.</p>
         </div>
+        <p class="meta-check-note"><strong>Checkpoint:</strong> Required scopes enabled hone chahiye, warna connect ke baad profiles missing aa सकती हैं.</p>
       </details>
 
       <details class="meta-guide-details" open>
-        <summary>Connect + verify in app</summary>
+        <summary>Part 5: Connect and verify profiles in app</summary>
         <ol class="meta-howto-list">
           <li>Go to <strong>Accounts</strong> page and click <strong>Connect Facebook + Instagram</strong>.</li>
-          <li>During Meta permission popup, select all required Facebook Pages and Instagram profiles.</li>
-          <li>Click <strong>Refresh List</strong> and check connected rows + catalog review.</li>
-          <li>If some rows are missing, reconnect and re-select all assets in Business Integration selection.</li>
+          <li>Permission popup me <strong>all required Facebook Pages + Instagram profiles select</strong> karo.</li>
+          <li>Back in app, click <strong>Refresh List</strong>.</li>
+          <li>Check: profiles `Connected Accounts` table me दिखनी चाहिए.</li>
+          <li>If some profiles missing: reconnect karo and Business Integration selection me un profiles ko tick karo.</li>
         </ol>
-        <p class="meta-check-note">Instagram account should be Professional and linked to a Facebook Page with admin/editor access.</p>
+        <p class="meta-check-note"><strong>Profile rule:</strong> Instagram account Professional hona chahiye aur Facebook Page se linked hona chahiye (admin/editor access).</p>
+      </details>
+
+      <details class="meta-guide-details" open>
+        <summary>Quick troubleshooting (if stuck)</summary>
+        <ul class="meta-howto-list">
+          <li><strong>Save failed?</strong> Redirect URI format check karo.</li>
+          <li><strong>Profiles missing?</strong> Reconnect and select all assets in popup.</li>
+          <li><strong>Catalog only rows?</strong> Fresh reconnect + Refresh List run karo.</li>
+          <li><strong>Instagram not posting?</strong> Public HTTPS media URL and required scopes check karo.</li>
+        </ul>
       </details>
     </article>
   </div>

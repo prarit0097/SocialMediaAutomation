@@ -615,6 +615,23 @@ textarea {
   gap: 14px;
 }
 
+.meta-guide-intro {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 8px 0 14px;
+}
+
+.meta-guide-pill {
+  border: 1px solid rgba(23, 53, 72, 0.14);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.78);
+  padding: 10px 12px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+
 .meta-guide-card {
   display: grid;
   gap: 10px;
@@ -657,6 +674,35 @@ textarea {
 
 .meta-guide-details > *:not(summary) {
   margin-top: 8px;
+}
+
+.meta-map-table {
+  display: grid;
+  gap: 8px;
+}
+
+.meta-map-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  border: 1px solid rgba(56, 78, 92, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.85);
+  padding: 8px 10px;
+}
+
+.meta-map-left,
+.meta-map-right {
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  line-height: 1.45;
+}
+
+.meta-map-arrow {
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--amber-strong);
 }
 
 .meta-scope-box {
@@ -1730,6 +1776,10 @@ pre {
     grid-template-columns: 1fr;
   }
 
+  .meta-guide-intro {
+    grid-template-columns: 1fr;
+  }
+
   .section-actions {
     min-width: 0;
   }
@@ -1784,6 +1834,14 @@ pre {
 
   .meta-scope-list {
     columns: 1;
+  }
+
+  .meta-map-row {
+    grid-template-columns: 1fr;
+  }
+
+  .meta-map-arrow {
+    display: none;
   }
 
   h1 {
