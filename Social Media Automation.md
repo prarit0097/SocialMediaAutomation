@@ -26,6 +26,7 @@ What it shows:
 - visual feature cards with user-friendly illustrations
 - clear `Login` and `Signup` actions
 - simple step flow explaining setup to analytics journey
+- redesigned premium marketing layout with: hero, capability bar, feature matrix, workflow steps, analytics highlight, AI value band, pricing cards, FAQ, and final CTA
 
 What it does:
 - helps first-time users understand app value before authentication
