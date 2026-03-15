@@ -995,6 +995,52 @@
 
     const scheduleSubmitBtn = scheduleForm.querySelector("button[type='submit']");
     const runWithScheduleLoading = withButtonLoading(scheduleSubmitBtn, "Schedule Post", "Scheduling...");
+    const generateAiImageBtn = document.getElementById("generateAiImageBtn");
+    const aiImagePreviewWrap = document.getElementById("aiImagePreviewWrap");
+    const aiImagePreview = document.getElementById("aiImagePreview");
+    const runWithAiImageLoading = withButtonLoading(generateAiImageBtn, "Generate Image with AI", "Generating...");
+
+    if (generateAiImageBtn) {
+      generateAiImageBtn.addEventListener("click", async () => {
+        const promptInput = scheduleForm.querySelector("[name='ai_image_prompt']");
+        const sizeInput = scheduleForm.querySelector("[name='ai_image_size']");
+        const mediaUrlInput = scheduleForm.querySelector("[name='media_url']");
+        const resultEl = document.getElementById("scheduleResult");
+        const prompt = String(promptInput?.value || "").trim();
+        const size = String(sizeInput?.value || "1024x1024").trim();
+
+        if (prompt.length < 8) {
+          showAppToast("Please enter a detailed AI image prompt (minimum 8 characters).", "error");
+          return;
+        }
+
+        try {
+          const data = await runWithAiImageLoading(() =>
+            fetchJSON("/api/ai/generate-image/", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": csrfToken,
+              },
+              body: JSON.stringify({ prompt, size }),
+            })
+          );
+          if (mediaUrlInput) mediaUrlInput.value = String(data.media_url || "");
+          const mediaUrl = String(data.media_url || "");
+          if (aiImagePreviewWrap && aiImagePreview && mediaUrl) {
+            aiImagePreview.src = mediaUrl;
+            aiImagePreviewWrap.hidden = false;
+          }
+          if (resultEl) resultEl.textContent = "AI image generated and media URL auto-filled.";
+          showAppToast("AI image generated successfully.", "success");
+        } catch (err) {
+          const message = sanitizeUiError(err && err.message ? err.message : "AI image generation failed.");
+          if (resultEl) resultEl.textContent = `Error: ${message}`;
+          showAppToast(message, "error");
+        }
+      });
+    }
+
     scheduleForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       const formData = new FormData(scheduleForm);

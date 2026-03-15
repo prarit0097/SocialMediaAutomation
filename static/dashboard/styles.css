@@ -1475,6 +1475,40 @@ small,
   font-weight: 700;
 }
 
+.ai-image-compose {
+  margin: 12px 0 8px;
+  padding: 12px;
+  border: 1px solid rgba(56, 78, 92, 0.12);
+  border-radius: 14px;
+  background: rgba(247, 250, 252, 0.72);
+}
+
+.ai-image-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.ai-image-actions label {
+  margin: 0;
+}
+
+.ai-image-preview-wrap {
+  margin-top: 10px;
+  border: 1px solid rgba(56, 78, 92, 0.14);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.ai-image-preview {
+  width: 100%;
+  max-height: 300px;
+  object-fit: contain;
+  display: block;
+}
+
 #appToastRoot {
   position: fixed;
   top: 88px;
@@ -2382,6 +2416,7 @@ pre {
   }
 
   .accounts-toolbar,
+  .ai-image-actions,
   .inline-controls,
   .insight-summary-grid,
   .ai-report-grid,

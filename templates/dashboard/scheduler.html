@@ -41,6 +41,25 @@
       </label>
       <label>Message<textarea name="message" rows="4"></textarea></label>
       <label>Media URL (required for Instagram / Both)<input type="url" name="media_url"></label>
+      <div class="ai-image-compose">
+        <label>AI Image Prompt
+          <textarea name="ai_image_prompt" rows="3" placeholder="Example: Create a clean Ayurveda health tips post background with modern professional style"></textarea>
+        </label>
+        <div class="ai-image-actions">
+          <label>Image Size
+            <select name="ai_image_size">
+              <option value="1024x1024">Square (1024x1024)</option>
+              <option value="1024x1536">Portrait (1024x1536)</option>
+              <option value="1536x1024">Landscape (1536x1024)</option>
+            </select>
+          </label>
+          <button type="button" id="generateAiImageBtn" class="btn muted">Generate Image with AI</button>
+        </div>
+        <p class="form-note">Generated image will be saved in media storage and Media URL field will auto-fill.</p>
+        <div id="aiImagePreviewWrap" class="ai-image-preview-wrap" hidden>
+          <img id="aiImagePreview" class="ai-image-preview" alt="AI generated preview">
+        </div>
+      </div>
       <label>Or Upload Media (image/video)
         <input type="file" name="media_file" accept="image/*,video/*">
       </label>

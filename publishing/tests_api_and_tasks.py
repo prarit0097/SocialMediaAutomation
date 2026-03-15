@@ -1,3 +1,5 @@
+import json
+import base64
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -56,6 +58,36 @@ class PublishingApiTests(TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(ScheduledPost.objects.count(), 1)
         self.assertEqual(ScheduledPost.objects.first().status, POST_STATUS_PENDING)
+
+    @override_settings(OPENAI_API_KEY="test-key")
+    @patch("publishing.views.requests.post")
+    def test_generate_ai_image_saves_media_and_returns_url(self, mock_post):
+        png_header = b"\x89PNG\r\n\x1a\n"
+        encoded = base64.b64encode(png_header + b"fake-image-content").decode()
+        mock_response = Response()
+        mock_response.status_code = 200
+        mock_response._content = json.dumps({"data": [{"b64_json": encoded}]}).encode()
+        mock_post.return_value = mock_response
+
+        response = self.client.post(
+            reverse("generate_ai_image"),
+            data=json.dumps({"prompt": "Generate a wellness post image background", "size": "1024x1024"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        body = response.json()
+        self.assertIn("/media/scheduled_uploads/ai_generated/", body["media_url"])
+        self.assertEqual(body["model"], "gpt-image-1")
+
+    @override_settings(OPENAI_API_KEY="")
+    def test_generate_ai_image_requires_openai_key(self):
+        response = self.client.post(
+            reverse("generate_ai_image"),
+            data=json.dumps({"prompt": "Generate a wellness post image background"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
 
     @patch("publishing.views.process_due_posts")
     def test_list_scheduled_posts_triggers_auto_dispatch_for_due_pending(self, mock_process_due_posts):

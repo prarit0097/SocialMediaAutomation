@@ -2,12 +2,16 @@ import json
 import logging
 import os
 import uuid
+import base64
+import binascii
 from datetime import datetime, timedelta, timezone as dt_timezone
 from urllib.parse import urljoin
 
+import requests
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
+from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.db import transaction
 from django.http import HttpRequest, JsonResponse
@@ -58,6 +62,19 @@ def _upload_file_to_media(request: HttpRequest):
     saved_path = default_storage.save(storage_path, uploaded)
     relative_url = default_storage.url(saved_path)
     return _build_public_media_url(request, relative_url), None
+
+
+def _openai_image_model() -> str:
+    return str(getattr(settings, "OPENAI_IMAGE_MODEL", "gpt-image-1") or "gpt-image-1").strip()
+
+
+def _save_generated_image(request: HttpRequest, image_bytes: bytes) -> tuple[str, str]:
+    stamp = timezone.now().strftime("%Y/%m/%d")
+    unique_name = f"{uuid.uuid4().hex}.png"
+    storage_path = f"scheduled_uploads/ai_generated/{stamp}/{unique_name}"
+    saved_path = default_storage.save(storage_path, ContentFile(image_bytes))
+    relative_url = default_storage.url(saved_path)
+    return _build_public_media_url(request, relative_url), storage_path
 
 
 def _resolve_dual_accounts(base_account: ConnectedAccount):
@@ -387,3 +404,86 @@ def retry_failed_post(request: HttpRequest, post_id: int) -> JsonResponse:
 
     logger.info("failed post retried id=%s by_user=%s scheduled_for=%s", post.id, request.user.id, post.scheduled_for)
     return JsonResponse({"id": post.id, "status": post.status, "scheduled_for": post.scheduled_for.isoformat()})
+
+
+@require_POST
+@login_required
+def generate_ai_image(request: HttpRequest) -> JsonResponse:
+    if not settings.OPENAI_API_KEY:
+        return JsonResponse(
+            {"error": "AI image generation is not configured", "details": "Set OPENAI_API_KEY in .env and restart server."},
+            status=400,
+        )
+
+    try:
+        payload = json.loads(request.body.decode() or "{}")
+    except json.JSONDecodeError:
+        return _bad_request("Invalid JSON body")
+
+    prompt = str(payload.get("prompt") or "").strip()
+    if len(prompt) < 8:
+        return _bad_request("Prompt is too short. Please enter at least 8 characters.")
+
+    size = str(payload.get("size") or "1024x1024").strip()
+    allowed_sizes = {"1024x1024", "1024x1536", "1536x1024"}
+    if size not in allowed_sizes:
+        size = "1024x1024"
+
+    request_body = {
+        "model": _openai_image_model(),
+        "prompt": prompt,
+        "size": size,
+        "response_format": "b64_json",
+    }
+
+    try:
+        response = requests.post(
+            "https://api.openai.com/v1/images/generations",
+            headers={
+                "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json=request_body,
+            timeout=max(20, int(getattr(settings, "OPENAI_IMAGE_TIMEOUT_SECONDS", 90))),
+        )
+    except requests.RequestException as exc:
+        return JsonResponse({"error": "AI image request failed", "details": str(exc)}, status=502)
+
+    try:
+        response_payload = response.json()
+    except ValueError:
+        response_payload = {"raw": response.text}
+
+    if response.status_code >= 400:
+        message = "OpenAI image generation failed."
+        details = (
+            (response_payload.get("error") or {}).get("message")
+            if isinstance(response_payload, dict)
+            else None
+        )
+        return JsonResponse({"error": message, "details": details or "Unknown upstream error"}, status=502)
+
+    data_rows = response_payload.get("data") if isinstance(response_payload, dict) else None
+    if not isinstance(data_rows, list) or not data_rows:
+        return JsonResponse({"error": "OpenAI returned no image data"}, status=502)
+
+    b64_value = str((data_rows[0] or {}).get("b64_json") or "").strip()
+    if not b64_value:
+        return JsonResponse({"error": "OpenAI returned empty image payload"}, status=502)
+
+    try:
+        image_bytes = base64.b64decode(b64_value, validate=True)
+    except (binascii.Error, ValueError):
+        return JsonResponse({"error": "Failed to decode generated image bytes"}, status=502)
+
+    media_url, storage_path = _save_generated_image(request, image_bytes)
+    return JsonResponse(
+        {
+            "media_url": media_url,
+            "storage_path": storage_path,
+            "size": size,
+            "model": request_body["model"],
+            "message": "AI image generated and saved successfully.",
+        },
+        status=201,
+    )
