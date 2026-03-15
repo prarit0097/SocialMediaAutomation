@@ -1,4 +1,5 @@
 import json
+from datetime import timedelta
 from unittest.mock import patch
 import requests
 
@@ -8,7 +9,7 @@ from django.http import JsonResponse
 from django.test import Client, TestCase, override_settings
 from django.utils import timezone
 
-from analytics.models import InsightSnapshot
+from analytics.models import BulkInsightRefreshRun, InsightSnapshot
 from analytics.ai_service import AIInsightsError
 from analytics.services import _aggregate_recent_post_metric, build_comparison_rows, build_insight_response, build_post_stats_summary
 from analytics.tasks import DAILY_HEAVY_COLLECTION_MODE, queue_daily_heavy_insight_refresh, refresh_account_insights_snapshot
@@ -127,6 +128,35 @@ class AnalyticsApiTests(TestCase):
         body = response.json()
         self.assertTrue(body["has_active_run"])
         self.assertEqual(body["status"], "running")
+
+    @override_settings(BULK_REFRESH_STALE_MINUTES=10)
+    def test_force_refresh_status_reconciles_stuck_run_from_snapshots(self):
+        run = BulkInsightRefreshRun.objects.create(
+            user=self.user,
+            status=BulkInsightRefreshRun.STATUS_RUNNING,
+            total_accounts=1,
+            queued_count=1,
+            completed_count=0,
+            failed_count=0,
+            skipped_no_token=0,
+            enqueue_failed=0,
+        )
+        stale_started = timezone.now() - timedelta(minutes=20)
+        BulkInsightRefreshRun.objects.filter(id=run.id).update(started_at=stale_started, updated_at=stale_started)
+
+        snapshot = InsightSnapshot.objects.create(
+            account=self.account,
+            platform=FACEBOOK,
+            payload={"insights": [], "metadata": {}},
+        )
+        InsightSnapshot.objects.filter(id=snapshot.id).update(fetched_at=timezone.now() - timedelta(minutes=5))
+
+        response = self.client.get("/api/insights/force-refresh-all/status/")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["status"], "completed")
+        self.assertFalse(body["has_active_run"])
+        self.assertEqual(body["completed_count"], 1)
 
     @patch("analytics.views.fetch_and_store_insights")
     def test_force_refresh_fetches_stats_for_visible_posts(self, mock_fetch_and_store):

@@ -7,6 +7,7 @@ from numbers import Number
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
+from django.db import transaction
 from django.http import HttpRequest, JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
@@ -63,6 +64,79 @@ def _serialize_bulk_run(run: BulkInsightRefreshRun | None) -> dict:
         "started_at": run.started_at.isoformat() if run.started_at else None,
         "finished_at": run.finished_at.isoformat() if run.finished_at else None,
     }
+
+
+def _bulk_refresh_stale_minutes() -> int:
+    try:
+        return max(10, int(getattr(settings, "BULK_REFRESH_STALE_MINUTES", 45)))
+    except (TypeError, ValueError):
+        return 45
+
+
+def _reconcile_bulk_run_progress(run: BulkInsightRefreshRun | None) -> BulkInsightRefreshRun | None:
+    if not run or run.status != BulkInsightRefreshRun.STATUS_RUNNING:
+        return run
+
+    with transaction.atomic():
+        locked = BulkInsightRefreshRun.objects.select_for_update().filter(id=run.id).first()
+        if not locked or locked.status != BulkInsightRefreshRun.STATUS_RUNNING:
+            return locked
+
+        processed = int(locked.completed_count or 0) + int(locked.failed_count or 0) + int(locked.skipped_no_token or 0) + int(
+            locked.enqueue_failed or 0
+        )
+        queued = int(locked.queued_count or 0)
+        total = int(locked.total_accounts or 0)
+        now = timezone.now()
+        stale_cutoff = timedelta(minutes=_bulk_refresh_stale_minutes())
+
+        # Fast-path finalize when counters already indicate completion.
+        if queued > 0 and processed >= queued:
+            locked.status = (
+                BulkInsightRefreshRun.STATUS_COMPLETED_WITH_ERRORS
+                if locked.failed_count > 0 or locked.enqueue_failed > 0
+                else BulkInsightRefreshRun.STATUS_COMPLETED
+            )
+            locked.finished_at = now
+            locked.save(update_fields=["status", "finished_at", "updated_at"])
+            return locked
+
+        # Reconcile from persisted snapshots if a task result callback was lost.
+        if locked.started_at:
+            refreshed_accounts = (
+                InsightSnapshot.objects.filter(fetched_at__gte=locked.started_at, account__is_active=True)
+                .values("account_id")
+                .distinct()
+                .count()
+            )
+            inferred_completed = min(max(queued, 0), refreshed_accounts)
+            minimum_processed = min(max(total, 0), inferred_completed + int(locked.skipped_no_token or 0) + int(locked.enqueue_failed or 0))
+            if minimum_processed > processed:
+                delta = minimum_processed - processed
+                locked.completed_count = int(locked.completed_count or 0) + delta
+                processed = minimum_processed
+                locked.save(update_fields=["completed_count", "updated_at"])
+
+        # Finalize long-stale runs to avoid indefinite "running" UI state.
+        age = (now - locked.started_at) if locked.started_at else timedelta(0)
+        since_update = (now - locked.updated_at) if locked.updated_at else timedelta(0)
+        if queued > 0 and processed >= queued:
+            locked.status = (
+                BulkInsightRefreshRun.STATUS_COMPLETED_WITH_ERRORS
+                if locked.failed_count > 0 or locked.enqueue_failed > 0
+                else BulkInsightRefreshRun.STATUS_COMPLETED
+            )
+            locked.finished_at = now
+            locked.save(update_fields=["status", "finished_at", "updated_at"])
+        elif queued > 0 and age >= stale_cutoff and since_update >= stale_cutoff:
+            remaining = max(0, queued - processed)
+            if remaining:
+                locked.failed_count = int(locked.failed_count or 0) + remaining
+            locked.status = BulkInsightRefreshRun.STATUS_COMPLETED_WITH_ERRORS
+            locked.finished_at = now
+            locked.save(update_fields=["failed_count", "status", "finished_at", "updated_at"])
+
+        return locked
 
 
 def _single_insight_cache_key(account_id: int, snapshot_id: int, fetched_at_iso: str | None) -> str:
@@ -559,6 +633,7 @@ def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
         user=request.user,
         status=BulkInsightRefreshRun.STATUS_RUNNING,
     ).order_by("-started_at").first()
+    active_run = _reconcile_bulk_run_progress(active_run)
     if active_run:
         payload = _serialize_bulk_run(active_run)
         payload.update(
@@ -649,4 +724,5 @@ def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
 @login_required
 def force_refresh_all_accounts_status(request: HttpRequest) -> JsonResponse:
     run = BulkInsightRefreshRun.objects.filter(user=request.user).order_by("-started_at").first()
+    run = _reconcile_bulk_run_progress(run)
     return JsonResponse(_serialize_bulk_run(run))

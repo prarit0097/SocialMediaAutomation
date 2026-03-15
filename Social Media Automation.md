@@ -77,6 +77,7 @@ What it does:
 - can queue force-refresh jobs for all active connected profiles to pull latest Meta insights into snapshots
 - force-refresh-all now uses persistent per-user run tracking with live progress (%) and completion state, so the button stays disabled until that user's run finishes (even after page reload or re-login)
 - force-refresh-all now asks for operator confirmation before starting, because full refresh can take significant time based on connected FB/IG profile count
+- force-refresh run status is now auto-reconciled: if snapshot storage succeeds but callback bookkeeping misses, counters self-heal and stale `running` states are auto-finalized
 - uses user-token fallback for catalog detail checks (session token first, then current user cache, then latest global reconnect token)
 - keeps only latest reconnect profiles active in scheduling/health
 - blocks scheduling from stale or inactive account rows until the profile is refreshed in a new reconnect
@@ -279,6 +280,7 @@ Stores:
   - `CELERY_PUBLISH_RATE_LIMIT`, `CELERY_INSIGHTS_REFRESH_RATE_LIMIT`
   - `CELERY_WORKER_MAX_TASKS_PER_CHILD`
   - `CELERY_TASK_SOFT_TIME_LIMIT`, `CELERY_TASK_TIME_LIMIT`
+  - `BULK_REFRESH_STALE_MINUTES`
 - Restart web + worker processes after config changes so new concurrency controls apply.
 
 ### One-command Celery Startup (Windows)
