@@ -2,22 +2,28 @@ from datetime import timedelta
 
 from django.test import TestCase
 from django.utils import timezone
+from unittest import skipUnless
 
 from analytics.models import InsightSnapshot
 from analytics.tasks import DAILY_HEAVY_COLLECTION_MODE
 from core.constants import POST_STATUS_FAILED, POST_STATUS_PENDING, POST_STATUS_PROCESSING, POST_STATUS_PUBLISHED
 from integrations.models import ConnectedAccount
 from mcp_servers.common import today_daily_heavy_status
-from mcp_servers.meta_insights_server import (
-    build_fb_ig_comparison,
-    build_latest_snapshot_rows,
-    build_posting_gap_rows,
-    find_stale_profile_rows,
-)
-from mcp_servers.redis_celery_server import build_publishing_pipeline_status
+try:
+    from mcp_servers.meta_insights_server import (
+        build_fb_ig_comparison,
+        build_latest_snapshot_rows,
+        build_posting_gap_rows,
+        find_stale_profile_rows,
+    )
+    from mcp_servers.redis_celery_server import build_publishing_pipeline_status
+    MCP_IMPORT_OK = True
+except ModuleNotFoundError:
+    MCP_IMPORT_OK = False
 from publishing.models import ScheduledPost
 
 
+@skipUnless(MCP_IMPORT_OK, "Optional MCP dependencies are not installed in this environment.")
 class MCPServerHelpersTests(TestCase):
     def setUp(self):
         self.fb_account = ConnectedAccount.objects.create(

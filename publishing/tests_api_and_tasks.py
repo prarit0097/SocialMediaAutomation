@@ -1,6 +1,8 @@
 import json
+import base64
 from datetime import timedelta
 from unittest.mock import Mock, patch
+from unittest import skipUnless
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -17,6 +19,7 @@ from core.exceptions import MetaPermanentError, MetaTransientError
 from core.services.meta_client import MetaClient
 from integrations.models import ConnectedAccount
 from publishing.models import ScheduledPost
+from publishing.media_utils import Image as PIL_IMAGE
 from publishing.services import publish_scheduled_post
 from publishing.tasks import publish_post_task
 
@@ -212,13 +215,15 @@ class PublishingApiTests(TestCase):
 
     @override_settings(PUBLIC_BASE_URL="https://public.example.com")
     @patch("publishing.views.MetaClient.debug_token", return_value={"data": {"is_valid": True}})
+    @skipUnless(PIL_IMAGE is not None, "Pillow is required for Instagram local image optimization tests.")
     def test_schedule_instagram_optimizes_local_png_url(self, _mock_debug_token):
-        from PIL import Image
-
-        image = Image.new("RGB", (1200, 1600), color=(230, 230, 230))
+        image = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z1ioAAAAASUVORK5CYII="
+        )
         temp = default_storage.save("scheduled_uploads/test_schedule_instagram.png", ContentFile(b"placeholder"))
         temp_path = default_storage.path(temp)
-        image.save(temp_path, format="PNG")
+        with open(temp_path, "wb") as image_file:
+            image_file.write(image)
         media_url = "https://public.example.com/media/scheduled_uploads/test_schedule_instagram.png"
 
         try:
@@ -245,13 +250,15 @@ class PublishingApiTests(TestCase):
 
     @override_settings(PUBLIC_BASE_URL="https://public.example.com")
     @patch("publishing.views.MetaClient.debug_token", return_value={"data": {"is_valid": True}})
+    @skipUnless(PIL_IMAGE is not None, "Pillow is required for Instagram local image optimization tests.")
     def test_retry_failed_instagram_optimizes_local_png_url(self, _mock_debug_token):
-        from PIL import Image
-
-        image = Image.new("RGB", (1200, 1600), color=(220, 220, 220))
+        image = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z1ioAAAAASUVORK5CYII="
+        )
         temp = default_storage.save("scheduled_uploads/test_retry_instagram.png", ContentFile(b"placeholder"))
         temp_path = default_storage.path(temp)
-        image.save(temp_path, format="PNG")
+        with open(temp_path, "wb") as image_file:
+            image_file.write(image)
         media_url = "https://public.example.com/media/scheduled_uploads/test_retry_instagram.png"
         post = ScheduledPost.objects.create(
             account=self.ig_account,
@@ -283,6 +290,7 @@ class PublishingApiTests(TestCase):
 
 class PublishingTaskTests(TestCase):
     def setUp(self):
+        cache.clear()
         self.account = ConnectedAccount.objects.create(
             platform=FACEBOOK,
             page_id="123",
@@ -422,6 +430,7 @@ class PublishingServiceTests(TestCase):
     @patch("publishing.services.MetaClient.create_instagram_media", return_value={"id": "ig-creation-id"})
     @patch("publishing.services.MetaClient.wait_for_instagram_media_ready", return_value={"status_code": "FINISHED"})
     @patch("publishing.services.ensure_public_media_fetchable")
+    @skipUnless(PIL_IMAGE is not None, "Pillow is required for Instagram local image optimization tests.")
     def test_instagram_local_png_is_optimized_before_publish(
         self,
         _mock_probe,
@@ -429,12 +438,13 @@ class PublishingServiceTests(TestCase):
         mock_create_media,
         _mock_publish_media,
     ):
-        from PIL import Image
-
-        image = Image.new("RGB", (1200, 1600), color=(250, 250, 250))
+        image = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z1ioAAAAASUVORK5CYII="
+        )
         temp = default_storage.save("scheduled_uploads/test_local_instagram.png", ContentFile(b"placeholder"))
         temp_path = default_storage.path(temp)
-        image.save(temp_path, format="PNG")
+        with open(temp_path, "wb") as image_file:
+            image_file.write(image)
         media_url = "https://public.example.com/media/scheduled_uploads/test_local_instagram.png"
         post = ScheduledPost.objects.create(
             account=self.ig_account,
