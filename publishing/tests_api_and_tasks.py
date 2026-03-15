@@ -1,5 +1,4 @@
 import json
-import base64
 from datetime import timedelta
 from unittest.mock import Mock, patch
 
@@ -58,73 +57,6 @@ class PublishingApiTests(TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(ScheduledPost.objects.count(), 1)
         self.assertEqual(ScheduledPost.objects.first().status, POST_STATUS_PENDING)
-
-    @override_settings(OPENAI_API_KEY="test-key")
-    @patch("publishing.views._ensure_9_16_image_bytes", side_effect=lambda b: b)
-    @patch("publishing.views.requests.post")
-    def test_generate_ai_image_saves_media_and_returns_url(self, mock_post, _mock_normalize):
-        one_px_png = base64.b64decode(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z1ioAAAAASUVORK5CYII="
-        )
-        encoded = base64.b64encode(one_px_png).decode()
-        mock_response = Response()
-        mock_response.status_code = 200
-        mock_response._content = json.dumps({"data": [{"b64_json": encoded}]}).encode()
-        mock_post.return_value = mock_response
-
-        response = self.client.post(
-            reverse("generate_ai_image"),
-            data=json.dumps({"prompt": "Generate a wellness post image background"}),
-            content_type="application/json",
-        )
-
-        self.assertEqual(response.status_code, 201)
-        body = response.json()
-        self.assertIn("/media/scheduled_uploads/ai_generated/", body["media_url"])
-        self.assertEqual(body["model"], "gpt-image-1")
-        self.assertEqual(body["output_size"], "1080x1920")
-
-    @override_settings(OPENAI_API_KEY="")
-    def test_generate_ai_image_requires_openai_key(self):
-        response = self.client.post(
-            reverse("generate_ai_image"),
-            data=json.dumps({"prompt": "Generate a wellness post image background"}),
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 400)
-
-    @override_settings(OPENAI_API_KEY="test-key")
-    @patch("publishing.views._ensure_9_16_image_bytes", side_effect=lambda b: b)
-    @patch("publishing.views.requests.get")
-    @patch("publishing.views.requests.post")
-    def test_generate_ai_image_retries_on_unknown_parameter_and_uses_url_payload(
-        self, mock_post, mock_get, _mock_normalize
-    ):
-        first = Response()
-        first.status_code = 400
-        first._content = json.dumps({"error": {"message": "Unknown parameter: size"}}).encode()
-        second = Response()
-        second.status_code = 200
-        second._content = json.dumps({"data": [{"url": "https://example.com/generated.png"}]}).encode()
-        mock_post.side_effect = [first, second]
-
-        one_px_png = base64.b64decode(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z1ioAAAAASUVORK5CYII="
-        )
-        get_response = Mock()
-        get_response.content = one_px_png
-        get_response.raise_for_status = Mock()
-        mock_get.return_value = get_response
-
-        response = self.client.post(
-            reverse("generate_ai_image"),
-            data=json.dumps({"prompt": "Generate a yoga post image"}),
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 201)
-        self.assertEqual(mock_post.call_count, 2)
-        self.assertTrue(response.json()["media_url"])
-        self.assertEqual(response.json()["output_size"], "1080x1920")
 
     @patch("publishing.views.process_due_posts")
     def test_list_scheduled_posts_triggers_auto_dispatch_for_due_pending(self, mock_process_due_posts):

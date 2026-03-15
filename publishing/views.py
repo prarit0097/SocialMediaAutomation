@@ -2,8 +2,6 @@ import json
 import logging
 import os
 import uuid
-import base64
-import binascii
 from datetime import datetime, timedelta, timezone as dt_timezone
 from urllib.parse import urljoin
 
@@ -11,14 +9,12 @@ import requests
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
-from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.db import transaction
 from django.http import HttpRequest, JsonResponse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.http import require_GET, require_POST
-from io import BytesIO
 
 from core.constants import FACEBOOK, INSTAGRAM, PLATFORM_CHOICES, POST_STATUS_FAILED, POST_STATUS_PENDING, POST_STATUS_PROCESSING
 from core.exceptions import MetaAPIError
@@ -63,45 +59,6 @@ def _upload_file_to_media(request: HttpRequest):
     saved_path = default_storage.save(storage_path, uploaded)
     relative_url = default_storage.url(saved_path)
     return _build_public_media_url(request, relative_url), None
-
-
-def _openai_image_model() -> str:
-    return str(getattr(settings, "OPENAI_IMAGE_MODEL", "gpt-image-1") or "gpt-image-1").strip()
-
-
-def _ensure_9_16_image_bytes(image_bytes: bytes, width: int = 1080, height: int = 1920) -> bytes:
-    try:
-        from PIL import Image, ImageOps  # type: ignore
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError("Pillow is required for 9:16 image normalization.") from exc
-
-    try:
-        with Image.open(BytesIO(image_bytes)) as source:
-            rgb = source.convert("RGB")
-            fitted = ImageOps.fit(rgb, (width, height), method=Image.Resampling.LANCZOS, centering=(0.5, 0.5))
-            output = BytesIO()
-            fitted.save(output, format="PNG", optimize=True)
-            return output.getvalue()
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(f"Failed to normalize generated image to 9:16: {exc}") from exc
-
-
-def _save_generated_image(request: HttpRequest, image_bytes: bytes) -> tuple[str, str]:
-    stamp = timezone.now().strftime("%Y/%m/%d")
-    unique_name = f"{uuid.uuid4().hex}.png"
-    storage_path = f"scheduled_uploads/ai_generated/{stamp}/{unique_name}"
-    saved_path = default_storage.save(storage_path, ContentFile(image_bytes))
-    relative_url = default_storage.url(saved_path)
-    return _build_public_media_url(request, relative_url), storage_path
-
-
-def _extract_openai_error_message(payload: dict | None) -> str:
-    if not isinstance(payload, dict):
-        return "Unknown upstream error"
-    error = payload.get("error")
-    if isinstance(error, dict):
-        return str(error.get("message") or "Unknown upstream error")
-    return str(error or "Unknown upstream error")
 
 
 def _resolve_dual_accounts(base_account: ConnectedAccount):
@@ -432,119 +389,3 @@ def retry_failed_post(request: HttpRequest, post_id: int) -> JsonResponse:
     logger.info("failed post retried id=%s by_user=%s scheduled_for=%s", post.id, request.user.id, post.scheduled_for)
     return JsonResponse({"id": post.id, "status": post.status, "scheduled_for": post.scheduled_for.isoformat()})
 
-
-@require_POST
-@login_required
-def generate_ai_image(request: HttpRequest) -> JsonResponse:
-    if not settings.OPENAI_API_KEY:
-        return JsonResponse(
-            {"error": "AI image generation is not configured", "details": "Set OPENAI_API_KEY in .env and restart server."},
-            status=400,
-        )
-
-    try:
-        payload = json.loads(request.body.decode() or "{}")
-    except json.JSONDecodeError:
-        return _bad_request("Invalid JSON body")
-
-    prompt = str(payload.get("prompt") or "").strip()
-    if len(prompt) < 8:
-        return _bad_request("Prompt is too short. Please enter at least 8 characters.")
-
-    size = "1024x1536"
-
-    request_body = {
-        "model": _openai_image_model(),
-        "prompt": prompt,
-        "size": size,
-    }
-
-    def _request_image(body: dict) -> requests.Response:
-        return requests.post(
-            "https://api.openai.com/v1/images/generations",
-            headers={
-                "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json=body,
-            timeout=max(20, int(getattr(settings, "OPENAI_IMAGE_TIMEOUT_SECONDS", 90))),
-        )
-
-    try:
-        response = _request_image(request_body)
-    except requests.RequestException as exc:
-        return JsonResponse({"error": "AI image request failed", "details": str(exc)}, status=502)
-
-    try:
-        response_payload = response.json()
-    except ValueError:
-        response_payload = {"raw": response.text}
-
-    if response.status_code >= 400:
-        details = _extract_openai_error_message(response_payload)
-        # Compatibility fallback for model/endpoint parameter drift.
-        # Retry once with minimal payload if upstream rejects optional params.
-        if "unknown parameter" in details.lower() and "size" in request_body:
-            fallback_body = {
-                "model": request_body["model"],
-                "prompt": request_body["prompt"],
-            }
-            try:
-                fallback_response = _request_image(fallback_body)
-                response_payload = fallback_response.json()
-                response = fallback_response
-            except requests.RequestException as exc:
-                return JsonResponse({"error": "AI image request failed", "details": str(exc)}, status=502)
-            except ValueError:
-                response_payload = {"raw": getattr(fallback_response, "text", "")}
-
-        if response.status_code >= 400:
-            message = "OpenAI image generation failed."
-            details = _extract_openai_error_message(response_payload)
-            return JsonResponse({"error": message, "details": details or "Unknown upstream error"}, status=502)
-
-    data_rows = response_payload.get("data") if isinstance(response_payload, dict) else None
-    if not isinstance(data_rows, list) or not data_rows:
-        return JsonResponse({"error": "OpenAI returned no image data"}, status=502)
-
-    first_row = data_rows[0] or {}
-    b64_value = str(first_row.get("b64_json") or "").strip()
-    if b64_value:
-        try:
-            image_bytes = base64.b64decode(b64_value, validate=True)
-        except (binascii.Error, ValueError):
-            return JsonResponse({"error": "Failed to decode generated image bytes"}, status=502)
-    else:
-        image_url = str(first_row.get("url") or "").strip()
-        if not image_url:
-            return JsonResponse({"error": "OpenAI returned empty image payload"}, status=502)
-        try:
-            image_response = requests.get(
-                image_url,
-                timeout=max(20, int(getattr(settings, "OPENAI_IMAGE_TIMEOUT_SECONDS", 90))),
-            )
-            image_response.raise_for_status()
-            image_bytes = image_response.content
-        except requests.RequestException as exc:
-            return JsonResponse({"error": "Failed to download generated image", "details": str(exc)}, status=502)
-
-    if not image_bytes:
-        return JsonResponse({"error": "OpenAI returned empty image bytes"}, status=502)
-
-    try:
-        image_bytes = _ensure_9_16_image_bytes(image_bytes)
-    except Exception as exc:  # noqa: BLE001
-        return JsonResponse({"error": "Generated image post-processing failed", "details": str(exc)}, status=502)
-
-    media_url, storage_path = _save_generated_image(request, image_bytes)
-    return JsonResponse(
-        {
-            "media_url": media_url,
-            "storage_path": storage_path,
-            "requested_size": size,
-            "output_size": "1080x1920",
-            "model": request_body["model"],
-            "message": "AI image generated and saved successfully.",
-        },
-        status=201,
-    )
