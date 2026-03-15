@@ -1003,11 +1003,9 @@
     if (generateAiImageBtn) {
       generateAiImageBtn.addEventListener("click", async () => {
         const promptInput = scheduleForm.querySelector("[name='ai_image_prompt']");
-        const sizeInput = scheduleForm.querySelector("[name='ai_image_size']");
         const mediaUrlInput = scheduleForm.querySelector("[name='media_url']");
         const resultEl = document.getElementById("scheduleResult");
         const prompt = String(promptInput?.value || "").trim();
-        const size = String(sizeInput?.value || "1024x1024").trim();
 
         if (prompt.length < 8) {
           showAppToast("Please enter a detailed AI image prompt (minimum 8 characters).", "error");
@@ -1022,7 +1020,7 @@
                 "Content-Type": "application/json",
                 "X-CSRFToken": csrfToken,
               },
-              body: JSON.stringify({ prompt, size }),
+              body: JSON.stringify({ prompt }),
             })
           );
           if (mediaUrlInput) mediaUrlInput.value = String(data.media_url || "");
@@ -1031,7 +1029,7 @@
             aiImagePreview.src = mediaUrl;
             aiImagePreviewWrap.hidden = false;
           }
-          if (resultEl) resultEl.textContent = "AI image generated and media URL auto-filled.";
+          if (resultEl) resultEl.textContent = "AI image generated in 9:16 and media URL auto-filled.";
           showAppToast("AI image generated successfully.", "success");
         } catch (err) {
           const message = sanitizeUiError(err && err.message ? err.message : "AI image generation failed.");

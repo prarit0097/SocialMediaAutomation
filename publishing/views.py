@@ -18,6 +18,7 @@ from django.http import HttpRequest, JsonResponse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.http import require_GET, require_POST
+from io import BytesIO
 
 from core.constants import FACEBOOK, INSTAGRAM, PLATFORM_CHOICES, POST_STATUS_FAILED, POST_STATUS_PENDING, POST_STATUS_PROCESSING
 from core.exceptions import MetaAPIError
@@ -66,6 +67,23 @@ def _upload_file_to_media(request: HttpRequest):
 
 def _openai_image_model() -> str:
     return str(getattr(settings, "OPENAI_IMAGE_MODEL", "gpt-image-1") or "gpt-image-1").strip()
+
+
+def _ensure_9_16_image_bytes(image_bytes: bytes, width: int = 1080, height: int = 1920) -> bytes:
+    try:
+        from PIL import Image, ImageOps  # type: ignore
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError("Pillow is required for 9:16 image normalization.") from exc
+
+    try:
+        with Image.open(BytesIO(image_bytes)) as source:
+            rgb = source.convert("RGB")
+            fitted = ImageOps.fit(rgb, (width, height), method=Image.Resampling.LANCZOS, centering=(0.5, 0.5))
+            output = BytesIO()
+            fitted.save(output, format="PNG", optimize=True)
+            return output.getvalue()
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(f"Failed to normalize generated image to 9:16: {exc}") from exc
 
 
 def _save_generated_image(request: HttpRequest, image_bytes: bytes) -> tuple[str, str]:
@@ -433,10 +451,7 @@ def generate_ai_image(request: HttpRequest) -> JsonResponse:
     if len(prompt) < 8:
         return _bad_request("Prompt is too short. Please enter at least 8 characters.")
 
-    size = str(payload.get("size") or "1024x1024").strip()
-    allowed_sizes = {"1024x1024", "1024x1536", "1536x1024"}
-    if size not in allowed_sizes:
-        size = "1024x1024"
+    size = "1024x1536"
 
     request_body = {
         "model": _openai_image_model(),
@@ -516,12 +531,18 @@ def generate_ai_image(request: HttpRequest) -> JsonResponse:
     if not image_bytes:
         return JsonResponse({"error": "OpenAI returned empty image bytes"}, status=502)
 
+    try:
+        image_bytes = _ensure_9_16_image_bytes(image_bytes)
+    except Exception as exc:  # noqa: BLE001
+        return JsonResponse({"error": "Generated image post-processing failed", "details": str(exc)}, status=502)
+
     media_url, storage_path = _save_generated_image(request, image_bytes)
     return JsonResponse(
         {
             "media_url": media_url,
             "storage_path": storage_path,
-            "size": size,
+            "requested_size": size,
+            "output_size": "1080x1920",
             "model": request_body["model"],
             "message": "AI image generated and saved successfully.",
         },

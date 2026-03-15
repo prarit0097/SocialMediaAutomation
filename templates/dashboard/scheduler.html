@@ -46,16 +46,9 @@
           <textarea name="ai_image_prompt" rows="3" placeholder="Example: Create a clean Ayurveda health tips post background with modern professional style"></textarea>
         </label>
         <div class="ai-image-actions">
-          <label>Image Size
-            <select name="ai_image_size">
-              <option value="1024x1024">Square (1024x1024)</option>
-              <option value="1024x1536">Portrait (1024x1536)</option>
-              <option value="1536x1024">Landscape (1536x1024)</option>
-            </select>
-          </label>
           <button type="button" id="generateAiImageBtn" class="btn muted">Generate Image with AI</button>
         </div>
-        <p class="form-note">Generated image will be saved in media storage and Media URL field will auto-fill.</p>
+        <p class="form-note">Generated image will always be exported in 9:16 (1080x1920), saved in media storage, and Media URL will auto-fill.</p>
         <div id="aiImagePreviewWrap" class="ai-image-preview-wrap" hidden>
           <img id="aiImagePreview" class="ai-image-preview" alt="AI generated preview">
         </div>
