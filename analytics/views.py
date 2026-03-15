@@ -63,6 +63,8 @@ def _serialize_bulk_run(run: BulkInsightRefreshRun | None) -> dict:
         "progress_percent": progress_percent,
         "started_at": run.started_at.isoformat() if run.started_at else None,
         "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "auto_reconciled": bool(getattr(run, "_auto_reconciled", False)),
+        "auto_reconcile_reason": getattr(run, "_auto_reconcile_reason", None),
     }
 
 
@@ -99,6 +101,8 @@ def _reconcile_bulk_run_progress(run: BulkInsightRefreshRun | None) -> BulkInsig
             )
             locked.finished_at = now
             locked.save(update_fields=["status", "finished_at", "updated_at"])
+            locked._auto_reconciled = True
+            locked._auto_reconcile_reason = "counter_completion"
             return locked
 
         # Reconcile from persisted snapshots if a task result callback was lost.
@@ -116,6 +120,8 @@ def _reconcile_bulk_run_progress(run: BulkInsightRefreshRun | None) -> BulkInsig
                 locked.completed_count = int(locked.completed_count or 0) + delta
                 processed = minimum_processed
                 locked.save(update_fields=["completed_count", "updated_at"])
+                locked._auto_reconciled = True
+                locked._auto_reconcile_reason = "snapshot_counter_repair"
 
         # Finalize long-stale runs to avoid indefinite "running" UI state.
         age = (now - locked.started_at) if locked.started_at else timedelta(0)
@@ -128,6 +134,8 @@ def _reconcile_bulk_run_progress(run: BulkInsightRefreshRun | None) -> BulkInsig
             )
             locked.finished_at = now
             locked.save(update_fields=["status", "finished_at", "updated_at"])
+            locked._auto_reconciled = True
+            locked._auto_reconcile_reason = "counter_completion"
         elif queued > 0 and age >= stale_cutoff and since_update >= stale_cutoff:
             remaining = max(0, queued - processed)
             if remaining:
@@ -135,6 +143,8 @@ def _reconcile_bulk_run_progress(run: BulkInsightRefreshRun | None) -> BulkInsig
             locked.status = BulkInsightRefreshRun.STATUS_COMPLETED_WITH_ERRORS
             locked.finished_at = now
             locked.save(update_fields=["failed_count", "status", "finished_at", "updated_at"])
+            locked._auto_reconciled = True
+            locked._auto_reconcile_reason = "stale_timeout_finalize"
 
         return locked
 

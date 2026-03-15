@@ -157,6 +157,7 @@ class AnalyticsApiTests(TestCase):
         self.assertEqual(body["status"], "completed")
         self.assertFalse(body["has_active_run"])
         self.assertEqual(body["completed_count"], 1)
+        self.assertTrue(body["auto_reconciled"])
 
     @patch("analytics.views.fetch_and_store_insights")
     def test_force_refresh_fetches_stats_for_visible_posts(self, mock_fetch_and_store):

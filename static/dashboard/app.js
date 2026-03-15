@@ -823,6 +823,7 @@
   const forceRefreshProgressFill = document.getElementById("forceRefreshProgressFill");
   const forceRefreshProgressText = document.getElementById("forceRefreshProgressText");
   let forceRefreshPollTimer = null;
+  let lastAutoReconciledRunId = null;
   const forceRefreshLabel = "Force Refresh All Profiles";
   if (refreshAccountsBtn) {
     const runWithRefreshAccountsLoading = withButtonLoading(refreshAccountsBtn, "Refresh List", "Refreshing...");
@@ -871,6 +872,10 @@
         }
         if (!running) {
           clearForceRefreshPolling();
+          if (status && status.auto_reconciled && status.run_id !== lastAutoReconciledRunId) {
+            lastAutoReconciledRunId = status.run_id;
+            showAppToast("Previous stuck force refresh was auto-recovered and finalized.", "success");
+          }
           if (status && status.status && status.status !== "idle" && accountsBulkRefreshStatus) {
             const finalPct = Number(status.progress_percent || 0);
             if (status.status === "completed_with_errors") {
