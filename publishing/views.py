@@ -77,6 +77,15 @@ def _save_generated_image(request: HttpRequest, image_bytes: bytes) -> tuple[str
     return _build_public_media_url(request, relative_url), storage_path
 
 
+def _extract_openai_error_message(payload: dict | None) -> str:
+    if not isinstance(payload, dict):
+        return "Unknown upstream error"
+    error = payload.get("error")
+    if isinstance(error, dict):
+        return str(error.get("message") or "Unknown upstream error")
+    return str(error or "Unknown upstream error")
+
+
 def _resolve_dual_accounts(base_account: ConnectedAccount):
     """
     Resolve paired Facebook + Instagram connected accounts for one business entity.
@@ -433,19 +442,21 @@ def generate_ai_image(request: HttpRequest) -> JsonResponse:
         "model": _openai_image_model(),
         "prompt": prompt,
         "size": size,
-        "response_format": "b64_json",
     }
 
-    try:
-        response = requests.post(
+    def _request_image(body: dict) -> requests.Response:
+        return requests.post(
             "https://api.openai.com/v1/images/generations",
             headers={
                 "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
                 "Content-Type": "application/json",
             },
-            json=request_body,
+            json=body,
             timeout=max(20, int(getattr(settings, "OPENAI_IMAGE_TIMEOUT_SECONDS", 90))),
         )
+
+    try:
+        response = _request_image(request_body)
     except requests.RequestException as exc:
         return JsonResponse({"error": "AI image request failed", "details": str(exc)}, status=502)
 
@@ -455,26 +466,55 @@ def generate_ai_image(request: HttpRequest) -> JsonResponse:
         response_payload = {"raw": response.text}
 
     if response.status_code >= 400:
-        message = "OpenAI image generation failed."
-        details = (
-            (response_payload.get("error") or {}).get("message")
-            if isinstance(response_payload, dict)
-            else None
-        )
-        return JsonResponse({"error": message, "details": details or "Unknown upstream error"}, status=502)
+        details = _extract_openai_error_message(response_payload)
+        # Compatibility fallback for model/endpoint parameter drift.
+        # Retry once with minimal payload if upstream rejects optional params.
+        if "unknown parameter" in details.lower() and "size" in request_body:
+            fallback_body = {
+                "model": request_body["model"],
+                "prompt": request_body["prompt"],
+            }
+            try:
+                fallback_response = _request_image(fallback_body)
+                response_payload = fallback_response.json()
+                response = fallback_response
+            except requests.RequestException as exc:
+                return JsonResponse({"error": "AI image request failed", "details": str(exc)}, status=502)
+            except ValueError:
+                response_payload = {"raw": getattr(fallback_response, "text", "")}
+
+        if response.status_code >= 400:
+            message = "OpenAI image generation failed."
+            details = _extract_openai_error_message(response_payload)
+            return JsonResponse({"error": message, "details": details or "Unknown upstream error"}, status=502)
 
     data_rows = response_payload.get("data") if isinstance(response_payload, dict) else None
     if not isinstance(data_rows, list) or not data_rows:
         return JsonResponse({"error": "OpenAI returned no image data"}, status=502)
 
-    b64_value = str((data_rows[0] or {}).get("b64_json") or "").strip()
-    if not b64_value:
-        return JsonResponse({"error": "OpenAI returned empty image payload"}, status=502)
+    first_row = data_rows[0] or {}
+    b64_value = str(first_row.get("b64_json") or "").strip()
+    if b64_value:
+        try:
+            image_bytes = base64.b64decode(b64_value, validate=True)
+        except (binascii.Error, ValueError):
+            return JsonResponse({"error": "Failed to decode generated image bytes"}, status=502)
+    else:
+        image_url = str(first_row.get("url") or "").strip()
+        if not image_url:
+            return JsonResponse({"error": "OpenAI returned empty image payload"}, status=502)
+        try:
+            image_response = requests.get(
+                image_url,
+                timeout=max(20, int(getattr(settings, "OPENAI_IMAGE_TIMEOUT_SECONDS", 90))),
+            )
+            image_response.raise_for_status()
+            image_bytes = image_response.content
+        except requests.RequestException as exc:
+            return JsonResponse({"error": "Failed to download generated image", "details": str(exc)}, status=502)
 
-    try:
-        image_bytes = base64.b64decode(b64_value, validate=True)
-    except (binascii.Error, ValueError):
-        return JsonResponse({"error": "Failed to decode generated image bytes"}, status=502)
+    if not image_bytes:
+        return JsonResponse({"error": "OpenAI returned empty image bytes"}, status=502)
 
     media_url, storage_path = _save_generated_image(request, image_bytes)
     return JsonResponse(

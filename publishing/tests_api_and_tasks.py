@@ -1,7 +1,7 @@
 import json
 import base64
 from datetime import timedelta
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -88,6 +88,32 @@ class PublishingApiTests(TestCase):
             content_type="application/json",
         )
         self.assertEqual(response.status_code, 400)
+
+    @override_settings(OPENAI_API_KEY="test-key")
+    @patch("publishing.views.requests.get")
+    @patch("publishing.views.requests.post")
+    def test_generate_ai_image_retries_on_unknown_parameter_and_uses_url_payload(self, mock_post, mock_get):
+        first = Response()
+        first.status_code = 400
+        first._content = json.dumps({"error": {"message": "Unknown parameter: size"}}).encode()
+        second = Response()
+        second.status_code = 200
+        second._content = json.dumps({"data": [{"url": "https://example.com/generated.png"}]}).encode()
+        mock_post.side_effect = [first, second]
+
+        get_response = Mock()
+        get_response.content = b"\x89PNG\r\n\x1a\nfallback-image"
+        get_response.raise_for_status = Mock()
+        mock_get.return_value = get_response
+
+        response = self.client.post(
+            reverse("generate_ai_image"),
+            data=json.dumps({"prompt": "Generate a yoga post image", "size": "1024x1536"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(mock_post.call_count, 2)
+        self.assertTrue(response.json()["media_url"])
 
     @patch("publishing.views.process_due_posts")
     def test_list_scheduled_posts_triggers_auto_dispatch_for_due_pending(self, mock_process_due_posts):

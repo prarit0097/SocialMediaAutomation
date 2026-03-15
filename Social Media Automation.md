@@ -104,6 +104,7 @@ What happens:
 - local Instagram image uploads are auto-optimized to a lighter JPG variant for more reliable Meta download
 - app preflights public media URLs before Instagram publish attempts
 - scheduler includes an AI image generation helper (OpenAI) that creates image assets from prompt, stores them in media, and auto-fills Media URL
+- AI image API now includes compatibility fallback for upstream parameter drift (for example unknown optional image parameter) and supports both `b64_json` and URL-based image payloads
 - Instagram/FB+IG scheduling stores optimized IG-safe media URLs at schedule time (not only at publish time)
 - post is stored in UTC internally
 - Celery beat checks every minute for due posts
