@@ -1,5 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.core.cache import cache
+from unittest.mock import patch, Mock
 
 
 class AccountsLandingTests(TestCase):
@@ -22,18 +24,46 @@ class AccountsLandingTests(TestCase):
     def test_signup_page_loads(self):
         response = self.client.get("/signup/")
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Create Account")
+        self.assertContains(response, "Sign up with Google")
 
-    def test_signup_creates_user_and_logs_in(self):
-        response = self.client.post(
-            "/signup/",
-            data={
-                "username": "newoperator",
-                "password1": "StrongPass123!",
-                "password2": "StrongPass123!",
-            },
-        )
+    @patch("accounts.views.requests.get")
+    @patch("accounts.views.requests.post")
+    def test_google_signup_callback_creates_user_and_logs_in(self, mock_post, mock_get):
+        state = "teststate123"
+        cache.set(f"google_oauth_state:{state}", {"issued": True}, timeout=600)
+
+        token_response = Mock(status_code=200)
+        token_response.content = b"{}"
+        token_response.json.return_value = {"access_token": "token123"}
+        mock_post.return_value = token_response
+
+        profile_response = Mock(status_code=200)
+        profile_response.content = b"{}"
+        profile_response.json.return_value = {
+            "email": "newoperator@gmail.com",
+            "email_verified": True,
+            "given_name": "New",
+            "family_name": "Operator",
+        }
+        mock_get.return_value = profile_response
+
+        with self.settings(
+            GOOGLE_OAUTH_CLIENT_ID="google-client-id",
+            GOOGLE_OAUTH_CLIENT_SECRET="google-client-secret",
+            GOOGLE_OAUTH_REDIRECT_URI="http://testserver/signup/google/callback/",
+        ):
+            response = self.client.get("/signup/google/callback/", {"code": "abc", "state": state})
 
         self.assertEqual(response.status_code, 302)
         self.assertIn("/dashboard/", response.url)
-        self.assertTrue(get_user_model().objects.filter(username="newoperator").exists())
+        self.assertTrue(get_user_model().objects.filter(email="newoperator@gmail.com").exists())
+
+    def test_google_signup_start_redirects_to_google_auth(self):
+        with self.settings(
+            GOOGLE_OAUTH_CLIENT_ID="google-client-id",
+            GOOGLE_OAUTH_CLIENT_SECRET="google-client-secret",
+            GOOGLE_OAUTH_REDIRECT_URI="http://testserver/signup/google/callback/",
+        ):
+            response = self.client.get("/signup/google/start/")
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("accounts.google.com/o/oauth2/v2/auth", response.url)

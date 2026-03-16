@@ -9,6 +9,7 @@ This file is the high-level source of truth for what the project does, how the m
 - Connect and refresh Facebook Pages and linked Instagram accounts through Meta OAuth.
 - Store connected account metadata and encrypted page access tokens.
 - Configure `META_APP_ID`, `META_APP_SECRET`, and `META_REDIRECT_URI` from Dashboard Home and persist them in `.env` without code edits.
+- Allow new operator signup via Google OAuth only (Gmail-based signup flow).
 - Schedule Facebook, Instagram, or combined FB + IG posts.
 - Publish due posts automatically through Celery workers.
 - Store cached insights snapshots for operator review and future analytics.
@@ -31,6 +32,7 @@ What it shows:
 
 What it does:
 - helps first-time users understand app value before authentication
+- routes new users to Google-based signup flow (local password signup is disabled)
 - routes authenticated users directly to Dashboard Home to continue operations
 - uses project media logos across UI touchpoints: Meta logo in global brand/top identity and Meta/Instagram logos in platform badges and Meta-connect CTA where context is platform-specific
 
@@ -260,6 +262,11 @@ Operational meaning:
 - token resolution order is session token -> per-user cache -> encrypted DB token -> global cache token
 - when catalog API sees a valid session/cache/global token, it auto-persists that token into DB for durability
 
+### User Account Signup Mode
+- `/signup/` is Google-only onboarding UI.
+- Google OAuth callback creates user with unusable password and logs in via Django session.
+- Existing users can continue to use login flow; new account creation happens only through Google OAuth.
+
 ### Scheduled Posts
 Model: `publishing.ScheduledPost`
 
@@ -373,6 +380,10 @@ This project includes local MCP servers under `mcp_servers/` so Codex or future 
 - Celery worker and Celery beat must be running for scheduled publishing and daily heavy insights automation.
 - Celery workers must be restarted after Celery config changes so new prefetch/priority behavior is applied.
 - OpenAI credentials (`OPENAI_API_KEY`) must be set for AI Insights report generation.
+- Google OAuth credentials must be configured for signup:
+  - `GOOGLE_OAUTH_CLIENT_ID`
+  - `GOOGLE_OAUTH_CLIENT_SECRET`
+  - `GOOGLE_OAUTH_REDIRECT_URI` (e.g. `https://your-domain/signup/google/callback/`)
 - reconnecting a subset of pages does not automatically refresh every older stored account row.
 - SQLite can still hit transient write locks under high parallel activity; PostgreSQL is strongly recommended for production workloads.
 

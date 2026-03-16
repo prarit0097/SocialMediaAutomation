@@ -2,13 +2,16 @@
 {% block content %}
 <section class="card compact login-card">
   <p class="eyebrow">Create Access</p>
-  <h1>Signup</h1>
-  <p class="hero-copy">Create your operator account to manage Meta setup, scheduling, and insights from one place.</p>
-  <form method="post" class="form-grid">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <button type="submit">Create Account</button>
-    <small class="form-note">Already have an account? <a href="{% url 'login' %}">Login</a></small>
-  </form>
+  <h1>Sign up with Google</h1>
+  <p class="hero-copy">New operator signup is enabled only through Google (Gmail) for safer account onboarding.</p>
+  {% if error %}
+    <p class="form-note" style="color:#b43b2f;">{{ error }}</p>
+  {% endif %}
+  {% if google_signup_ready %}
+    <a class="btn" href="{% url 'google_signup_start' %}">Continue with Google</a>
+  {% else %}
+    <p class="form-note">Google signup is not configured yet. Add Google OAuth credentials in environment settings.</p>
+  {% endif %}
+  <small class="form-note">Already have an account? <a href="{% url 'login' %}">Login</a></small>
 </section>
 {% endblock %}
