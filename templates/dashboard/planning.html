@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block content %}
+<section class="card hero-card hero-split">
+  <div class="hero-main">
+    <p class="eyebrow">Planning</p>
+    <h1>Plan your monthly content with pillars and tags.</h1>
+    <p class="hero-copy">Drag posts across calendar dates, keep platform context visible, and maintain a structured publishing pipeline before scheduling.</p>
+    <div class="hero-pill-row">
+      <span class="hero-pill">Monthly view</span>
+      <span class="hero-pill">Drag and drop</span>
+      <span class="hero-pill">Pillars + tags</span>
+    </div>
+  </div>
+  <div class="hero-rail">
+    <article class="hero-stat">
+      <span class="hero-stat-label">Step 1 live</span>
+      <strong>Content Planning Suite</strong>
+      <p>Calendar planning and structured tagging are now available for each operator account.</p>
+    </article>
+  </div>
+</section>
+
+<section class="card planning-shell" id="planningApp">
+  <div class="planning-toolbar">
+    <div class="planning-month-nav">
+      <button type="button" class="btn muted" id="planningPrevMonth">Prev</button>
+      <strong id="planningMonthLabel">Month</strong>
+      <button type="button" class="btn muted" id="planningNextMonth">Next</button>
+    </div>
+    <button type="button" class="btn" id="planningReloadBtn">Reload</button>
+  </div>
+
+  <div class="planning-grid-wrap">
+    <div class="planning-weekdays">
+      <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+    </div>
+    <div class="planning-grid" id="planningGrid"></div>
+  </div>
+
+  <div class="planning-side">
+    <h3>Create Calendar Item</h3>
+    <form id="planningCreateForm" class="form-grid planning-form">
+      {% csrf_token %}
+      <label>Title<input type="text" name="title" required maxlength="140"></label>
+      <label>Start Time<input type="datetime-local" name="start_at" required></label>
+      <label>Platform
+        <select name="platform">
+          <option value="both">Facebook + Instagram</option>
+          <option value="facebook">Facebook</option>
+          <option value="instagram">Instagram</option>
+        </select>
+      </label>
+      <label>Status
+        <select name="status">
+          <option value="draft">Draft</option>
+          <option value="review">Review</option>
+          <option value="approved">Approved</option>
+          <option value="scheduled">Scheduled</option>
+          <option value="published">Published</option>
+        </select>
+      </label>
+      <label>Caption<textarea name="caption" rows="3"></textarea></label>
+      <label>Notes<textarea name="notes" rows="2"></textarea></label>
+      <label>Tag IDs (comma-separated)<input type="text" name="tag_ids" placeholder="e.g. 1,2"></label>
+      <button type="submit">Add Item</button>
+    </form>
+
+    <div class="planning-tags">
+      <h3>Create Pillar / Tag</h3>
+      <form id="planningTagForm" class="planning-tag-form">
+        {% csrf_token %}
+        <input type="text" name="name" placeholder="Name" required>
+        <select name="category">
+          <option value="pillar">Pillar</option>
+          <option value="tag">Tag</option>
+        </select>
+        <input type="color" name="color" value="#1f6feb">
+        <button type="submit" class="btn muted">Create</button>
+      </form>
+      <div id="planningTagsList" class="planning-tags-list"></div>
+    </div>
+  </div>
+</section>
+
+<script src="{% static 'dashboard/planning/planning.js' %}"></script>
+{% endblock %}

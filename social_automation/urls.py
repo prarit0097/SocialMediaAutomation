@@ -14,6 +14,7 @@ urlpatterns = [
     path("auth/", include("integrations.auth_urls")),
     path("api/", include("integrations.api_urls")),
     path("api/", include("publishing.urls")),
+    path("api/", include("planning.urls")),
     path("api/", include("analytics.urls")),
     path("dashboard/", include(("dashboard.urls", "dashboard"), namespace="dashboard")),
 ]

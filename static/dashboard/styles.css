@@ -2515,3 +2515,134 @@ pre {
     font-size: 1.7rem;
   }
 }
+
+/* Planning */
+.planning-shell {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1rem;
+}
+
+.planning-toolbar {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.planning-month-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.planning-grid-wrap {
+  border: 1px solid var(--line-soft);
+  border-radius: 16px;
+  padding: 0.8rem;
+  background: #fff;
+}
+
+.planning-weekdays,
+.planning-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.planning-weekdays span {
+  text-align: center;
+  font-weight: 700;
+  color: var(--ink-muted);
+  font-size: 0.82rem;
+}
+
+.planning-cell {
+  min-height: 120px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  padding: 0.5rem;
+  background: #fdfefe;
+}
+
+.planning-cell.is-muted {
+  opacity: 0.45;
+}
+
+.planning-cell-date {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--ink-muted);
+  margin-bottom: 0.45rem;
+}
+
+.planning-cell-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.planning-item {
+  border: 0;
+  border-radius: 8px;
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.32rem 0.5rem;
+  color: #fff;
+  cursor: grab;
+}
+
+.planning-item.status-draft { background: #3b82f6; }
+.planning-item.status-review { background: #f59e0b; }
+.planning-item.status-approved { background: #14b8a6; }
+.planning-item.status-scheduled { background: #6366f1; }
+.planning-item.status-published { background: #059669; }
+
+.planning-side {
+  border: 1px solid var(--line-soft);
+  border-radius: 16px;
+  padding: 0.85rem;
+  background: #fff;
+}
+
+.planning-side h3 {
+  margin: 0 0 0.7rem;
+}
+
+.planning-form,
+.planning-tag-form {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.planning-tags {
+  margin-top: 1rem;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 0.8rem;
+}
+
+.planning-tags-list {
+  margin-top: 0.6rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.planning-tag-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #13263c;
+  padding: 0.26rem 0.5rem;
+  background: color-mix(in srgb, var(--tag-color) 18%, #ffffff);
+  border: 1px solid color-mix(in srgb, var(--tag-color) 35%, #d0dbe7);
+}
+
+@media (max-width: 1080px) {
+  .planning-shell {
+    grid-template-columns: 1fr;
+  }
+}

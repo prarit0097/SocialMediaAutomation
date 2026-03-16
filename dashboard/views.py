@@ -393,6 +393,11 @@ def ai_insights_page(request):
 
 
 @login_required
+def planning_page(request):
+    return render(request, "dashboard/planning.html")
+
+
+@login_required
 def public_url_status(request):
     return JsonResponse(_public_url_status_payload(request))
 

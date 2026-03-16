@@ -129,6 +129,26 @@ Common failure pattern:
 - if a page was not refreshed in the latest reconnect, old stored tokens can still exist in the database
 - the app now blocks scheduling and retry on those stale rows instead of allowing a later `190/460` publish failure
 
+### Planning
+The Planning page is the first step toward full social media manager operations.
+
+What it shows:
+- monthly content calendar view (month switcher + day grid)
+- drag/drop movement of planned items between dates
+- content status coloring (`draft`, `review`, `approved`, `scheduled`, `published`)
+- pillars/tags creation panel
+- quick create form for planned content items
+
+What it supports:
+- operator-scoped planning data per logged-in user
+- API-backed monthly read/write calendar
+- API-backed pillar/tag management
+- item updates (including drag/drop date movement)
+
+Important runtime meaning:
+- planning items are editorial plans, separate from `ScheduledPost` publish queue
+- this allows teams to plan first, then schedule approved items into the publishing engine
+
 ### Insights
 The Insights page is the reporting view for account-level Meta data and recent post performance.
 
@@ -369,6 +389,70 @@ Planned direction:
 - AI agent suggests content and posting improvements
 - UI relies more on stored snapshots and less on expensive live pulls
 - MCP-based tools give agents structured access to cached analytics, queue health, and browser validation workflows
+
+## Step-wise Product Roadmap (In Progress)
+This roadmap tracks the exact manager-grade scope requested for turning the app into a complete social media operations suite.
+
+Step 1 (Implemented):
+- Content Planning Suite
+  - monthly content calendar with drag/drop movement
+  - content pillars/tags support
+
+Step 2 (Next):
+- Creative Asset Management
+  - central media library (folders/search/reuse)
+  - brand kits (colors, fonts, logo, disclaimers)
+  - caption templates, CTA snippets, hashtag banks
+  - duplicate content warning (caption/media similarity)
+
+Step 3:
+- Advanced Publishing Engine
+  - bulk schedule via CSV/Excel
+  - best-time recommendation from historical snapshots
+  - queue balancing for same-time overload / API throttling
+  - reusable publish presets per profile/platform
+
+Step 4:
+- Engagement + Community Ops
+  - unified inbox (where Meta APIs permit)
+  - moderation keyword rules and spam filters
+  - SLA tracker (pending replies, average response time)
+  - AI-assisted suggested replies with human approval
+
+Step 5:
+- Performance Intelligence
+  - weekly/monthly report generation (PDF, email, WhatsApp integration layer)
+  - campaign grouping and campaign KPI rollups
+  - manager scorecards (reach, ER, saves, shares, follower growth)
+  - proactive anomaly alerts (drop/spike, posting gaps, token risk, throttling)
+
+Step 6:
+- AI Copilot Upgrade
+  - AI caption assistant by tone/language/platform
+  - next-day content recommendations from profile history
+  - low-performing content audit with corrective actions
+  - competitor topic-gap recommendations (manual competitor input)
+
+Step 7:
+- High-scale Queue + Observability
+  - Celery queue separation (`publish`, `insights`, `ai`, `maintenance`)
+  - idempotency keys for schedule/publish APIs
+  - IG-heavy scheduler windowing to reduce rate-limit bursts
+  - Sentry + Prometheus/Grafana + structured logs
+
+Step 8:
+- Compliance + Security
+  - production secret manager support (instead of raw `.env`)
+  - audit logs for configuration and critical operations
+  - stronger encryption/rotation policy for sensitive tokens
+  - backup/restore + retention lifecycle for snapshots/media
+
+Step 9:
+- Business Layer
+  - subscription plans and usage quotas
+  - AI credit accounting model
+  - in-app onboarding checklist
+  - health dashboard with one-click remediation actions
 
 ## Maintenance Rule
 This file must be updated whenever project behavior, workflow, automation, stored data, or important UI meaning changes.
