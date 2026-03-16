@@ -78,6 +78,7 @@ What it does:
 - force-refresh-all now uses persistent per-user run tracking with live progress (%) and completion state, so the button stays disabled until that user's run finishes (even after page reload or re-login)
 - force-refresh-all now asks for operator confirmation before starting, because full refresh can take significant time based on connected FB/IG profile count
 - force-refresh run status is now auto-reconciled: if snapshot storage succeeds but callback bookkeeping misses, counters self-heal and stale `running` states are auto-finalized
+- force-refresh status endpoint is lock-safe for SQLite contention (`database is locked`): temporary DB locks no longer break UI polling with 500 responses
 - Accounts UI shows a one-time toast when a previously stuck force-refresh run is auto-recovered/finalized
 - uses user-token fallback for catalog detail checks (session token first, then current user cache, then latest global reconnect token)
 - keeps only latest reconnect profiles active in scheduling/health
@@ -373,6 +374,7 @@ This project includes local MCP servers under `mcp_servers/` so Codex or future 
 - Celery workers must be restarted after Celery config changes so new prefetch/priority behavior is applied.
 - OpenAI credentials (`OPENAI_API_KEY`) must be set for AI Insights report generation.
 - reconnecting a subset of pages does not automatically refresh every older stored account row.
+- SQLite can still hit transient write locks under high parallel activity; PostgreSQL is strongly recommended for production workloads.
 
 ## Test Reliability Notes
 - full Django test suite currently runs with 91 tests.

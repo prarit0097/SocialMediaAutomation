@@ -7,7 +7,7 @@ from numbers import Number
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
-from django.db import transaction
+from django.db import OperationalError, transaction
 from django.http import HttpRequest, JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
@@ -147,6 +147,16 @@ def _reconcile_bulk_run_progress(run: BulkInsightRefreshRun | None) -> BulkInsig
             locked._auto_reconcile_reason = "stale_timeout_finalize"
 
         return locked
+
+
+def _safe_reconcile_bulk_run_progress(run: BulkInsightRefreshRun | None) -> BulkInsightRefreshRun | None:
+    try:
+        return _reconcile_bulk_run_progress(run)
+    except OperationalError as exc:
+        logger.warning("bulk run reconcile skipped due to database lock run_id=%s error=%s", getattr(run, "id", None), exc)
+        if run:
+            run._db_lock_contention = True
+        return run
 
 
 def _single_insight_cache_key(account_id: int, snapshot_id: int, fetched_at_iso: str | None) -> str:
@@ -643,7 +653,7 @@ def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
         user=request.user,
         status=BulkInsightRefreshRun.STATUS_RUNNING,
     ).order_by("-started_at").first()
-    active_run = _reconcile_bulk_run_progress(active_run)
+    active_run = _safe_reconcile_bulk_run_progress(active_run)
     if active_run:
         payload = _serialize_bulk_run(active_run)
         payload.update(
@@ -734,5 +744,8 @@ def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
 @login_required
 def force_refresh_all_accounts_status(request: HttpRequest) -> JsonResponse:
     run = BulkInsightRefreshRun.objects.filter(user=request.user).order_by("-started_at").first()
-    run = _reconcile_bulk_run_progress(run)
-    return JsonResponse(_serialize_bulk_run(run))
+    run = _safe_reconcile_bulk_run_progress(run)
+    payload = _serialize_bulk_run(run)
+    if run and getattr(run, "_db_lock_contention", False):
+        payload["db_lock_contention"] = True
+    return JsonResponse(payload)

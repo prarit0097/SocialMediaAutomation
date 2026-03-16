@@ -5,6 +5,7 @@ import requests
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.db import OperationalError
 from django.http import JsonResponse
 from django.test import Client, TestCase, override_settings
 from django.utils import timezone
@@ -128,6 +129,21 @@ class AnalyticsApiTests(TestCase):
         body = response.json()
         self.assertTrue(body["has_active_run"])
         self.assertEqual(body["status"], "running")
+
+    @patch("analytics.views._reconcile_bulk_run_progress", side_effect=OperationalError("database is locked"))
+    def test_force_refresh_all_accounts_status_handles_database_lock(self, _mock_reconcile):
+        run = BulkInsightRefreshRun.objects.create(
+            user=self.user,
+            status=BulkInsightRefreshRun.STATUS_RUNNING,
+            total_accounts=2,
+            queued_count=2,
+        )
+        response = self.client.get("/api/insights/force-refresh-all/status/")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["run_id"], run.id)
+        self.assertEqual(body["status"], "running")
+        self.assertTrue(body.get("db_lock_contention"))
 
     @override_settings(BULK_REFRESH_STALE_MINUTES=10)
     def test_force_refresh_status_reconciles_stuck_run_from_snapshots(self):

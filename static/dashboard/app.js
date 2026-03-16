@@ -822,6 +822,7 @@
   const forceRefreshProgressWrap = document.getElementById("forceRefreshProgressWrap");
   const forceRefreshProgressFill = document.getElementById("forceRefreshProgressFill");
   const forceRefreshProgressText = document.getElementById("forceRefreshProgressText");
+  const FORCE_REFRESH_STATUS_POLL_MS = 7000;
   let forceRefreshPollTimer = null;
   let lastAutoReconciledRunId = null;
   const forceRefreshLabel = "Force Refresh All Profiles";
@@ -868,7 +869,7 @@
         renderForceRefreshProgress(status);
         const running = Boolean(status && status.has_active_run);
         if (running && !forceRefreshPollTimer) {
-          forceRefreshPollTimer = window.setInterval(loadForceRefreshStatus, 4000);
+          forceRefreshPollTimer = window.setInterval(loadForceRefreshStatus, FORCE_REFRESH_STATUS_POLL_MS);
         }
         if (!running) {
           clearForceRefreshPolling();
@@ -915,7 +916,7 @@
           showAppToast(errorMessage, "error");
           renderForceRefreshProgress(data);
           if (data && data.has_active_run && !forceRefreshPollTimer) {
-            forceRefreshPollTimer = window.setInterval(loadForceRefreshStatus, 4000);
+            forceRefreshPollTimer = window.setInterval(loadForceRefreshStatus, FORCE_REFRESH_STATUS_POLL_MS);
           }
           return;
         }
@@ -926,7 +927,7 @@
         showAppToast(message, "success");
         renderForceRefreshProgress(data);
         clearForceRefreshPolling();
-        forceRefreshPollTimer = window.setInterval(loadForceRefreshStatus, 4000);
+        forceRefreshPollTimer = window.setInterval(loadForceRefreshStatus, FORCE_REFRESH_STATUS_POLL_MS);
       } catch (err) {
         const message = sanitizeUiError(err && err.message ? err.message : "Force refresh request failed.");
         if (accountsBulkRefreshStatus) accountsBulkRefreshStatus.textContent = message;
