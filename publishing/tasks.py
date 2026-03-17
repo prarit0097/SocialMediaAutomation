@@ -1,4 +1,5 @@
-﻿import logging
+import logging
+from datetime import timedelta
 
 from celery import shared_task
 from django.db import DatabaseError, transaction
@@ -93,6 +94,7 @@ def publish_post_task(self, post_id: int):
         logger.info("post published id=%s external_post_id=%s", post.id, external_post_id)
     except MetaTransientError as exc:
         attempts = self.request.retries + 1
+        now = timezone.now()
         if attempts > self.max_retries:
             post.status = POST_STATUS_FAILED
             post.error_message = str(exc)
@@ -106,11 +108,12 @@ def publish_post_task(self, post_id: int):
         else:
             countdown = min(900, 2 ** attempts * 30)
         post.status = POST_STATUS_PENDING
+        post.scheduled_for = now + timedelta(seconds=countdown)
         post.error_message = (
             f"Temporary Meta delay/throttle. Auto-retry in {countdown}s. "
             f"Last error: {exc}"
         )
-        post.save(update_fields=["status", "error_message", "updated_at"])
+        post.save(update_fields=["status", "scheduled_for", "error_message", "updated_at"])
         logger.warning("transient error post id=%s retry_in=%s", post.id, countdown)
         raise self.retry(exc=exc, countdown=countdown)
     except MetaPermanentError as exc:
@@ -125,3 +128,4 @@ def publish_post_task(self, post_id: int):
         logger.exception("unexpected publish failure post id=%s", post.id)
     finally:
         cache.delete(lock_key)
+

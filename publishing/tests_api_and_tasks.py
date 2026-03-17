@@ -334,6 +334,7 @@ class PublishingTaskTests(TestCase):
     @patch("publishing.tasks.publish_post_task.retry")
     @patch("publishing.tasks.publish_scheduled_post")
     def test_publish_post_task_uses_longer_backoff_for_graph_rate_limit(self, mock_publish, mock_retry):
+        before_schedule = self.post.scheduled_for
         mock_publish.side_effect = MetaTransientError("(#4) Application request limit reached (code=4)")
         mock_retry.side_effect = RuntimeError("retry-invoked")
 
@@ -345,6 +346,7 @@ class PublishingTaskTests(TestCase):
         self.post.refresh_from_db()
         self.assertEqual(self.post.status, POST_STATUS_PENDING)
         self.assertIn("Auto-retry in", self.post.error_message)
+        self.assertGreater(self.post.scheduled_for, before_schedule)
 
 
 class PublishingServiceTests(TestCase):
