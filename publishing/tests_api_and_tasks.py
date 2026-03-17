@@ -3,6 +3,7 @@ import base64
 from datetime import timedelta
 from unittest.mock import Mock, patch
 from unittest import skipUnless
+import requests
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -20,6 +21,7 @@ from core.services.meta_client import MetaClient
 from integrations.models import ConnectedAccount
 from publishing.models import ScheduledPost
 from publishing.media_utils import Image as PIL_IMAGE
+from publishing.media_utils import ensure_public_media_fetchable
 from publishing.services import publish_scheduled_post
 from publishing.tasks import _get_due_posts, publish_post_task
 
@@ -577,3 +579,13 @@ class PublishingServiceTests(TestCase):
 
         with self.assertRaises(MetaTransientError):
             MetaClient()._handle_response(response)
+
+    @patch("publishing.media_utils.requests.get")
+    def test_media_fetchable_stream_timeout_is_transient(self, mock_get):
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.iter_content.side_effect = requests.exceptions.ConnectionError("Read timed out.")
+        mock_get.return_value = mock_response
+
+        with self.assertRaises(MetaTransientError):
+            ensure_public_media_fetchable("https://example.com/a.jpg")

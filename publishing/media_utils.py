@@ -145,6 +145,12 @@ def ensure_public_media_fetchable(media_url: str) -> None:
                 f"Public media URL returned {response.status_code}. "
                 "Reconnect the tunnel or upload the media again."
             )
-        next(response.iter_content(65536), b"")
+        try:
+            next(response.iter_content(65536), b"")
+        except requests.RequestException as exc:
+            raise MetaTransientError(
+                "Public media URL stream timed out while validating media. "
+                "Auto-retry should recover if tunnel/network stabilizes."
+            ) from exc
     finally:
         response.close()
