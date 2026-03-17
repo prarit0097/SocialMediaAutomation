@@ -103,7 +103,7 @@ Supported publishing modes:
 
 What happens:
 - user enters account, platform, content, media, and schedule time
-- scheduler form now auto-resolves and shows `Page Name` from entered `Account ID` for better end-user clarity before submit
+- scheduler form now auto-resolves and shows `Page Name` from entered `Account ID`; for linked profiles it uses merged format (`FB page + IG profile`) same as Accounts page
 - app validates account freshness and rejects stale account rows
 - local Instagram image uploads are auto-optimized to a lighter JPG variant for more reliable Meta download
 - app preflights public media URLs before Instagram publish attempts

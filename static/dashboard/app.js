@@ -995,13 +995,6 @@
     const schedulerAccountNameMap = new Map();
     let schedulerAccountMapLoaded = false;
 
-    const platformDisplay = (value) => {
-      const normalized = String(value || "").toLowerCase();
-      if (normalized === "instagram" || normalized === "ig") return "Instagram";
-      if (normalized === "facebook" || normalized === "fb") return "Facebook";
-      return normalized ? normalized.toUpperCase() : "Profile";
-    };
-
     const setSchedulerPageName = (name, accountId) => {
       if (!pageNameInput) return;
       const safeName = String(name || "").trim();
@@ -1022,13 +1015,25 @@
       if (schedulerAccountMapLoaded) return;
       try {
         const rows = await fetchJSON("/api/accounts/");
+        schedulerAccountNameMap.clear();
         if (Array.isArray(rows)) {
+          const mergedRows = mergeAccountRows(rows);
+          mergedRows.forEach((row) => {
+            const accountId = Number(row.account_id);
+            if (!accountId || Number.isNaN(accountId)) return;
+            const combinedName = cleanProfileName(row.profile_name);
+            if (combinedName) {
+              schedulerAccountNameMap.set(accountId, combinedName);
+            }
+          });
+
+          // Fallback for any non-merged / direct account id lookups.
           rows.forEach((row) => {
             const accountId = Number(row.id);
             if (!accountId || Number.isNaN(accountId)) return;
-            const baseName = cleanProfileName(row.page_name);
-            const platformText = platformDisplay(row.platform);
-            schedulerAccountNameMap.set(accountId, `${baseName} (${platformText})`);
+            if (!schedulerAccountNameMap.has(accountId)) {
+              schedulerAccountNameMap.set(accountId, cleanProfileName(row.page_name));
+            }
           });
         }
         schedulerAccountMapLoaded = true;
