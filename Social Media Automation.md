@@ -128,6 +128,7 @@ What happens:
 - failed Instagram retries also re-apply IG media optimization before requeueing
 - after a successful schedule action, UI shows an immediate toast notification with the scheduled local date-time
 - after successful scheduling, Create Scheduled Post form auto-clears so operators can start the next post without old field confusion
+- Scheduled Queue table trims long `message` text to 4 lines for clean layout while keeping full content accessible via hover tooltip
 - force-refresh post-stat calls retry transient Meta/network timeouts and backfill missing values from latest cached snapshot when possible
 
 Common failure pattern:

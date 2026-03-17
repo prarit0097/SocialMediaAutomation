@@ -448,7 +448,9 @@
           <tr>
             <td>${escapeHtml(row.id)}</td>
             <td>${escapeHtml(row.platform)}</td>
-            <td>${escapeHtml(row.message)}</td>
+            <td class="scheduled-message-cell" title="${escapeHtml(row.message)}">
+              <span class="scheduled-message-clamp">${escapeHtml(row.message)}</span>
+            </td>
             <td>${escapeHtml(row.media_url)}</td>
             <td>${escapeHtml(row.scheduled_for)}</td>
             <td>${escapeHtml(row.due_in)}</td>

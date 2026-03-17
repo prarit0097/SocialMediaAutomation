@@ -1772,6 +1772,21 @@ td {
   word-break: break-word;
 }
 
+.scheduled-message-cell {
+  min-width: 220px;
+  max-width: 320px;
+}
+
+.scheduled-message-clamp {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  white-space: normal;
+  word-break: break-word;
+}
+
 th {
   position: sticky;
   top: 0;
