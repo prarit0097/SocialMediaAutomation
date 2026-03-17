@@ -1,0 +1,84 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="card hero-card hero-split">
+  <div class="hero-main">
+    <p class="eyebrow">Profile</p>
+    <h1>Manage your identity and plan details in one place.</h1>
+    <p class="hero-copy">Google sign-in details are prefilled. You can update display name, profile photo URL, and current subscription status for account visibility.</p>
+    <div class="hero-pill-row">
+      <span class="hero-pill">Google login profile</span>
+      <span class="hero-pill">Editable identity</span>
+      <span class="hero-pill">Plan status view</span>
+    </div>
+  </div>
+  <div class="hero-rail">
+    <article class="hero-stat">
+      <span class="hero-stat-label">Profile Control</span>
+      <strong>Email stays locked</strong>
+      <p>Name, photo, and subscription details can be edited; email remains your secure login identifier.</p>
+    </article>
+  </div>
+</section>
+
+<div class="content-grid content-grid-aside">
+  <section class="card">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">Account Identity</p>
+        <h2>Your Profile Details</h2>
+        <p class="section-copy">Update your visible identity for this workspace. Email is read-only for login safety.</p>
+      </div>
+    </div>
+
+    <form id="profileForm" class="form-grid profile-form">
+      {% csrf_token %}
+      <label for="profileEmail">Email (read-only)
+        <input id="profileEmail" name="email" type="email" readonly>
+      </label>
+      <label for="profileFirstName">First Name
+        <input id="profileFirstName" name="first_name" type="text" maxlength="150" required>
+      </label>
+      <label for="profileLastName">Last Name
+        <input id="profileLastName" name="last_name" type="text" maxlength="150">
+      </label>
+      <label for="profilePictureUrl">Profile Picture URL
+        <input id="profilePictureUrl" name="profile_picture_url" type="url" placeholder="https://...">
+      </label>
+
+      <div class="profile-form-divider"></div>
+
+      <label for="profilePlan">Subscription Plan (dummy)
+        <input id="profilePlan" name="subscription_plan" type="text" maxlength="120" required>
+      </label>
+      <label for="profilePlanStatus">Plan Status (dummy)
+        <select id="profilePlanStatus" name="subscription_status" required>
+          <option value="active">Active</option>
+          <option value="expired">Expired</option>
+        </select>
+      </label>
+      <label for="profilePlanExpiry">Plan Expiry Date (dummy)
+        <input id="profilePlanExpiry" name="subscription_expires_on" type="date" required>
+      </label>
+
+      <button id="saveProfileBtn" type="submit">Save Profile</button>
+      <small id="profileResult" class="result-note"></small>
+    </form>
+  </section>
+
+  <aside class="card accent-card profile-preview-card">
+    <p class="eyebrow">Live Preview</p>
+    <h2>Professional profile snapshot</h2>
+    <div class="profile-preview-media">
+      <img id="profileAvatarPreview" src="" alt="Profile preview" hidden>
+      <span id="profileAvatarFallback" class="profile-preview-fallback">NA</span>
+    </div>
+    <p id="profileNamePreview" class="profile-preview-name">-</p>
+    <p id="profileEmailPreview" class="profile-preview-email">-</p>
+    <div class="profile-plan-pill-row">
+      <span class="profile-plan-pill" id="profilePlanPreview">Starter</span>
+      <span class="profile-plan-pill status" id="profileStatusPreview">Active</span>
+    </div>
+    <p id="profileExpiryPreview" class="profile-preview-expiry">Plan expiry: -</p>
+  </aside>
+</div>
+{% endblock %}

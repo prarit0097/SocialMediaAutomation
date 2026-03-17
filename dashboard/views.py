@@ -1,7 +1,7 @@
 import json
 import os
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -15,6 +15,7 @@ from django.views.decorators.http import require_http_methods
 
 from core.exceptions import MetaAPIError
 from core.services.meta_client import MetaClient
+from accounts.models import UserProfile
 from integrations.models import ConnectedAccount
 from integrations.sync_state import SYNC_FRESHNESS_WINDOW, get_recent_sync_time
 
@@ -118,6 +119,19 @@ def _validate_meta_config(app_id: str, app_secret: str, redirect_uri: str) -> li
         if parts.scheme not in {"http", "https"} or not parts.netloc:
             errors.append("META_REDIRECT_URI must be a valid absolute http/https URL.")
     return errors
+
+
+def _profile_payload(user) -> dict:
+    profile, _ = UserProfile.objects.get_or_create(user=user)
+    return {
+        "email": user.email,
+        "first_name": profile.resolved_first_name,
+        "last_name": profile.resolved_last_name,
+        "profile_picture_url": profile.profile_picture_url,
+        "subscription_plan": profile.subscription_plan,
+        "subscription_status": profile.subscription_status,
+        "subscription_expires_on": profile.subscription_expires_on.isoformat() if profile.subscription_expires_on else None,
+    }
 
 
 def _public_url_status_payload(request):
@@ -398,6 +412,11 @@ def planning_page(request):
 
 
 @login_required
+def profile_page(request):
+    return render(request, "dashboard/profile.html")
+
+
+@login_required
 def public_url_status(request):
     return JsonResponse(_public_url_status_payload(request))
 
@@ -447,4 +466,76 @@ def meta_app_config(request):
     response["message"] = "Meta app configuration saved successfully."
     if "/auth/meta/callback" not in meta_redirect_uri:
         response["warning"] = "META_REDIRECT_URI usually ends with /auth/meta/callback."
+    return JsonResponse(response)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def profile_data(request):
+    if request.method == "GET":
+        return JsonResponse(_profile_payload(request.user))
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON body."}, status=400)
+
+    first_name = str(payload.get("first_name") or "").strip()
+    last_name = str(payload.get("last_name") or "").strip()
+    profile_picture_url = str(payload.get("profile_picture_url") or "").strip()
+    subscription_plan = str(payload.get("subscription_plan") or "").strip() or "Starter"
+    subscription_status = str(payload.get("subscription_status") or "").strip().lower()
+    subscription_expires_on = str(payload.get("subscription_expires_on") or "").strip()
+
+    errors = []
+    if len(first_name) > 150:
+        errors.append("First name should be 150 characters or less.")
+    if len(last_name) > 150:
+        errors.append("Last name should be 150 characters or less.")
+    if len(subscription_plan) > 120:
+        errors.append("Subscription plan should be 120 characters or less.")
+    if subscription_status not in {
+        UserProfile.SUBSCRIPTION_STATUS_ACTIVE,
+        UserProfile.SUBSCRIPTION_STATUS_EXPIRED,
+    }:
+        errors.append("Subscription status must be either active or expired.")
+
+    parsed_expiry = None
+    if subscription_expires_on:
+        try:
+            parsed_expiry = datetime.strptime(subscription_expires_on, "%Y-%m-%d").date()
+        except ValueError:
+            errors.append("Subscription expiry date must use YYYY-MM-DD format.")
+
+    if errors:
+        return JsonResponse({"error": "Validation failed.", "details": " ".join(errors)}, status=400)
+
+    user = request.user
+    user.first_name = first_name
+    user.last_name = last_name
+    user.save(update_fields=["first_name", "last_name"])
+
+    profile, _ = UserProfile.objects.get_or_create(user=user)
+    profile.first_name = first_name
+    profile.last_name = last_name
+    profile.profile_picture_url = profile_picture_url
+    profile.subscription_plan = subscription_plan
+    profile.subscription_status = subscription_status
+    if parsed_expiry:
+        profile.subscription_expires_on = parsed_expiry
+    profile.save(
+        update_fields=[
+            "first_name",
+            "last_name",
+            "profile_picture_url",
+            "subscription_plan",
+            "subscription_status",
+            "subscription_expires_on",
+            "updated_at",
+        ]
+    )
+
+    response = _profile_payload(user)
+    response["ok"] = True
+    response["message"] = "Profile updated successfully."
     return JsonResponse(response)

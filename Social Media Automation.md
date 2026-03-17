@@ -10,6 +10,7 @@ This file is the high-level source of truth for what the project does, how the m
 - Store connected account metadata and encrypted page access tokens.
 - Configure `META_APP_ID`, `META_APP_SECRET`, and `META_REDIRECT_URI` from Dashboard Home and persist them in `.env` without code edits.
 - Allow new operator signup via Google OAuth only (Gmail-based signup flow).
+- Provide a dedicated Profile page for each logged-in user with Google-synced identity data and editable non-email fields.
 - Schedule Facebook, Instagram, or combined FB + IG posts.
 - Publish due posts automatically through Celery workers.
 - Store cached insights snapshots for operator review and future analytics.
@@ -47,6 +48,24 @@ What it shows:
 - Part 4 in setup guide now explains where to enable scopes and what each scope does in simple language
 - beginner-friendly setup checklist covering: use-case selection, customize use-case, API/Login setup, required scopes, and FB+IG asset linking
 - quick actions to Accounts, Scheduler, Insights, and AI Insights
+- quick actions to Accounts, Scheduler, Planning, Insights, AI Insights, and Profile
+
+### Profile
+The Profile page is the logged-in user identity/settings workspace (`/dashboard/profile/`).
+
+What it shows:
+- Google-linked email (read-only)
+- editable first name and last name
+- editable profile picture URL
+- live profile preview card (avatar, name, email, plan badge)
+- dummy subscription controls for now: plan name, status (`active` / `expired`), and expiry date
+
+What it does:
+- loads profile data from `GET /dashboard/profile-data/`
+- saves profile updates through `POST /dashboard/profile-data/`
+- keeps email immutable from UI/API updates (email stays login identity)
+- auto-creates a per-user `UserProfile` row when missing
+- pre-fills profile data from Google signup callback (given name, family name, profile picture)
 
 What it does:
 - saves Meta app credentials directly into project `.env`
@@ -274,7 +293,20 @@ Operational meaning:
 ### User Account Signup Mode
 - `/signup/` is Google-only onboarding UI.
 - Google OAuth callback creates user with unusable password and logs in via Django session.
+- Google OAuth callback also upserts `UserProfile` seed data (first name, last name, profile picture URL).
 - Existing users can continue to use login flow; new account creation happens only through Google OAuth.
+
+### User Profiles
+Model: `accounts.UserProfile`
+
+Stores:
+- one-to-one link with Django user
+- editable first name and last name (display values)
+- profile picture URL
+- dummy subscription plan (`subscription_plan`)
+- dummy subscription status (`active` / `expired`)
+- dummy subscription expiry date (`subscription_expires_on`)
+- created and updated timestamps
 
 ### Scheduled Posts
 Model: `publishing.ScheduledPost`
@@ -397,7 +429,7 @@ This project includes local MCP servers under `mcp_servers/` so Codex or future 
 - SQLite can still hit transient write locks under high parallel activity; PostgreSQL is strongly recommended for production workloads.
 
 ## Test Reliability Notes
-- full Django test suite currently runs with 91 tests.
+- full Django test suite currently runs with 100 tests (plus optional skips depending on environment).
 - MCP helper tests are optional and auto-skip when the external `mcp` Python package is not installed.
 - Instagram local image optimization tests are auto-skip when Pillow (`PIL`) is not installed.
 - publishing task tests clear cache in setup to avoid stale lock-key side effects between tests.

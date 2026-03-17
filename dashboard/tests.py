@@ -12,6 +12,7 @@ from django.utils import timezone
 
 from core.exceptions import MetaAPIError
 from integrations.models import ConnectedAccount
+from accounts.models import UserProfile
 
 
 class DashboardAuthTests(TestCase):
@@ -316,3 +317,104 @@ class DashboardAuthTests(TestCase):
         self.assertEqual(response.status_code, 400)
         body = response.json()
         self.assertEqual(body["error"], "Validation failed.")
+
+    def test_profile_page_requires_login(self):
+        response = self.client.get("/dashboard/profile/")
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/login/", response.url)
+
+    def test_profile_data_get_returns_user_profile_payload(self):
+        user_model = get_user_model()
+        user = user_model.objects.create_user(
+            username="profileadmin",
+            email="profile@example.com",
+            first_name="Priya",
+            last_name="Sharma",
+            password="pass12345",
+        )
+        UserProfile.objects.create(
+            user=user,
+            first_name="Priya",
+            last_name="Sharma",
+            profile_picture_url="https://example.com/avatar.jpg",
+            subscription_plan="Pro",
+            subscription_status=UserProfile.SUBSCRIPTION_STATUS_ACTIVE,
+        )
+        self.client.login(username="profileadmin", password="pass12345")
+
+        response = self.client.get("/dashboard/profile-data/")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["email"], "profile@example.com")
+        self.assertEqual(body["first_name"], "Priya")
+        self.assertEqual(body["last_name"], "Sharma")
+        self.assertEqual(body["profile_picture_url"], "https://example.com/avatar.jpg")
+        self.assertEqual(body["subscription_plan"], "Pro")
+        self.assertEqual(body["subscription_status"], "active")
+
+    def test_profile_data_post_updates_all_editable_fields_except_email(self):
+        user_model = get_user_model()
+        user = user_model.objects.create_user(
+            username="profileeditor",
+            email="locked@example.com",
+            first_name="Old",
+            last_name="Name",
+            password="pass12345",
+        )
+        UserProfile.objects.create(user=user)
+        self.client.login(username="profileeditor", password="pass12345")
+
+        response = self.client.post(
+            "/dashboard/profile-data/",
+            data=json.dumps(
+                {
+                    "first_name": "New",
+                    "last_name": "Person",
+                    "email": "hacker@example.com",
+                    "profile_picture_url": "https://example.com/new-avatar.jpg",
+                    "subscription_plan": "Growth",
+                    "subscription_status": "expired",
+                    "subscription_expires_on": "2026-12-31",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        user.refresh_from_db()
+        profile = user.profile
+        self.assertEqual(user.email, "locked@example.com")
+        self.assertEqual(user.first_name, "New")
+        self.assertEqual(user.last_name, "Person")
+        self.assertEqual(profile.profile_picture_url, "https://example.com/new-avatar.jpg")
+        self.assertEqual(profile.subscription_plan, "Growth")
+        self.assertEqual(profile.subscription_status, "expired")
+        self.assertEqual(str(profile.subscription_expires_on), "2026-12-31")
+
+    def test_profile_data_post_rejects_invalid_subscription_status(self):
+        user_model = get_user_model()
+        user_model.objects.create_user(
+            username="profileinvalid",
+            email="invalid@example.com",
+            password="pass12345",
+        )
+        self.client.login(username="profileinvalid", password="pass12345")
+
+        response = self.client.post(
+            "/dashboard/profile-data/",
+            data=json.dumps(
+                {
+                    "first_name": "Test",
+                    "last_name": "User",
+                    "profile_picture_url": "",
+                    "subscription_plan": "Starter",
+                    "subscription_status": "paused",
+                    "subscription_expires_on": "2026-12-31",
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "Validation failed.")

@@ -1124,6 +1124,23 @@
   const saveMetaAppConfigBtn = document.getElementById("saveMetaAppConfigBtn");
   const metaAppConfigResult = document.getElementById("metaAppConfigResult");
   const metaAppSecretState = document.getElementById("metaAppSecretState");
+  const profileForm = document.getElementById("profileForm");
+  const saveProfileBtn = document.getElementById("saveProfileBtn");
+  const profileResult = document.getElementById("profileResult");
+  const profileEmail = document.getElementById("profileEmail");
+  const profileFirstName = document.getElementById("profileFirstName");
+  const profileLastName = document.getElementById("profileLastName");
+  const profilePictureUrl = document.getElementById("profilePictureUrl");
+  const profilePlan = document.getElementById("profilePlan");
+  const profilePlanStatus = document.getElementById("profilePlanStatus");
+  const profilePlanExpiry = document.getElementById("profilePlanExpiry");
+  const profileAvatarPreview = document.getElementById("profileAvatarPreview");
+  const profileAvatarFallback = document.getElementById("profileAvatarFallback");
+  const profileNamePreview = document.getElementById("profileNamePreview");
+  const profileEmailPreview = document.getElementById("profileEmailPreview");
+  const profilePlanPreview = document.getElementById("profilePlanPreview");
+  const profileStatusPreview = document.getElementById("profileStatusPreview");
+  const profileExpiryPreview = document.getElementById("profileExpiryPreview");
 
   if (metaAppConfigForm && saveMetaAppConfigBtn) {
     const runWithMetaConfigLoading = withButtonLoading(
@@ -1181,6 +1198,134 @@
         }
       }
     });
+  }
+
+  function profileInitials(firstName, lastName, email) {
+    const first = String(firstName || "").trim();
+    const last = String(lastName || "").trim();
+    if (first || last) {
+      return `${first.slice(0, 1)}${last.slice(0, 1)}`.toUpperCase() || "NA";
+    }
+    const mail = String(email || "").trim();
+    return (mail.slice(0, 2) || "NA").toUpperCase();
+  }
+
+  function setProfilePreview(data) {
+    if (!data) return;
+    const firstName = String(data.first_name || "").trim();
+    const lastName = String(data.last_name || "").trim();
+    const email = String(data.email || "").trim();
+    const avatarUrl = String(data.profile_picture_url || "").trim();
+    const fullName = `${firstName} ${lastName}`.trim() || "Your Name";
+
+    if (profileNamePreview) profileNamePreview.textContent = fullName;
+    if (profileEmailPreview) profileEmailPreview.textContent = email || "-";
+    if (profilePlanPreview) profilePlanPreview.textContent = String(data.subscription_plan || "Starter");
+    if (profileStatusPreview) {
+      const statusText = String(data.subscription_status || "active").toLowerCase() === "expired" ? "Expired" : "Active";
+      profileStatusPreview.textContent = statusText;
+      profileStatusPreview.classList.toggle("is-expired", statusText === "Expired");
+    }
+    if (profileExpiryPreview) {
+      const rawDate = String(data.subscription_expires_on || "").trim();
+      const formattedDate = rawDate ? formatScheduleDateTime(`${rawDate}T00:00:00`) : "-";
+      profileExpiryPreview.textContent = `Plan expiry: ${formattedDate || "-"}`;
+    }
+
+    const initials = profileInitials(firstName, lastName, email);
+    if (profileAvatarFallback) profileAvatarFallback.textContent = initials;
+    if (profileAvatarPreview) {
+      if (avatarUrl) {
+        profileAvatarPreview.src = avatarUrl;
+        profileAvatarPreview.hidden = false;
+        if (profileAvatarFallback) profileAvatarFallback.hidden = true;
+      } else {
+        profileAvatarPreview.hidden = true;
+        if (profileAvatarFallback) profileAvatarFallback.hidden = false;
+      }
+    }
+  }
+
+  function applyProfileFormData(data) {
+    if (!data) return;
+    if (profileEmail) profileEmail.value = String(data.email || "");
+    if (profileFirstName) profileFirstName.value = String(data.first_name || "");
+    if (profileLastName) profileLastName.value = String(data.last_name || "");
+    if (profilePictureUrl) profilePictureUrl.value = String(data.profile_picture_url || "");
+    if (profilePlan) profilePlan.value = String(data.subscription_plan || "Starter");
+    if (profilePlanStatus) profilePlanStatus.value = String(data.subscription_status || "active");
+    if (profilePlanExpiry) profilePlanExpiry.value = String(data.subscription_expires_on || "");
+    setProfilePreview(data);
+  }
+
+  async function loadProfileData() {
+    if (!profileForm) return;
+    try {
+      const data = await fetchJSON("/dashboard/profile-data/");
+      applyProfileFormData(data);
+      if (profileResult) profileResult.textContent = "";
+    } catch (err) {
+      if (profileResult) profileResult.textContent = `Error: ${err.message}`;
+    }
+  }
+
+  if (profileForm && saveProfileBtn) {
+    const runWithProfileLoading = withButtonLoading(saveProfileBtn, "Save Profile", "Saving...");
+    if (profileAvatarPreview && profileAvatarFallback) {
+      profileAvatarPreview.addEventListener("error", () => {
+        profileAvatarPreview.hidden = true;
+        profileAvatarFallback.hidden = false;
+      });
+    }
+
+    [profileFirstName, profileLastName, profilePictureUrl, profilePlan, profilePlanStatus, profilePlanExpiry]
+      .filter(Boolean)
+      .forEach((element) => {
+        element.addEventListener("input", () => {
+          setProfilePreview({
+            first_name: profileFirstName?.value || "",
+            last_name: profileLastName?.value || "",
+            email: profileEmail?.value || "",
+            profile_picture_url: profilePictureUrl?.value || "",
+            subscription_plan: profilePlan?.value || "",
+            subscription_status: profilePlanStatus?.value || "active",
+            subscription_expires_on: profilePlanExpiry?.value || "",
+          });
+        });
+      });
+
+    profileForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const formData = new FormData(profileForm);
+      const payload = {
+        first_name: String(formData.get("first_name") || "").trim(),
+        last_name: String(formData.get("last_name") || "").trim(),
+        profile_picture_url: String(formData.get("profile_picture_url") || "").trim(),
+        subscription_plan: String(formData.get("subscription_plan") || "").trim(),
+        subscription_status: String(formData.get("subscription_status") || "").trim(),
+        subscription_expires_on: String(formData.get("subscription_expires_on") || "").trim(),
+      };
+      try {
+        const data = await runWithProfileLoading(() =>
+          fetchJSON("/dashboard/profile-data/", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRFToken": csrfToken,
+            },
+            body: JSON.stringify(payload),
+          })
+        );
+        applyProfileFormData(data);
+        if (profileResult) profileResult.textContent = String(data.message || "Profile updated.");
+        showAppToast(String(data.message || "Profile updated successfully."), "success");
+      } catch (err) {
+        if (profileResult) profileResult.textContent = `Error: ${err.message}`;
+        showAppToast(`Profile update failed: ${err.message}`, "error");
+      }
+    });
+
+    loadProfileData();
   }
 
   const fetchInsightsBtn = document.getElementById("fetchInsightsBtn");

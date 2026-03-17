@@ -8,6 +8,8 @@ from django.contrib.auth.views import LoginView
 from django.core.cache import cache
 from django.shortcuts import redirect, render
 
+from .models import UserProfile
+
 
 class AdminLoginView(LoginView):
     template_name = "accounts/login.html"
@@ -145,15 +147,40 @@ def google_signup_callback(request):
 
     user_model = get_user_model()
     user = user_model.objects.filter(email__iexact=email).first() or user_model.objects.filter(username=email).first()
+    first_name = str(profile.get("given_name") or "").strip()
+    last_name = str(profile.get("family_name") or "").strip()
+    profile_picture_url = str(profile.get("picture") or "").strip()
     if not user:
         username = email
         if user_model.objects.filter(username=username).exists():
             username = _build_unique_username_from_email(email)
-        first_name = str(profile.get("given_name") or "").strip()
-        last_name = str(profile.get("family_name") or "").strip()
         user = user_model(username=username, email=email, first_name=first_name, last_name=last_name)
         user.set_unusable_password()
         user.save()
+    else:
+        changed = False
+        if first_name and user.first_name != first_name:
+            user.first_name = first_name
+            changed = True
+        if last_name and user.last_name != last_name:
+            user.last_name = last_name
+            changed = True
+        if changed:
+            user.save(update_fields=["first_name", "last_name"])
+
+    user_profile, _ = UserProfile.objects.get_or_create(user=user)
+    profile_changed = False
+    if first_name and user_profile.first_name != first_name:
+        user_profile.first_name = first_name
+        profile_changed = True
+    if last_name and user_profile.last_name != last_name:
+        user_profile.last_name = last_name
+        profile_changed = True
+    if profile_picture_url and user_profile.profile_picture_url != profile_picture_url:
+        user_profile.profile_picture_url = profile_picture_url
+        profile_changed = True
+    if profile_changed:
+        user_profile.save(update_fields=["first_name", "last_name", "profile_picture_url", "updated_at"])
 
     login(request, user, backend="django.contrib.auth.backends.ModelBackend")
     return redirect("dashboard:home")
