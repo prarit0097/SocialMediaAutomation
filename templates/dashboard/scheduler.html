@@ -32,6 +32,9 @@
     <form id="scheduleForm" class="form-grid">
       {% csrf_token %}
       <label>Account ID<input type="number" name="account_id" required></label>
+      <label>Page Name (auto from Account ID)
+        <input type="text" name="account_page_name" id="scheduleAccountPageName" readonly placeholder="Type/select Account ID to view page name">
+      </label>
       <label>Platform
         <select name="platform" required>
           <option value="facebook">Facebook</option>

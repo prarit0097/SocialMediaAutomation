@@ -991,8 +991,76 @@
     const prefillPlatform = scheduleParams.get("platform");
     const accountIdInput = scheduleForm.querySelector("[name='account_id']");
     const platformInput = scheduleForm.querySelector("[name='platform']");
+    const pageNameInput = document.getElementById("scheduleAccountPageName");
+    const schedulerAccountNameMap = new Map();
+    let schedulerAccountMapLoaded = false;
+
+    const platformDisplay = (value) => {
+      const normalized = String(value || "").toLowerCase();
+      if (normalized === "instagram" || normalized === "ig") return "Instagram";
+      if (normalized === "facebook" || normalized === "fb") return "Facebook";
+      return normalized ? normalized.toUpperCase() : "Profile";
+    };
+
+    const setSchedulerPageName = (name, accountId) => {
+      if (!pageNameInput) return;
+      const safeName = String(name || "").trim();
+      if (!accountId) {
+        pageNameInput.value = "";
+        pageNameInput.placeholder = "Type/select Account ID to view page name";
+        return;
+      }
+      if (safeName) {
+        pageNameInput.value = safeName;
+        return;
+      }
+      pageNameInput.value = "";
+      pageNameInput.placeholder = "Account ID found nahi hua. Connected Accounts me check karein.";
+    };
+
+    const loadSchedulerAccountMap = async () => {
+      if (schedulerAccountMapLoaded) return;
+      try {
+        const rows = await fetchJSON("/api/accounts/");
+        if (Array.isArray(rows)) {
+          rows.forEach((row) => {
+            const accountId = Number(row.id);
+            if (!accountId || Number.isNaN(accountId)) return;
+            const baseName = cleanProfileName(row.page_name);
+            const platformText = platformDisplay(row.platform);
+            schedulerAccountNameMap.set(accountId, `${baseName} (${platformText})`);
+          });
+        }
+        schedulerAccountMapLoaded = true;
+      } catch (err) {
+        schedulerAccountMapLoaded = false;
+      }
+    };
+
+    const refreshSchedulerPageName = async () => {
+      if (!accountIdInput) return;
+      const accountId = Number(accountIdInput.value);
+      if (!accountId || Number.isNaN(accountId)) {
+        setSchedulerPageName("", null);
+        return;
+      }
+      if (!schedulerAccountMapLoaded) {
+        await loadSchedulerAccountMap();
+      }
+      setSchedulerPageName(schedulerAccountNameMap.get(accountId) || "", accountId);
+    };
+
     if (accountIdInput && prefillAccountId) accountIdInput.value = prefillAccountId;
     if (platformInput && prefillPlatform) platformInput.value = prefillPlatform;
+    if (accountIdInput) {
+      accountIdInput.addEventListener("input", () => {
+        refreshSchedulerPageName();
+      });
+      accountIdInput.addEventListener("change", () => {
+        refreshSchedulerPageName();
+      });
+    }
+    refreshSchedulerPageName();
 
     const scheduleSubmitBtn = scheduleForm.querySelector("button[type='submit']");
     const runWithScheduleLoading = withButtonLoading(scheduleSubmitBtn, "Schedule Post", "Scheduling...");
