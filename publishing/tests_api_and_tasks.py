@@ -342,6 +342,9 @@ class PublishingTaskTests(TestCase):
 
         mock_retry.assert_called_once()
         self.assertGreaterEqual(mock_retry.call_args.kwargs["countdown"], 90)
+        self.post.refresh_from_db()
+        self.assertEqual(self.post.status, POST_STATUS_PENDING)
+        self.assertIn("Auto-retry in", self.post.error_message)
 
 
 class PublishingServiceTests(TestCase):

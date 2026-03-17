@@ -105,6 +105,12 @@ def publish_post_task(self, post_id: int):
             countdown = min(1800, 2 ** attempts * 90)
         else:
             countdown = min(900, 2 ** attempts * 30)
+        post.status = POST_STATUS_PENDING
+        post.error_message = (
+            f"Temporary Meta delay/throttle. Auto-retry in {countdown}s. "
+            f"Last error: {exc}"
+        )
+        post.save(update_fields=["status", "error_message", "updated_at"])
         logger.warning("transient error post id=%s retry_in=%s", post.id, countdown)
         raise self.retry(exc=exc, countdown=countdown)
     except MetaPermanentError as exc:
