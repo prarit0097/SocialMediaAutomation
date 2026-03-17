@@ -2,11 +2,13 @@ import logging
 from datetime import timedelta
 
 from celery import shared_task
+from django.conf import settings
 from django.db import DatabaseError, transaction
 from django.core.cache import cache
 from django.utils import timezone
 
 from core.constants import (
+    INSTAGRAM,
     POST_STATUS_FAILED,
     POST_STATUS_PENDING,
     POST_STATUS_PROCESSING,
@@ -18,6 +20,7 @@ from .models import ScheduledPost
 from .services import is_invalid_token_error, publish_scheduled_post, token_reconnect_message
 
 logger = logging.getLogger("publishing")
+IG_PUBLISH_LANE_LOCK_KEY = "publishing:ig_publish_lane"
 
 
 def _get_due_posts(batch_size: int = 20) -> list[ScheduledPost]:
@@ -71,6 +74,7 @@ def publish_post_task(self, post_id: int):
     if not cache.add(lock_key, timezone.now().isoformat(), timeout=600):
         return {"status": "locked", "post_id": post_id}
 
+    ig_lane_locked = False
     try:
         post = ScheduledPost.objects.select_related("account").filter(id=post_id).first()
         if not post:
@@ -84,6 +88,20 @@ def publish_post_task(self, post_id: int):
             return {"status": "already_failed", "post_id": post.id}
         if post.status not in {POST_STATUS_PENDING, POST_STATUS_PROCESSING}:
             return {"status": "skipped_state", "post_id": post.id, "state": post.status}
+
+        if post.platform == INSTAGRAM:
+            lane_ttl = max(120, int(getattr(settings, "IG_PUBLISH_LANE_TTL_SECONDS", 420)))
+            lane_retry = max(30, int(getattr(settings, "IG_PUBLISH_LANE_RETRY_SECONDS", 60)))
+            ig_lane_locked = cache.add(IG_PUBLISH_LANE_LOCK_KEY, f"{post.id}:{timezone.now().isoformat()}", timeout=lane_ttl)
+            if not ig_lane_locked:
+                post.status = POST_STATUS_PENDING
+                post.scheduled_for = timezone.now() + timedelta(seconds=lane_retry)
+                post.error_message = (
+                    f"Instagram publish lane is busy. Auto-retry in {lane_retry}s to reduce Meta throttle risk."
+                )
+                post.save(update_fields=["status", "scheduled_for", "error_message", "updated_at"])
+                logger.info("instagram lane busy post id=%s retry_in=%s", post.id, lane_retry)
+                return {"status": "requeued_lane_busy", "post_id": post.id, "retry_in": lane_retry}
 
         external_post_id = publish_scheduled_post(post)
         post.status = POST_STATUS_PUBLISHED
@@ -127,5 +145,7 @@ def publish_post_task(self, post_id: int):
         post.save(update_fields=["status", "error_message", "updated_at"])
         logger.exception("unexpected publish failure post id=%s", post.id)
     finally:
+        if ig_lane_locked:
+            cache.delete(IG_PUBLISH_LANE_LOCK_KEY)
         cache.delete(lock_key)
 

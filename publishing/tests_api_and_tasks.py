@@ -348,6 +348,34 @@ class PublishingTaskTests(TestCase):
         self.assertIn("Auto-retry in", self.post.error_message)
         self.assertGreater(self.post.scheduled_for, before_schedule)
 
+    @override_settings(IG_PUBLISH_LANE_RETRY_SECONDS=45)
+    @patch("publishing.tasks.publish_scheduled_post")
+    def test_publish_post_task_requeues_when_instagram_lane_busy(self, mock_publish):
+        ig_account = ConnectedAccount.objects.create(
+            platform=INSTAGRAM,
+            page_id="17890001",
+            page_name="IG Page",
+            ig_user_id="17890001",
+            access_token="token",
+        )
+        ig_post = ScheduledPost.objects.create(
+            account=ig_account,
+            platform=INSTAGRAM,
+            message="Hello",
+            media_url="https://example.com/a.jpg",
+            scheduled_for=timezone.now(),
+            status="processing",
+        )
+        cache.set("publishing:ig_publish_lane", "busy", timeout=60)
+
+        result = publish_post_task(ig_post.id)
+
+        self.assertEqual(result.get("status"), "requeued_lane_busy")
+        mock_publish.assert_not_called()
+        ig_post.refresh_from_db()
+        self.assertEqual(ig_post.status, POST_STATUS_PENDING)
+        self.assertIn("Instagram publish lane is busy", ig_post.error_message)
+
 
 class PublishingServiceTests(TestCase):
     def setUp(self):

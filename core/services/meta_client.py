@@ -189,9 +189,15 @@ class MetaClient:
         self,
         creation_id: str,
         page_access_token: str,
-        timeout: int = 180,
-        poll_interval: int = 5,
+        timeout: int | None = None,
+        poll_interval: int | None = None,
     ) -> dict:
+        timeout = timeout if isinstance(timeout, int) and timeout > 0 else max(120, int(getattr(settings, "META_IG_READY_TIMEOUT", 240)))
+        poll_interval = (
+            poll_interval
+            if isinstance(poll_interval, int) and poll_interval > 0
+            else max(5, int(getattr(settings, "META_IG_READY_POLL_INTERVAL", 12)))
+        )
         started = time.monotonic()
         latest_payload = {}
         latest_transient_error: MetaTransientError | None = None
@@ -207,7 +213,7 @@ class MetaClient:
                 latest_transient_error = None
             except MetaTransientError as exc:
                 latest_transient_error = exc
-                time.sleep(min(max(poll_interval + 1, 3), 12))
+                time.sleep(min(max(poll_interval + 2, 5), 20))
                 continue
             status_code = str(latest_payload.get("status_code") or "").upper()
             status = str(latest_payload.get("status") or "").upper()
