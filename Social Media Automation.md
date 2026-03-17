@@ -127,6 +127,7 @@ What happens:
 - publishing retries now use longer cooldown for Graph rate-limit errors to reduce repeated burst failures during multi-profile scheduling
 - failed Instagram retries also re-apply IG media optimization before requeueing
 - after a successful schedule action, UI shows an immediate toast notification with the scheduled local date-time
+- after successful scheduling, Create Scheduled Post form auto-clears so operators can start the next post without old field confusion
 - force-refresh post-stat calls retry transient Meta/network timeouts and backfill missing values from latest cached snapshot when possible
 
 Common failure pattern:

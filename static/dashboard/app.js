@@ -1108,6 +1108,8 @@
         } else {
           showAppToast("Your post is scheduled successfully.", "success");
         }
+        scheduleForm.reset();
+        setSchedulerPageName("", null);
         await loadScheduledPosts();
       } catch (err) {
         resultEl.textContent = `Error: ${err.message}`;
