@@ -126,6 +126,7 @@ What happens:
 - transient publish errors no longer stay stuck as long `processing`; row is moved back to `pending` with visible auto-retry message/countdown context
 - transient publish retries now also move `scheduled_for` forward by the retry cooldown, preventing immediate re-pick loops each minute
 - Instagram publish now uses a global lane lock to reduce parallel IG bursts; if lane is busy, post is re-queued with short delay instead of hammering Meta and hitting app-level throttles
+- when Instagram gets app-level throttle (`code=4`), scheduler now sets a temporary global IG cooldown window so due IG jobs are held briefly instead of being picked repeatedly into processing loops
 - Instagram media-ready polling now uses configurable slower defaults (`META_IG_READY_TIMEOUT`, `META_IG_READY_POLL_INTERVAL`) to reduce Graph status-check pressure
 - Instagram media-ready polling now tolerates transient API failures/rate limits with backoff and continues polling instead of immediate hard-fail
 - publishing retries now use longer cooldown for Graph rate-limit errors to reduce repeated burst failures during multi-profile scheduling

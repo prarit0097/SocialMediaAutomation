@@ -21,6 +21,11 @@ from .services import is_invalid_token_error, publish_scheduled_post, token_reco
 
 logger = logging.getLogger("publishing")
 IG_PUBLISH_LANE_LOCK_KEY = "publishing:ig_publish_lane"
+IG_GLOBAL_COOLDOWN_KEY = "publishing:ig_global_cooldown"
+
+
+def _is_ig_globally_throttled() -> bool:
+    return bool(cache.get(IG_GLOBAL_COOLDOWN_KEY))
 
 
 def _get_due_posts(batch_size: int = 20) -> list[ScheduledPost]:
@@ -30,6 +35,8 @@ def _get_due_posts(batch_size: int = 20) -> list[ScheduledPost]:
             status=POST_STATUS_PENDING,
             scheduled_for__lte=now,
         )
+        if _is_ig_globally_throttled():
+            base_qs = base_qs.exclude(platform=INSTAGRAM)
         due_posts = list(base_qs.order_by("scheduled_for")[:batch_size])
 
         for post in due_posts:
@@ -47,12 +54,13 @@ def process_due_posts(run_inline: bool = False):
     except DatabaseError:
         # Fallback for DBs that do not support skip_locked.
         now = timezone.now()
-        due_posts = list(
-            ScheduledPost.objects.filter(
-                status=POST_STATUS_PENDING,
-                scheduled_for__lte=now,
-            ).order_by("scheduled_for")[:20]
+        fallback_qs = ScheduledPost.objects.filter(
+            status=POST_STATUS_PENDING,
+            scheduled_for__lte=now,
         )
+        if _is_ig_globally_throttled():
+            fallback_qs = fallback_qs.exclude(platform=INSTAGRAM)
+        due_posts = list(fallback_qs.order_by("scheduled_for")[:20])
         for post in due_posts:
             post.status = POST_STATUS_PROCESSING
             post.error_message = ""
@@ -123,6 +131,8 @@ def publish_post_task(self, post_id: int):
         if "code=4" in message or "code=17" in message or "code=32" in message or "code=613" in message:
             # Graph app/page rate-limit needs longer cool-down.
             countdown = min(1800, 2 ** attempts * 90)
+            if post.platform == INSTAGRAM:
+                cache.set(IG_GLOBAL_COOLDOWN_KEY, timezone.now().isoformat(), timeout=countdown)
         else:
             countdown = min(900, 2 ** attempts * 30)
         post.status = POST_STATUS_PENDING

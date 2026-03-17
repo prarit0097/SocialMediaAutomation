@@ -21,7 +21,7 @@ from integrations.models import ConnectedAccount
 from publishing.models import ScheduledPost
 from publishing.media_utils import Image as PIL_IMAGE
 from publishing.services import publish_scheduled_post
-from publishing.tasks import publish_post_task
+from publishing.tasks import _get_due_posts, publish_post_task
 
 
 class PublishingApiTests(TestCase):
@@ -348,6 +348,32 @@ class PublishingTaskTests(TestCase):
         self.assertIn("Auto-retry in", self.post.error_message)
         self.assertGreater(self.post.scheduled_for, before_schedule)
 
+    @patch("publishing.tasks.publish_post_task.retry")
+    @patch("publishing.tasks.publish_scheduled_post")
+    def test_publish_post_task_sets_global_ig_cooldown_on_code4(self, mock_publish, mock_retry):
+        ig_account = ConnectedAccount.objects.create(
+            platform=INSTAGRAM,
+            page_id="17890003",
+            page_name="IG Page 3",
+            ig_user_id="17890003",
+            access_token="token",
+        )
+        ig_post = ScheduledPost.objects.create(
+            account=ig_account,
+            platform=INSTAGRAM,
+            message="IG hello",
+            media_url="https://example.com/a.jpg",
+            scheduled_for=timezone.now(),
+            status="processing",
+        )
+        mock_publish.side_effect = MetaTransientError("(#4) Application request limit reached (code=4)")
+        mock_retry.side_effect = RuntimeError("retry-invoked")
+
+        with self.assertRaises(RuntimeError):
+            publish_post_task(ig_post.id)
+
+        self.assertTrue(bool(cache.get("publishing:ig_global_cooldown")))
+
     @override_settings(IG_PUBLISH_LANE_RETRY_SECONDS=45)
     @patch("publishing.tasks.publish_scheduled_post")
     def test_publish_post_task_requeues_when_instagram_lane_busy(self, mock_publish):
@@ -375,6 +401,37 @@ class PublishingTaskTests(TestCase):
         ig_post.refresh_from_db()
         self.assertEqual(ig_post.status, POST_STATUS_PENDING)
         self.assertIn("Instagram publish lane is busy", ig_post.error_message)
+
+    def test_get_due_posts_skips_instagram_when_global_cooldown_set(self):
+        ig_account = ConnectedAccount.objects.create(
+            platform=INSTAGRAM,
+            page_id="17890002",
+            page_name="IG Page 2",
+            ig_user_id="17890002",
+            access_token="token",
+        )
+        fb_due = ScheduledPost.objects.create(
+            account=self.account,
+            platform=FACEBOOK,
+            message="fb due",
+            scheduled_for=timezone.now() - timedelta(minutes=1),
+            status=POST_STATUS_PENDING,
+        )
+        ig_due = ScheduledPost.objects.create(
+            account=ig_account,
+            platform=INSTAGRAM,
+            message="ig due",
+            media_url="https://example.com/a.jpg",
+            scheduled_for=timezone.now() - timedelta(minutes=1),
+            status=POST_STATUS_PENDING,
+        )
+        cache.set("publishing:ig_global_cooldown", "throttled", timeout=60)
+
+        due_posts = _get_due_posts(batch_size=10)
+        due_ids = {post.id for post in due_posts}
+
+        self.assertIn(fb_due.id, due_ids)
+        self.assertNotIn(ig_due.id, due_ids)
 
 
 class PublishingServiceTests(TestCase):
