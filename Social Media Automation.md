@@ -478,6 +478,11 @@ This project includes local MCP servers under `mcp_servers/` so Codex or future 
 - Instagram local image optimization tests are auto-skip when Pillow (`PIL`) is not installed.
 - publishing task tests clear cache in setup to avoid stale lock-key side effects between tests.
 
+## Recent UI Performance Update
+- Top navigation logo now uses a lightweight optimized icon asset (`postzyo-icon-optimized.png`) instead of the previous heavy lockup image.
+- Logo loading priority is explicitly raised in base template (`preload` + eager image hints) so branding appears faster on first paint.
+- Favicon was regenerated from the optimized icon to keep header assets consistent and lighter.
+
 ## Future Direction
 This project is not only a scheduler and dashboard. It is becoming a stored-data layer for future analytics tooling.
 
