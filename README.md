@@ -158,6 +158,28 @@ Services:
 - redis
 - nginx
 
+### Production on VPS (recommended for KVM4+)
+Use the production compose file that keeps app services internal and exposes only one local app port for host Nginx:
+
+```bash
+docker compose -f deploy/prod/docker-compose.prod.yml up -d --build
+```
+
+Quick one-time VPS bootstrap (Ubuntu, root):
+
+```bash
+cd /opt
+git clone https://github.com/prarit0097/SocialMediaAutomation.git postzyo
+cd postzyo
+bash deploy/prod/install_on_vps.sh postzyo.com
+```
+
+Routine update after new commits:
+
+```bash
+bash deploy/prod/update_on_vps.sh
+```
+
 ## 10) Notes
 - Existing legacy Node directories (`backend/`, `frontend/`) are not used by this Django app.
 - For production, complete Meta App Review for required permissions.

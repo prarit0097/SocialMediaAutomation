@@ -483,6 +483,25 @@ This project includes local MCP servers under `mcp_servers/` so Codex or future 
 - Logo loading priority is explicitly raised in base template (`preload` + eager image hints) so branding appears faster on first paint.
 - Favicon was regenerated from the optimized icon to keep header assets consistent and lighter.
 
+## Production Deployment Pack (KVM4 / multi-app friendly)
+- Added `deploy/prod/docker-compose.prod.yml` for VPS production runs:
+  - keeps Postgres/Redis private inside Docker network
+  - serves Django via Gunicorn + app Nginx
+  - binds app Nginx on loopback (`127.0.0.1:${APP_INTERNAL_PORT}`) so host reverse proxy can route multiple apps safely on one VPS
+  - includes persistent Docker volumes for DB, Redis AOF, static, and media
+- Added `deploy/prod/install_on_vps.sh`:
+  - installs Docker, Nginx, Certbot, and Git on Ubuntu VPS
+  - clones/updates repo under `/opt/postzyo`
+  - writes host Nginx site for domain proxying
+  - runs Docker production stack, migrations, collectstatic
+  - attempts SSL certificate issuance with Certbot
+- Added `deploy/prod/update_on_vps.sh`:
+  - pulls latest code and performs rolling update (`up -d --build`, migrate, collectstatic)
+- Upgraded app Nginx config (`deploy/nginx/nginx.conf`) to:
+  - support larger upload limits
+  - directly serve `/static/` and `/media/`
+  - include safer proxy timeout settings for longer publish/insight requests
+
 ## Future Direction
 This project is not only a scheduler and dashboard. It is becoming a stored-data layer for future analytics tooling.
 
