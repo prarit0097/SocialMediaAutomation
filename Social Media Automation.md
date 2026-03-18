@@ -47,6 +47,7 @@ The Home page is now the workspace setup + navigation surface.
 What it shows:
 - Meta App Configuration form for `META_APP_ID`, `META_APP_SECRET`, and `META_REDIRECT_URI`
 - masked secret state so operators can confirm whether a secret is already configured
+- redesigned control-center style hero + core outcomes cards mapped to actual project workflow
 - expanded child-friendly setup guide section (collapsible) with copy/paste mapping, checkpoints, troubleshooting, required scopes, and connect/verify steps
 - Part 1, 2, 3 are now extra-detailed with click-by-click beginner instructions (login, create app, copy/paste mapping, save + verify flow)
 - Part 4 in setup guide now explains where to enable scopes and what each scope does in simple language
@@ -54,6 +55,7 @@ What it shows:
 - quick actions to Accounts, Scheduler, Insights, and AI Insights
 - quick actions to Accounts, Scheduler, Planning, Insights, AI Insights, and Profile
 - quick actions to Accounts, Scheduler, Planning, Insights, AI Insights, Profile, and Subscription
+- operational guarantees section that highlights queue safety, snapshot strategy, and token-safe execution model
 
 ### Subscription
 The Subscription page is the billing workspace (`/dashboard/subscription/`).

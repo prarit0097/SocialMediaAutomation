@@ -1,26 +1,58 @@
-{% extends 'base.html' %}
+﻿{% extends 'base.html' %}
 {% block content %}
-<section class="card hero-card hero-split">
+<section class="card hero-card hero-split home-hero-redesign">
   <div class="hero-main">
-    <p class="eyebrow">Operations Dashboard</p>
-    <h1>Run publishing, account control, and insights from one workspace.</h1>
-    <p class="hero-copy">Manage connected Facebook Pages and Instagram accounts with a cleaner flow from onboarding to scheduling to performance review.</p>
+    <p class="eyebrow">Postzyo Control Center</p>
+    <h1>Set up Meta credentials once, then run connected publishing, insights, and AI growth from one workspace.</h1>
+    <p class="hero-copy">This home page follows the real project flow: configure app keys, connect assets, schedule content, monitor performance, and generate profile-wise AI recommendations from stored snapshots.</p>
     <div class="hero-pill-row">
-      <span class="hero-pill">Connected accounts</span>
-      <span class="hero-pill">Local-time scheduling</span>
-      <span class="hero-pill">Cross-platform insights</span>
+      <span class="hero-pill">Meta OAuth setup</span>
+      <span class="hero-pill">Scheduler + queue</span>
+      <span class="hero-pill">Snapshot-backed insights</span>
+      <span class="hero-pill">AI profile reports</span>
     </div>
   </div>
   <div class="hero-rail">
     <article class="hero-stat">
-      <span class="hero-stat-label">Workflow</span>
-      <strong>Connect -> Schedule -> Analyze</strong>
-      <p>Move between setup, publishing, and analytics without switching tools.</p>
+      <span class="hero-stat-label">Live workflow</span>
+      <strong>Configure -> Connect -> Publish -> Analyze -> Improve</strong>
+      <p>Every module is linked to the same account model, so operators can move quickly without data mismatch.</p>
     </article>
     <article class="hero-stat">
-      <span class="hero-stat-label">Priority</span>
-      <strong>Operational clarity</strong>
-      <p>Status notes, publishing queues, and page-level comparisons stay visible.</p>
+      <span class="hero-stat-label">Automation depth</span>
+      <strong>Daily heavy refresh at 03:00 AM</strong>
+      <p>Stored snapshots reduce repeated live API calls and power both Insights and AI Insights pages.</p>
+    </article>
+  </div>
+</section>
+
+<section class="card home-ops-grid-shell">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">Core Outcomes</p>
+      <h2>What this app is optimized to do daily.</h2>
+    </div>
+  </div>
+  <div class="home-ops-grid">
+    <article class="home-ops-card">
+      <p class="tile-kicker">1. Account control</p>
+      <h3>Connect FB Pages + linked IG profiles</h3>
+      <p>Meta OAuth flow stores encrypted page tokens and keeps connectable assets visible in Accounts.</p>
+    </article>
+    <article class="home-ops-card">
+      <p class="tile-kicker">2. Publishing engine</p>
+      <h3>Schedule FB/IG/both with queue safety</h3>
+      <p>Celery beat + worker publish due jobs, retries transient Meta errors, and avoids stuck processing loops.</p>
+    </article>
+    <article class="home-ops-card">
+      <p class="tile-kicker">3. Performance layer</p>
+      <h3>Cross-platform insights + post stats</h3>
+      <p>Combined FB + IG insight responses show totals, comparison rows, and newest-first published posts.</p>
+    </article>
+    <article class="home-ops-card">
+      <p class="tile-kicker">4. AI growth layer</p>
+      <h3>Profile-wise recommendations</h3>
+      <p>AI reports use stored snapshots first, then generate practical strategy, risks, and targeted next steps.</p>
     </article>
   </div>
 </section>
@@ -28,8 +60,8 @@
 <section class="card meta-config-shell">
   <div class="meta-config-main">
     <p class="eyebrow">Meta App Configuration</p>
-    <h2>Connect this workspace with your own Meta app credentials.</h2>
-    <p class="section-copy">Set your app credentials once from UI. Values are saved in project <code>.env</code> so reconnect flow works without code edits.</p>
+    <h2>Connect this workspace with your Meta app credentials.</h2>
+    <p class="section-copy">Save these values once from UI. Postzyo writes them to project <code>.env</code> so all OAuth and token flows use current keys without manual code edits.</p>
 
     <form id="metaAppConfigForm" class="form-grid meta-config-form">
       <label for="metaAppIdInput">META_APP_ID
@@ -60,19 +92,19 @@
 
   <aside class="meta-config-rail">
     <article class="hero-stat">
-      <span class="hero-stat-label">Why This Matters</span>
-      <strong>Multi-user friendly setup</strong>
-      <p>Every operator can set app credentials from dashboard, so onboarding does not depend on editing source code.</p>
+      <span class="hero-stat-label">Expected Result</span>
+      <strong>Accounts page starts showing your selected FB + IG rows</strong>
+      <p>After save, run Connect Facebook + Instagram and Refresh List to sync selected assets.</p>
     </article>
     <article class="hero-stat">
-      <span class="hero-stat-label">Applied Scope</span>
-      <strong>OAuth + token operations</strong>
-      <p>New values are used for Meta connect flow and token validation checks after save.</p>
+      <span class="hero-stat-label">Validation Layer</span>
+      <strong>Token health + stale row protection</strong>
+      <p>App monitors token validity and blocks stale account rows from scheduling to avoid runtime publish failures.</p>
     </article>
     <article class="hero-stat meta-setup-cta">
-      <span class="hero-stat-label">Setup Guide</span>
-      <strong>Need step-by-step help?</strong>
-      <p>Open the compact Meta setup guide below and complete setup in sequence.</p>
+      <span class="hero-stat-label">Next Step</span>
+      <strong>Follow Setup Guide below</strong>
+      <p>Use the guide as a checklist. Complete each part before moving to scheduling.</p>
       <a class="inline-link-btn muted" href="#metaSetupGuide">Open Setup Guide</a>
     </article>
   </aside>
@@ -82,38 +114,35 @@
   <div class="section-head">
     <div>
       <p class="eyebrow">Setup Guide</p>
-      <h2>Get Meta credentials and connect profiles without confusion.</h2>
-      <p class="section-copy">Read this like a checklist. Do one step, then move to next step. If each checkpoint matches, setup is correct.</p>
+      <h2>Get Meta credentials and connect profiles step by step.</h2>
+      <p class="section-copy">Read in order. If each checkpoint matches, your setup is production-ready for Postzyo workflows.</p>
     </div>
   </div>
 
   <div class="meta-guide-intro">
     <div class="meta-guide-pill"><strong>Goal:</strong> Fill 3 fields correctly - <code>META_APP_ID</code>, <code>META_APP_SECRET</code>, <code>META_REDIRECT_URI</code></div>
-    <div class="meta-guide-pill"><strong>Need:</strong> Facebook account with access to your Meta app and pages</div>
-    <div class="meta-guide-pill"><strong>Result:</strong> Accounts page starts showing your FB + IG profiles</div>
+    <div class="meta-guide-pill"><strong>Need:</strong> Facebook account with admin/full control on target pages</div>
+    <div class="meta-guide-pill"><strong>Result:</strong> Connected Accounts + Scheduler + Insights flows become usable</div>
   </div>
 
   <div class="meta-guide-grid">
     <article class="meta-guide-card">
       <details class="meta-guide-details" open>
-        <summary>Part 1: Create Meta App (what to click)</summary>
+        <summary>Part 1: Create Meta App (exact clicks)</summary>
         <ol class="meta-howto-list">
-          <li>Chrome me ye website kholo: <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener noreferrer">developers.facebook.com/apps</a>.</li>
-          <li>Apne Facebook account se login karo (same account jisme aap pages/profiles manage karte ho).</li>
-          <li>Top-right me <strong>Create App</strong> button dabao.</li>
-          <li>Meta poochega app kis kaam ke liye hai: <strong>Business</strong> choose karo.</li>
-          <li>App ka naam do (example: <code>Postzyo Business App</code>) aur create complete karo.</li>
-          <li>Ab app dashboard open hoga. Left side me products me <strong>Facebook Login</strong> add karo.</li>
-          <li><strong>Facebook Login -> Settings</strong> kholo aur <strong>Valid OAuth Redirect URIs</strong> box dhoondo.</li>
-          <li>Wahan apna callback URL daalo (example: <code>https://your-domain/auth/meta/callback</code>) aur save karo.</li>
-          <li>Phir <strong>App Settings -> Basic</strong> kholo. Yahi screen se App ID aur App Secret milta hai.</li>
+          <li>Open: <a href="https://developers.facebook.com/apps/" target="_blank" rel="noopener noreferrer">developers.facebook.com/apps</a>.</li>
+          <li>Login with same Facebook account that manages your pages/profiles.</li>
+          <li>Click <strong>Create App</strong>, choose use case <strong>Business</strong>.</li>
+          <li>Name your app (example: <code>Postzyo Business App</code>) and create it.</li>
+          <li>Add product <strong>Facebook Login</strong>.</li>
+          <li>Open <strong>Facebook Login -> Settings</strong> and add callback in <strong>Valid OAuth Redirect URIs</strong>.</li>
+          <li>Open <strong>App Settings -> Basic</strong> to copy <strong>App ID</strong> and <strong>App Secret</strong>.</li>
         </ol>
-        <p class="meta-check-note"><strong>Checkpoint:</strong> Aapko ek screen dikhni chahiye jahan <strong>App ID</strong> visible ho aur <strong>App Secret</strong> ko Show kar sakte ho.</p>
+        <p class="meta-check-note"><strong>Checkpoint:</strong> You can clearly see App ID and can reveal App Secret in Meta dashboard.</p>
       </details>
 
       <details class="meta-guide-details" open>
-        <summary>Part 2: Copy -> Paste map (exact)</summary>
-        <p class="meta-check-note"><strong>Rule:</strong> Jo value Meta me hai, wahi value yahan paste karo. Extra space ya typo mat karo.</p>
+        <summary>Part 2: Copy -> Paste map (do not change values)</summary>
         <div class="meta-map-table">
           <div class="meta-map-row">
             <span class="meta-map-left">Copy from Meta: <strong>App ID</strong></span>
@@ -126,47 +155,31 @@
             <span class="meta-map-right">Paste in dashboard: <code>META_APP_SECRET</code></span>
           </div>
           <div class="meta-map-row">
-            <span class="meta-map-left">Use your public URL + callback path</span>
+            <span class="meta-map-left">Use public domain + callback path</span>
             <span class="meta-map-arrow">-></span>
             <span class="meta-map-right">Paste in dashboard: <code>META_REDIRECT_URI</code></span>
           </div>
         </div>
-        <ol class="meta-howto-list">
-          <li>Meta app basic screen se <strong>App ID</strong> copy karo -> is Home form me <code>META_APP_ID</code> me paste karo.</li>
-          <li>Wahi screen par <strong>Show</strong> click karke <strong>App Secret</strong> copy karo -> <code>META_APP_SECRET</code> me paste karo.</li>
-          <li>Apna public domain + callback path banao -> <code>META_REDIRECT_URI</code> me paste karo.</li>
-          <li>Important: Redirect URI ka same exact value Meta ke Facebook Login settings me bhi hona chahiye.</li>
-        </ol>
-        <p class="meta-check-note"><strong>Redirect URI example:</strong> <code>https://your-domain/auth/meta/callback</code> (https required, http se Meta login fail ho sakta hai).</p>
+        <p class="meta-check-note"><strong>Callback example:</strong> <code>https://your-domain/auth/meta/callback</code> (must be HTTPS for live use).</p>
       </details>
 
       <details class="meta-guide-details" open>
-        <summary>Part 3: Save in this dashboard</summary>
+        <summary>Part 3: Save and verify in app</summary>
         <ol class="meta-howto-list">
-          <li>Home page ke form me tino fields check karo: <code>META_APP_ID</code>, <code>META_APP_SECRET</code>, <code>META_REDIRECT_URI</code>.</li>
-          <li><strong>Save Meta Configuration</strong> button click karo.</li>
-          <li>2-3 second wait karo aur green/success message ka wait karo.</li>
-          <li>Save ke baad Accounts page me jaake <strong>Connect Facebook + Instagram</strong> click karo.</li>
-          <li>Meta popup me jitne pages/profiles chahiye, sab select karke continue karo.</li>
-          <li>Back aane ke baad <strong>Refresh List</strong> dabao taaki connected rows update ho jaye.</li>
+          <li>Fill all 3 fields on this page and click <strong>Save Meta Configuration</strong>.</li>
+          <li>Go to <strong>Accounts</strong> and click <strong>Connect Facebook + Instagram</strong>.</li>
+          <li>In Meta popup, select all required pages and IG profiles, then continue.</li>
+          <li>Back in app, click <strong>Refresh List</strong>.</li>
         </ol>
-        <p class="meta-check-note"><strong>Checkpoint:</strong> Save error-free ho, aur Accounts page me rows dikhne lage. Agar error aaye to pehle redirect URI aur App Secret dobara verify karo.</p>
+        <p class="meta-check-note"><strong>Checkpoint:</strong> Your selected assets appear in Connected Accounts table with correct IDs.</p>
       </details>
     </article>
 
     <article class="meta-guide-card">
       <details class="meta-guide-details" open>
-        <summary>Part 4: Add permissions/scopes (important)</summary>
-        <ol class="meta-howto-list">
-          <li>Meta app dashboard kholo, left menu me <strong>App Review</strong> ya <strong>Permissions and Features</strong> section me jao.</li>
-          <li>Search box me permission ka naam type karo (example: <code>pages_show_list</code>), phir <strong>Add</strong> ya <strong>Request</strong> button click karo.</li>
-          <li>Agar Meta "Advanced Access" mange, to us permission ke card me jaake access request complete karo.</li>
-          <li>Same process neeche diye gaye har scope ke liye repeat karo. Koi scope miss hua to related feature kaam nahi karega.</li>
-          <li>Sab add karne ke baad setup save karo, phir app me <strong>Connect Facebook + Instagram</strong> dobara run karo.</li>
-        </ol>
-
+        <summary>Part 4: Required permissions/scopes</summary>
         <div class="meta-scope-box">
-          <p class="meta-scope-title">Required permissions/scopes for this app</p>
+          <p class="meta-scope-title">Add these scopes in Meta app</p>
           <ul class="meta-scope-list">
             <li><code>pages_show_list</code></li>
             <li><code>pages_read_engagement</code></li>
@@ -176,55 +189,20 @@
             <li><code>instagram_basic</code></li>
             <li><code>instagram_content_publish</code></li>
             <li><code>instagram_manage_insights</code></li>
-            <li><code>business_management</code> <span>(optional but useful in some setups)</span></li>
+            <li><code>business_management</code> <span>(optional but useful)</span></li>
           </ul>
-          <p class="meta-scope-note">Note: some tutorials say <code>instagram_content_publishing</code>; this project uses <code>instagram_content_publish</code>.</p>
+          <p class="meta-scope-note">Some tutorials mention <code>instagram_content_publishing</code>; this project uses <code>instagram_content_publish</code>.</p>
         </div>
-
-        <div class="meta-scope-explain">
-          <p class="meta-scope-title">What each scope does (simple meaning)</p>
-          <ul class="meta-howto-list">
-            <li><code>pages_show_list</code> -> app ko aapke Facebook Pages ki list dikhata hai (page pick karne ke liye must).</li>
-            <li><code>pages_read_engagement</code> + <code>read_insights</code> -> page reach/likes/comments analytics read karne ke liye.</li>
-            <li><code>pages_manage_posts</code> + <code>pages_read_user_content</code> -> Facebook pe post publish karne aur post data read karne ke liye.</li>
-            <li><code>instagram_basic</code> -> connected Instagram profile ka basic data read karne ke liye.</li>
-            <li><code>instagram_content_publish</code> -> Instagram post/reel publish karne ke liye (missing hua to scheduling fail ho sakti hai).</li>
-            <li><code>instagram_manage_insights</code> -> Instagram insights (views, reach, interactions) read karne ke liye.</li>
-          </ul>
-        </div>
-
-        <div class="meta-scope-explain">
-          <p class="meta-scope-title">Quick self-check (before connect)</p>
-          <ul class="meta-howto-list">
-            <li>Kya list ke sab scopes added/enabled hain? Agar nahi, pehle complete karo.</li>
-            <li>Kya aapke FB profile ko page par admin/full-control access hai?</li>
-            <li>Kya Instagram profile Professional hai aur FB page se linked hai?</li>
-            <li>Agar sab yes hai, tabhi Connect flow run karo.</li>
-          </ul>
-        </div>
-
-        <p class="meta-check-note"><strong>Final check before connect:</strong> Required scopes + page access + IG professional link tino correct hone chahiye, warna profiles missing, token errors, ya scheduling failure aa sakti hai.</p>
+        <p class="meta-check-note"><strong>Checkpoint:</strong> Missing scope can break connect, scheduling, or insights fetch for specific profiles.</p>
       </details>
 
       <details class="meta-guide-details" open>
-        <summary>Part 5: Connect and verify profiles in app</summary>
-        <ol class="meta-howto-list">
-          <li>Go to <strong>Accounts</strong> page and click <strong>Connect Facebook + Instagram</strong>.</li>
-          <li>Permission popup me <strong>all required Facebook Pages + Instagram profiles select</strong> karo.</li>
-          <li>Back in app, click <strong>Refresh List</strong>.</li>
-          <li>Check: profiles `Connected Accounts` table me दिखनी चाहिए.</li>
-          <li>If some profiles missing: reconnect karo and Business Integration selection me un profiles ko tick karo.</li>
-        </ol>
-        <p class="meta-check-note"><strong>Profile rule:</strong> Instagram account Professional hona chahiye aur Facebook Page se linked hona chahiye (admin/editor access).</p>
-      </details>
-
-      <details class="meta-guide-details" open>
-        <summary>Quick troubleshooting (if stuck)</summary>
+        <summary>Part 5: Troubleshooting before production</summary>
         <ul class="meta-howto-list">
-          <li><strong>Save failed?</strong> Redirect URI format check karo.</li>
-          <li><strong>Profiles missing?</strong> Reconnect and select all assets in popup.</li>
-          <li><strong>Catalog only rows?</strong> Fresh reconnect + Refresh List run karo.</li>
-          <li><strong>Instagram not posting?</strong> Public HTTPS media URL and required scopes check karo.</li>
+          <li><strong>Rows missing in Connected Accounts:</strong> reconnect and reselect full asset list.</li>
+          <li><strong>Catalog-only status:</strong> run fresh connect + Refresh List with current user token.</li>
+          <li><strong>Publish failures:</strong> verify profile link (FB page + professional IG) and token health.</li>
+          <li><strong>Insights mismatch:</strong> run Force Refresh and check combined FB+IG view.</li>
         </ul>
       </details>
     </article>
@@ -235,67 +213,62 @@
   <div class="section-head">
     <div>
       <p class="eyebrow">Quick Actions</p>
-      <h2>Jump straight into the work area you need.</h2>
-      <p class="section-copy">Each panel keeps the same data model, so moving between accounts, queue management, and insights stays predictable.</p>
+      <h2>Open exactly the module you need.</h2>
+      <p class="section-copy">These are the core operational surfaces described in project guide.</p>
     </div>
   </div>
   <div class="grid two">
     <a class="tile" href="{% url 'dashboard:accounts' %}">
       <p class="tile-kicker">Account setup</p>
       <h3>Connected Accounts</h3>
-      <p>Review linked assets, refresh Meta sync state, and inspect page connectability.</p>
+      <p>Sync assets, verify merged FB_IG rows, and run force refresh safely.</p>
     </a>
     <a class="tile" href="{% url 'dashboard:scheduler' %}">
       <p class="tile-kicker">Publishing queue</p>
       <h3>Scheduler</h3>
-      <p>Prepare posts, attach media, and manage timed publishing jobs with fewer clicks.</p>
-    </a>
-    <a class="tile" href="{% url 'dashboard:insights' %}">
-      <p class="tile-kicker">Performance review</p>
-      <h3>Insights</h3>
-      <p>Compare Facebook and Instagram performance with recent post-level context.</p>
-    </a>
-    <a class="tile" href="{% url 'dashboard:ai_insights' %}">
-      <p class="tile-kicker">AI advisor</p>
-      <h3>AI Insights</h3>
-      <p>Generate profile-wise pros, gaps, and growth actions from stored insights snapshots.</p>
+      <p>Create FB/IG jobs, monitor queue states, and retry failed rows with guidance.</p>
     </a>
     <a class="tile" href="{% url 'dashboard:planning' %}">
       <p class="tile-kicker">Editorial workflow</p>
       <h3>Planning</h3>
-      <p>Build your monthly content plan with drag/drop date movement and pillar/tag organization.</p>
+      <p>Plan monthly content with drag/drop calendar and pillar/tag structure.</p>
     </a>
-    <a class="tile" href="{% url 'dashboard:profile' %}">
-      <p class="tile-kicker">User settings</p>
-      <h3>Profile</h3>
-      <p>Manage your Google-linked identity, profile photo, and current subscription status from one page.</p>
+    <a class="tile" href="{% url 'dashboard:insights' %}">
+      <p class="tile-kicker">Performance review</p>
+      <h3>Insights</h3>
+      <p>Read totals, post table, alerts, and FB vs IG comparison in one place.</p>
+    </a>
+    <a class="tile" href="{% url 'dashboard:ai_insights' %}">
+      <p class="tile-kicker">AI advisor</p>
+      <h3>AI Insights</h3>
+      <p>Generate profile-wise diagnosis and growth recommendations from stored data.</p>
     </a>
     <a class="tile" href="{% url 'dashboard:subscription' %}">
       <p class="tile-kicker">Billing</p>
       <h3>Subscription</h3>
-      <p>Choose monthly or yearly plan and complete payment securely through Razorpay checkout.</p>
+      <p>Use monthly (INR 6,000) or yearly (INR 70,000) plan checkout with Razorpay.</p>
     </a>
   </div>
 </section>
 
 <section class="card split-highlights">
   <article class="highlight-panel">
-    <p class="eyebrow">What This Workspace Optimizes</p>
-    <h2>Faster day-to-day operations, not dashboard noise.</h2>
-    <p class="section-copy">The UI is structured around the exact flow this project supports: connected accounts, scheduled posts, and page insights. Surfaces stay task-first so operators can act quickly.</p>
+    <p class="eyebrow">Operational Guarantees</p>
+    <h2>Built for reliable multi-user execution.</h2>
+    <p class="section-copy">Postzyo uses queue-safe patterns from the project guide: retry/backoff, stale-row protection, lock-based refresh handling, and persistent snapshot strategy.</p>
   </article>
   <article class="highlight-list">
     <div class="highlight-item">
-      <strong>Clear status surfaces</strong>
-      <span>Refresh state, sync notes, and errors remain visible near the action that caused them.</span>
+      <strong>Token-safe workflows</strong>
+      <span>Health status, reconnect guidance, and stale account protection reduce invalid token failures.</span>
     </div>
     <div class="highlight-item">
-      <strong>Readable data density</strong>
-      <span>Tables, cards, and hero summaries are styled for scanning on both wide and narrow screens.</span>
+      <strong>Data-first reporting</strong>
+      <span>Daily heavy collection and cached snapshots keep dashboards responsive and consistent.</span>
     </div>
     <div class="highlight-item">
-      <strong>Safer navigation</strong>
-      <span>Primary actions are grouped consistently so feature flows remain intact while the UI gets cleaner.</span>
+      <strong>Execution clarity</strong>
+      <span>Scheduling, insights, and AI modules share one account context to avoid operational confusion.</span>
     </div>
   </article>
 </section>
