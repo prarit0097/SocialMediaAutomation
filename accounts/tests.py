@@ -26,6 +26,16 @@ class AccountsLandingTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Sign up with Google")
 
+    def test_login_page_shows_google_button_when_configured(self):
+        with self.settings(
+            GOOGLE_OAUTH_CLIENT_ID="google-client-id",
+            GOOGLE_OAUTH_CLIENT_SECRET="google-client-secret",
+            GOOGLE_OAUTH_REDIRECT_URI="http://testserver/signup/google/callback/",
+        ):
+            response = self.client.get("/login/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Continue with Google")
+
     @patch("accounts.views.requests.get")
     @patch("accounts.views.requests.post")
     def test_google_signup_callback_creates_user_and_logs_in(self, mock_post, mock_get):

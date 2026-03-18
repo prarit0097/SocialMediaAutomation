@@ -35,6 +35,7 @@ What it shows:
 What it does:
 - helps first-time users understand app value before authentication
 - routes new users to Google-based signup flow (local password signup is disabled)
+- login page now also includes `Continue with Google` so operators can sign in (or create account if first-time) via same Google OAuth flow
 - routes authenticated users directly to Dashboard Home to continue operations
 - uses project media logos across UI touchpoints: Meta logo in global brand/top identity and Meta/Instagram logos in platform badges and Meta-connect CTA where context is platform-specific
 
@@ -324,6 +325,7 @@ Operational meaning:
 - Google OAuth callback creates user with unusable password and logs in via Django session.
 - Google OAuth callback also upserts `UserProfile` seed data (first name, last name, profile picture URL).
 - Existing users can continue to use login flow; new account creation happens only through Google OAuth.
+- `/login/` shows both classic login form and Google button (`Continue with Google`) when OAuth env is configured.
 
 ### User Profiles
 Model: `accounts.UserProfile`

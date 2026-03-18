@@ -15,6 +15,11 @@ class AdminLoginView(LoginView):
     template_name = "accounts/login.html"
     redirect_authenticated_user = True
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["google_signup_ready"] = _google_signup_ready()
+        return context
+
 
 def landing_page(request):
     if request.user.is_authenticated:

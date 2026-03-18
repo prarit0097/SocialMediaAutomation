@@ -13,6 +13,11 @@
     {% csrf_token %}
     {{ form.as_p }}
     <button type="submit">Login</button>
+    {% if google_signup_ready %}
+      <a class="btn muted" href="{% url 'google_signup_start' %}">Continue with Google</a>
+    {% else %}
+      <small class="form-note">Google login is not configured yet. Add Google OAuth credentials in environment settings.</small>
+    {% endif %}
     <small class="form-note">New here? <a href="{% url 'signup' %}">Create account</a></small>
   </form>
 </section>
