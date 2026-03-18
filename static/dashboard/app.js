@@ -987,6 +987,10 @@
   }
 
   const scheduleForm = document.getElementById("scheduleForm");
+  const schedulerAssistStatus = document.getElementById("schedulerAssistStatus");
+  const schedulerBestTimeAssist = document.getElementById("schedulerBestTimeAssist");
+  const schedulerCadenceAssist = document.getElementById("schedulerCadenceAssist");
+  const schedulerCaptionAssist = document.getElementById("schedulerCaptionAssist");
   if (scheduleForm) {
     const scheduleParams = new URLSearchParams(window.location.search);
     const prefillAccountId = scheduleParams.get("account_id");
@@ -996,6 +1000,77 @@
     const pageNameInput = document.getElementById("scheduleAccountPageName");
     const schedulerAccountNameMap = new Map();
     let schedulerAccountMapLoaded = false;
+    let schedulerAssistTimer = null;
+
+    const renderSchedulerAssist = (data) => {
+      const platforms = data && data.platforms && typeof data.platforms === "object" ? data.platforms : {};
+      const platformKeys = Object.keys(platforms);
+      if (!platformKeys.length) {
+        if (schedulerAssistStatus) schedulerAssistStatus.textContent = "Not enough post history yet for this profile.";
+        if (schedulerCadenceAssist) schedulerCadenceAssist.innerHTML = "";
+        if (schedulerBestTimeAssist) schedulerBestTimeAssist.innerHTML = "";
+        if (schedulerCaptionAssist) schedulerCaptionAssist.innerHTML = "";
+        return;
+      }
+      if (schedulerAssistStatus) {
+        schedulerAssistStatus.textContent = `Profile-wise strategy loaded for ${data.page_name || "selected account"}.`;
+      }
+
+      const cadenceBlocks = [];
+      const bestTimeBlocks = [];
+      const captionBlocks = [];
+      platformKeys.forEach((platform) => {
+        const row = platforms[platform] || {};
+        const label = platform === "facebook" ? "Facebook" : platform === "instagram" ? "Instagram" : platform;
+        cadenceBlocks.push(
+          `<li><strong>${label}:</strong> current ${row.avg_posts_per_day_7d ?? "-"} post/day (${row.posts_last_7d ?? "-"} in 7d). Recommended: ${
+            row.recommended_cadence || "-"
+          }</li>`
+        );
+
+        const topSlot = row.next_best_window || "Not enough data";
+        const sampleText = Array.isArray(row.best_time_slots)
+          ? row.best_time_slots
+              .slice(0, 3)
+              .map((s) => `${s.label} (${s.sample_posts} posts)`)
+              .join(", ")
+          : "";
+        bestTimeBlocks.push(`<li><strong>${label}:</strong> next best window ${topSlot}${sampleText ? ` | top slots: ${sampleText}` : ""}</li>`);
+
+        const ab = row.caption_ab_test || {};
+        captionBlocks.push(`<li><strong>${label}:</strong> ${ab.primary_test || "Short vs Medium captions"} | ${ab.reasoning || ""}</li>`);
+      });
+
+      if (schedulerCadenceAssist) {
+        schedulerCadenceAssist.innerHTML = `<h3 class="assist-title">Posting cadence</h3><ul class="assist-list">${cadenceBlocks.join("")}</ul>`;
+      }
+      if (schedulerBestTimeAssist) {
+        schedulerBestTimeAssist.innerHTML = `<h3 class="assist-title">Best time to post</h3><ul class="assist-list">${bestTimeBlocks.join("")}</ul>`;
+      }
+      if (schedulerCaptionAssist) {
+        schedulerCaptionAssist.innerHTML = `<h3 class="assist-title">A/B caption strategy</h3><ul class="assist-list">${captionBlocks.join("")}</ul>`;
+      }
+    };
+
+    const loadSchedulerAssist = async (accountId) => {
+      if (!accountId) {
+        if (schedulerAssistStatus) schedulerAssistStatus.textContent = "Enter Account ID to load profile-wise best posting guidance.";
+        if (schedulerCadenceAssist) schedulerCadenceAssist.innerHTML = "";
+        if (schedulerBestTimeAssist) schedulerBestTimeAssist.innerHTML = "";
+        if (schedulerCaptionAssist) schedulerCaptionAssist.innerHTML = "";
+        return;
+      }
+      if (schedulerAssistStatus) schedulerAssistStatus.textContent = "Loading smart posting assist...";
+      try {
+        const data = await fetchJSON(`/api/insights/scheduler-assist/${accountId}/`);
+        renderSchedulerAssist(data);
+      } catch (err) {
+        if (schedulerAssistStatus) schedulerAssistStatus.textContent = `Assist unavailable: ${err.message}`;
+        if (schedulerCadenceAssist) schedulerCadenceAssist.innerHTML = "";
+        if (schedulerBestTimeAssist) schedulerBestTimeAssist.innerHTML = "";
+        if (schedulerCaptionAssist) schedulerCaptionAssist.innerHTML = "";
+      }
+    };
 
     const setSchedulerPageName = (name, accountId) => {
       if (!pageNameInput) return;
@@ -1049,19 +1124,24 @@
       const accountId = Number(accountIdInput.value);
       if (!accountId || Number.isNaN(accountId)) {
         setSchedulerPageName("", null);
+        await loadSchedulerAssist(null);
         return;
       }
       if (!schedulerAccountMapLoaded) {
         await loadSchedulerAccountMap();
       }
       setSchedulerPageName(schedulerAccountNameMap.get(accountId) || "", accountId);
+      await loadSchedulerAssist(accountId);
     };
 
     if (accountIdInput && prefillAccountId) accountIdInput.value = prefillAccountId;
     if (platformInput && prefillPlatform) platformInput.value = prefillPlatform;
     if (accountIdInput) {
       accountIdInput.addEventListener("input", () => {
-        refreshSchedulerPageName();
+        if (schedulerAssistTimer) window.clearTimeout(schedulerAssistTimer);
+        schedulerAssistTimer = window.setTimeout(() => {
+          refreshSchedulerPageName();
+        }, 220);
       });
       accountIdInput.addEventListener("change", () => {
         refreshSchedulerPageName();
@@ -1112,6 +1192,7 @@
         }
         scheduleForm.reset();
         setSchedulerPageName("", null);
+        await loadSchedulerAssist(null);
         await loadScheduledPosts();
       } catch (err) {
         resultEl.textContent = `Error: ${err.message}`;
@@ -1454,6 +1535,8 @@
   const insightComparisonTitle = document.getElementById("insightComparisonTitle");
   const insightPostsTable = document.getElementById("insightPostsTable");
   const insightMetricsTable = document.getElementById("insightMetricsTable");
+  const insightEarlyMonitor = document.getElementById("insightEarlyMonitor");
+  const insightDistributionAlerts = document.getElementById("insightDistributionAlerts");
   const aiInsightAccountId = document.getElementById("aiInsightAccountId");
   const aiInsightGoal = document.getElementById("aiInsightGoal");
   const aiInsightForceRefresh = document.getElementById("aiInsightForceRefresh");
@@ -1728,6 +1811,23 @@
     container.innerHTML = `<table>${head}${body}</table>`;
   }
 
+  function renderCompactList(container, rows, emptyText) {
+    if (!container) return;
+    if (!Array.isArray(rows) || !rows.length) {
+      container.innerHTML = `<p class="meta-note">${escapeHtml(emptyText)}</p>`;
+      return;
+    }
+    const body = rows
+      .map((row) => {
+        const title = escapeHtml(String(row.title || "-"));
+        const line = escapeHtml(String(row.line || ""));
+        const tone = escapeHtml(String(row.tone || "neutral"));
+        return `<li class="compact-list-item ${tone}"><strong>${title}</strong><span>${line}</span></li>`;
+      })
+      .join("");
+    container.innerHTML = `<ul class="compact-list">${body}</ul>`;
+  }
+
   function combinedMetricText(fbValue, igValue) {
     const fb = fbValue === null || fbValue === undefined || fbValue === "" ? "-" : String(fbValue);
     const ig = igValue === null || igValue === undefined || igValue === "" ? "-" : String(igValue);
@@ -1815,6 +1915,22 @@
       ? data.comparison_rows
       : comparisonMetricRows(data);
     renderTable(insightMetricsTable, comparisonRows);
+
+    const earlyRows = (Array.isArray(data.early_engagement_monitor) ? data.early_engagement_monitor : []).map((row) => ({
+      title: `${String(row.platform || "").toUpperCase()} ${row.id}`,
+      line: `${row.hours_since_publish ?? "-"}h | views: ${row.views ?? "-"} | likes: ${row.likes ?? "-"} | comments: ${
+        row.comments ?? "-"
+      } | status: ${row.status || "-"}`,
+      tone: row.status === "weak" ? "bad" : row.status === "strong" ? "good" : "neutral",
+    }));
+    renderCompactList(insightEarlyMonitor, earlyRows, "No posts in first 6-hour watch window.");
+
+    const alertRows = (Array.isArray(data.low_distribution_alerts) ? data.low_distribution_alerts : []).map((row) => ({
+      title: `${String(row.platform || "").toUpperCase()} ${row.id}`,
+      line: `views ${row.views ?? "-"} vs baseline ${row.baseline_views ?? "-"} | ${row.recommendation || ""}`,
+      tone: "bad",
+    }));
+    renderCompactList(insightDistributionAlerts, alertRows, "No low-distribution alerts in recent window.");
   }
 
   function renderAiListCard(title, rows, tone) {

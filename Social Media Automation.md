@@ -177,6 +177,10 @@ What happens:
 - after successful scheduling, Create Scheduled Post form auto-clears so operators can start the next post without old field confusion
 - Scheduled Queue table trims long `message` text to 4 lines for clean layout while keeping full content accessible via hover tooltip
 - force-refresh post-stat calls retry transient Meta/network timeouts and backfill missing values from latest cached snapshot when possible
+- Scheduler now includes **Smart Posting Assist** (profile-wise) driven by stored insights:
+  - best posting windows (top weekday/time slots)
+  - current 7-day cadence vs recommended cadence (separate per FB/IG where available)
+  - caption A/B recommendation (short/medium/long) with reasoning from recent performance history
 
 Common failure pattern:
 - if a page was not refreshed in the latest reconnect, old stored tokens can still exist in the database
@@ -215,6 +219,8 @@ What it shows:
 - top-nav Meta token health indicator with green/red blinking status and reconnect guidance
 - warnings for partial upstream failures
 - post-stats health counters (`Live`, `Cached fallback`, `Missing`) in insight meta line for force-refresh transparency
+- Early Engagement Monitor panel (first 6h window) with post-level status (`weak`/`average`/`strong`)
+- Low Distribution Alerts panel that flags underperforming recent posts against profile baseline and suggests corrective repost/hook actions
 
 What it supports:
 - fetch cached/latest snapshot
@@ -222,6 +228,7 @@ What it supports:
 - combined FB + IG view for linked assets
 - newest-first published post sorting by `published_at`
 - full-width published posts section with comparison table below it
+- API assist endpoint for scheduler guidance: `GET /api/insights/scheduler-assist/<account_id>/`
 
 Important runtime meaning:
 - UI primarily uses stored snapshots

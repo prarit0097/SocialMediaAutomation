@@ -4,6 +4,7 @@ from . import views
 
 urlpatterns = [
     path("insights/<int:account_id>/", views.account_insights, name="account_insights"),
+    path("insights/scheduler-assist/<int:account_id>/", views.scheduler_assist, name="scheduler_assist"),
     path("insights/force-refresh-all/", views.force_refresh_all_accounts_insights, name="force_refresh_all_accounts_insights"),
     path("insights/force-refresh-all/status/", views.force_refresh_all_accounts_status, name="force_refresh_all_accounts_status"),
     path("ai-insights/<int:account_id>/", views.ai_profile_insights, name="ai_profile_insights"),

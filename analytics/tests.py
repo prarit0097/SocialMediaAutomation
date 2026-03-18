@@ -47,6 +47,54 @@ class AnalyticsApiTests(TestCase):
         self.assertIn("insights", body)
         self.assertIn("summary", body)
         self.assertIn("published_posts", body)
+        self.assertIn("posting_strategy_assist", body)
+        self.assertIn("low_distribution_alerts", body)
+        self.assertIn("early_engagement_monitor", body)
+
+    @patch("analytics.services.MetaClient.fetch_facebook_published_posts_count")
+    @patch("analytics.services.MetaClient.fetch_facebook_insights")
+    def test_scheduler_assist_endpoint_returns_profile_wise_strategy(self, mock_fetch, mock_posts_count):
+        mock_fetch.return_value = [{"name": "page_impressions", "values": []}]
+        mock_posts_count.return_value = 0
+
+        InsightSnapshot.objects.create(
+            account=self.account,
+            platform=FACEBOOK,
+            payload={
+                "insights": [],
+                "published_posts": [
+                    {
+                        "id": "p1",
+                        "message": "Short caption",
+                        "published_at": (timezone.now() - timedelta(days=1)).isoformat(),
+                        "total_views": 100,
+                        "total_likes": 10,
+                        "total_comments": 2,
+                        "total_shares": 1,
+                        "total_saves": 0,
+                    },
+                    {
+                        "id": "p2",
+                        "message": "Long caption " * 20,
+                        "published_at": (timezone.now() - timedelta(days=2)).isoformat(),
+                        "total_views": 40,
+                        "total_likes": 3,
+                        "total_comments": 0,
+                        "total_shares": 0,
+                        "total_saves": 0,
+                    },
+                ],
+                "metadata": {},
+            },
+        )
+
+        response = self.client.get(f"/api/insights/scheduler-assist/{self.account.id}/")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["account_id"], self.account.id)
+        self.assertIn("platforms", body)
+        self.assertIn("facebook", body["platforms"])
+        self.assertIn("best_time_slots", body["platforms"]["facebook"])
 
     @patch("analytics.services.MetaClient.fetch_facebook_published_posts_count")
     @patch("analytics.services.MetaClient.fetch_facebook_insights")
