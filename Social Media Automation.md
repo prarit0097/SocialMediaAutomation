@@ -39,7 +39,7 @@ What it does:
 - routes new users to Google-based signup flow (local password signup is disabled)
 - login page now also includes `Continue with Google` so operators can sign in (or create account if first-time) via same Google OAuth flow
 - routes authenticated users directly to Dashboard Home to continue operations
-- uses project media logos across UI touchpoints: Meta logo in global brand/top identity and Meta/Instagram logos in platform badges and Meta-connect CTA where context is platform-specific
+- uses project media logos across UI touchpoints: Postzyo logo in global brand/top identity and Meta/Instagram logos in platform badges and Meta-connect CTA where context is platform-specific
 
 ### Home
 The Home page is now the workspace setup + navigation surface.

@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Postzyo</title>
-    <link rel="icon" type="image/svg+xml" href="{% static 'favicon.svg' %}">
+    <link rel="icon" type="image/png" href="{% static 'postzyo-favicon.png' %}">
     <link rel="stylesheet" href="{% static 'dashboard/styles.css' %}">
   </head>
   <body class="page-{{ request.resolver_match.url_name|default:'workspace' }}">
@@ -16,7 +16,7 @@
       <div class="topbar-inner">
         <a class="brand" href="{% if request.user.is_authenticated %}{% url 'dashboard:home' %}{% else %}{% url 'landing' %}{% endif %}">
           <span class="brand-mark">
-            <img class="brand-logo" src="{% static 'dashboard/brand/meta-logo.jpg' %}" alt="Meta logo">
+            <img class="brand-logo" src="{% static 'dashboard/brand/postzyo-mark.png' %}" alt="Postzyo logo">
             <span class="brand-mark-fallback">PZ</span>
           </span>
           <span class="brand-copy">
