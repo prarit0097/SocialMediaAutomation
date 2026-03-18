@@ -71,22 +71,41 @@ class MetaClient:
         return pages
 
     def fetch_facebook_published_posts(self, page_id: str, page_access_token: str, limit: int = 50) -> list[dict]:
-        posts: list[dict] = []
-        params = {
-            "access_token": page_access_token,
-            "fields": "id,message,created_time,permalink_url,full_picture,attachments{media_type,media,url,subattachments}",
-            "limit": min(limit, 100),
-        }
-        response = self._get(f"/{page_id}/published_posts", params)
-        posts.extend(response.get("data", []))
+        # Some pages reject richer field sets depending on role/permissions.
+        # Try progressively smaller field sets so we still return FB posts
+        # instead of showing a blank table when count endpoint succeeds.
+        field_attempts = [
+            "id,message,created_time,permalink_url,full_picture,attachments{media_type,media,url,subattachments}",
+            "id,message,created_time,permalink_url,full_picture",
+            "id,created_time,permalink_url",
+        ]
+        last_error: MetaAPIError | None = None
 
-        next_url = (response.get("paging") or {}).get("next")
-        while next_url and len(posts) < limit:
-            response = self._get_by_url(next_url)
-            posts.extend(response.get("data", []))
-            next_url = (response.get("paging") or {}).get("next")
+        for fields in field_attempts:
+            try:
+                posts: list[dict] = []
+                params = {
+                    "access_token": page_access_token,
+                    "fields": fields,
+                    "limit": min(limit, 100),
+                }
+                response = self._get(f"/{page_id}/published_posts", params)
+                posts.extend(response.get("data", []))
 
-        return posts[:limit]
+                next_url = (response.get("paging") or {}).get("next")
+                while next_url and len(posts) < limit:
+                    response = self._get_by_url(next_url)
+                    posts.extend(response.get("data", []))
+                    next_url = (response.get("paging") or {}).get("next")
+
+                return posts[:limit]
+            except MetaAPIError as exc:
+                last_error = exc
+                continue
+
+        if last_error:
+            raise last_error
+        return []
 
     def fetch_facebook_published_posts_count(self, page_id: str, page_access_token: str) -> int | None:
         response = self._get(

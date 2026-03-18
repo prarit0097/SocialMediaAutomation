@@ -231,6 +231,7 @@ What it supports:
 - combined FB + IG view for linked assets
 - newest-first published post sorting by `published_at`
 - full-width published posts section with comparison table below it
+- resilient Facebook published-post fetch: if rich fields are rejected for a page, API auto-falls back to minimal field set so FB rows still appear in Published Posts
 - API assist endpoint for scheduler guidance: `GET /api/insights/scheduler-assist/<account_id>/`
 
 Important runtime meaning:

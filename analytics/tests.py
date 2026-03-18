@@ -624,6 +624,30 @@ class MetaClientTests(TestCase):
 
         self.assertEqual(count, 5)
 
+    @patch.object(MetaClient, "_get_by_url")
+    @patch.object(MetaClient, "_get")
+    def test_fetch_facebook_published_posts_falls_back_to_minimal_fields(self, mock_get, mock_get_by_url):
+        def fake_get(path, params, timeout=20):
+            self.assertEqual(path, "/page-1/published_posts")
+            fields = str(params.get("fields") or "")
+            if "attachments{" in fields:
+                raise MetaPermanentError("unsupported rich fields", status_code=400, payload={})
+            return {
+                "data": [{"id": "fb-post-1", "created_time": "2026-03-18T08:00:00+0000"}],
+                "paging": {},
+            }
+
+        mock_get.side_effect = fake_get
+        mock_get_by_url.return_value = {"data": [], "paging": {}}
+
+        rows = MetaClient().fetch_facebook_published_posts("page-1", "token", limit=10)
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["id"], "fb-post-1")
+        attempted_fields = [str(call.args[1].get("fields") or "") for call in mock_get.call_args_list]
+        self.assertTrue(any("attachments{" in field for field in attempted_fields))
+        self.assertTrue(any(field == "id,message,created_time,permalink_url,full_picture" for field in attempted_fields))
+
     @patch.object(MetaClient, "_get")
     def test_fetch_facebook_insights_requests_verified_metrics_with_7_day_window(self, mock_get):
         def fake_get(path, params, timeout=20):
