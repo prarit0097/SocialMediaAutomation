@@ -4,7 +4,6 @@ import re
 import hmac
 import hashlib
 import uuid
-from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -551,30 +550,12 @@ def profile_data(request):
 
     first_name = str(payload.get("first_name") or "").strip()
     last_name = str(payload.get("last_name") or "").strip()
-    profile_picture_url = str(payload.get("profile_picture_url") or "").strip()
-    subscription_plan = str(payload.get("subscription_plan") or "").strip() or "Starter"
-    subscription_status = str(payload.get("subscription_status") or "").strip().lower()
-    subscription_expires_on = str(payload.get("subscription_expires_on") or "").strip()
 
     errors = []
     if len(first_name) > 150:
         errors.append("First name should be 150 characters or less.")
     if len(last_name) > 150:
         errors.append("Last name should be 150 characters or less.")
-    if len(subscription_plan) > 120:
-        errors.append("Subscription plan should be 120 characters or less.")
-    if subscription_status not in {
-        UserProfile.SUBSCRIPTION_STATUS_ACTIVE,
-        UserProfile.SUBSCRIPTION_STATUS_EXPIRED,
-    }:
-        errors.append("Subscription status must be either active or expired.")
-
-    parsed_expiry = None
-    if subscription_expires_on:
-        try:
-            parsed_expiry = datetime.strptime(subscription_expires_on, "%Y-%m-%d").date()
-        except ValueError:
-            errors.append("Subscription expiry date must use YYYY-MM-DD format.")
 
     if errors:
         return JsonResponse({"error": "Validation failed.", "details": " ".join(errors)}, status=400)
@@ -587,19 +568,10 @@ def profile_data(request):
     profile, _ = UserProfile.objects.get_or_create(user=user)
     profile.first_name = first_name
     profile.last_name = last_name
-    profile.profile_picture_url = profile_picture_url
-    profile.subscription_plan = subscription_plan
-    profile.subscription_status = subscription_status
-    if parsed_expiry:
-        profile.subscription_expires_on = parsed_expiry
     profile.save(
         update_fields=[
             "first_name",
             "last_name",
-            "profile_picture_url",
-            "subscription_plan",
-            "subscription_status",
-            "subscription_expires_on",
             "updated_at",
         ]
     )

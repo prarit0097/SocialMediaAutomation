@@ -1361,7 +1361,7 @@
       });
     }
 
-    [profileFirstName, profileLastName, profilePictureUrl, profilePlan, profilePlanStatus, profilePlanExpiry]
+    [profileFirstName, profileLastName]
       .filter(Boolean)
       .forEach((element) => {
         element.addEventListener("input", () => {
@@ -1383,10 +1383,6 @@
       const payload = {
         first_name: String(formData.get("first_name") || "").trim(),
         last_name: String(formData.get("last_name") || "").trim(),
-        profile_picture_url: String(formData.get("profile_picture_url") || "").trim(),
-        subscription_plan: String(formData.get("subscription_plan") || "").trim(),
-        subscription_status: String(formData.get("subscription_status") || "").trim(),
-        subscription_expires_on: String(formData.get("subscription_expires_on") || "").trim(),
       };
       try {
         const data = await runWithProfileLoading(() =>

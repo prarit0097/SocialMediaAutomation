@@ -355,7 +355,7 @@ class DashboardAuthTests(TestCase):
         self.assertEqual(body["subscription_plan"], "Pro")
         self.assertEqual(body["subscription_status"], "active")
 
-    def test_profile_data_post_updates_all_editable_fields_except_email(self):
+    def test_profile_data_post_updates_only_first_and_last_name(self):
         user_model = get_user_model()
         user = user_model.objects.create_user(
             username="profileeditor",
@@ -389,17 +389,26 @@ class DashboardAuthTests(TestCase):
         self.assertEqual(user.email, "locked@example.com")
         self.assertEqual(user.first_name, "New")
         self.assertEqual(user.last_name, "Person")
-        self.assertEqual(profile.profile_picture_url, "https://example.com/new-avatar.jpg")
-        self.assertEqual(profile.subscription_plan, "Growth")
-        self.assertEqual(profile.subscription_status, "expired")
-        self.assertEqual(str(profile.subscription_expires_on), "2026-12-31")
+        self.assertEqual(profile.profile_picture_url, "")
+        self.assertEqual(profile.subscription_plan, "Starter")
+        self.assertEqual(profile.subscription_status, "active")
 
-    def test_profile_data_post_rejects_invalid_subscription_status(self):
+    def test_profile_data_post_ignores_non_name_fields_in_payload(self):
         user_model = get_user_model()
-        user_model.objects.create_user(
+        user = user_model.objects.create_user(
             username="profileinvalid",
             email="invalid@example.com",
+            first_name="Old",
+            last_name="Name",
             password="pass12345",
+        )
+        UserProfile.objects.create(
+            user=user,
+            first_name="Old",
+            last_name="Name",
+            profile_picture_url="https://example.com/old-avatar.jpg",
+            subscription_plan="Pro",
+            subscription_status=UserProfile.SUBSCRIPTION_STATUS_EXPIRED,
         )
         self.client.login(username="profileinvalid", password="pass12345")
 
@@ -409,7 +418,7 @@ class DashboardAuthTests(TestCase):
                 {
                     "first_name": "Test",
                     "last_name": "User",
-                    "profile_picture_url": "",
+                    "profile_picture_url": "https://example.com/new-avatar.jpg",
                     "subscription_plan": "Starter",
                     "subscription_status": "paused",
                     "subscription_expires_on": "2026-12-31",
@@ -418,8 +427,14 @@ class DashboardAuthTests(TestCase):
             content_type="application/json",
         )
 
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json()["error"], "Validation failed.")
+        self.assertEqual(response.status_code, 200)
+        user.refresh_from_db()
+        profile = user.profile
+        self.assertEqual(user.first_name, "Test")
+        self.assertEqual(user.last_name, "User")
+        self.assertEqual(profile.profile_picture_url, "https://example.com/old-avatar.jpg")
+        self.assertEqual(profile.subscription_plan, "Pro")
+        self.assertEqual(profile.subscription_status, UserProfile.SUBSCRIPTION_STATUS_EXPIRED)
 
     def test_subscription_page_requires_login(self):
         response = self.client.get("/dashboard/subscription/")

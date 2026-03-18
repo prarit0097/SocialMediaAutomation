@@ -4,7 +4,7 @@
   <div class="hero-main">
     <p class="eyebrow">Profile</p>
     <h1>Manage your identity and plan details in one place.</h1>
-    <p class="hero-copy">Google sign-in details are prefilled. You can update display name, profile photo URL, and current subscription status for account visibility.</p>
+    <p class="hero-copy">Google sign-in details are prefilled. You can edit only First Name and Last Name; all other fields are read-only for account safety.</p>
     <div class="hero-pill-row">
       <span class="hero-pill">Google login profile</span>
       <span class="hero-pill">Editable identity</span>
@@ -14,8 +14,8 @@
   <div class="hero-rail">
     <article class="hero-stat">
       <span class="hero-stat-label">Profile Control</span>
-      <strong>Email stays locked</strong>
-      <p>Name, photo, and subscription details can be edited; email remains your secure login identifier.</p>
+      <strong>Only Name is editable</strong>
+      <p>First Name and Last Name can be updated. Email and subscription details stay locked for consistency.</p>
     </article>
   </div>
 </section>
@@ -26,7 +26,7 @@
       <div>
         <p class="eyebrow">Account Identity</p>
         <h2>Your Profile Details</h2>
-        <p class="section-copy">Update your visible identity for this workspace. Email is read-only for login safety.</p>
+        <p class="section-copy">Edit only First Name and Last Name. All other fields are read-only for login and billing safety.</p>
       </div>
     </div>
 
@@ -42,22 +42,22 @@
         <input id="profileLastName" name="last_name" type="text" maxlength="150">
       </label>
       <label for="profilePictureUrl">Profile Picture URL
-        <input id="profilePictureUrl" name="profile_picture_url" type="url" placeholder="https://...">
+        <input id="profilePictureUrl" name="profile_picture_url" type="url" placeholder="https://..." readonly>
       </label>
 
       <div class="profile-form-divider"></div>
 
       <label for="profilePlan">Subscription Plan (dummy)
-        <input id="profilePlan" name="subscription_plan" type="text" maxlength="120" required>
+        <input id="profilePlan" name="subscription_plan" type="text" maxlength="120" readonly>
       </label>
       <label for="profilePlanStatus">Plan Status (dummy)
-        <select id="profilePlanStatus" name="subscription_status" required>
+        <select id="profilePlanStatus" name="subscription_status" disabled>
           <option value="active">Active</option>
           <option value="expired">Expired</option>
         </select>
       </label>
       <label for="profilePlanExpiry">Plan Expiry Date (dummy)
-        <input id="profilePlanExpiry" name="subscription_expires_on" type="date" required>
+        <input id="profilePlanExpiry" name="subscription_expires_on" type="date" readonly>
       </label>
 
       <button id="saveProfileBtn" type="submit">Save Profile</button>

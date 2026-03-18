@@ -79,13 +79,14 @@ The Profile page is the logged-in user identity/settings workspace (`/dashboard/
 What it shows:
 - Google-linked email (read-only)
 - editable first name and last name
-- editable profile picture URL
+- read-only profile picture URL
 - live profile preview card (avatar, name, email, plan badge)
-- dummy subscription controls for now: plan name, status (`active` / `expired`), and expiry date
+- dummy subscription fields in read-only mode: plan name, status (`active` / `expired`), and expiry date
 
 What it does:
 - loads profile data from `GET /dashboard/profile-data/`
 - saves profile updates through `POST /dashboard/profile-data/`
+- allows updates only for first/last name; ignores any non-name fields in API payload
 - keeps email immutable from UI/API updates (email stays login identity)
 - auto-creates a per-user `UserProfile` row when missing
 - pre-fills profile data from Google signup callback (given name, family name, profile picture)
@@ -335,10 +336,10 @@ Model: `accounts.UserProfile`
 Stores:
 - one-to-one link with Django user
 - editable first name and last name (display values)
-- profile picture URL
-- dummy subscription plan (`subscription_plan`)
-- dummy subscription status (`active` / `expired`)
-- dummy subscription expiry date (`subscription_expires_on`)
+- read-only profile picture URL (from Google or backend state)
+- read-only dummy subscription plan (`subscription_plan`)
+- read-only dummy subscription status (`active` / `expired`)
+- read-only dummy subscription expiry date (`subscription_expires_on`)
 - created and updated timestamps
 
 ### Scheduled Posts
