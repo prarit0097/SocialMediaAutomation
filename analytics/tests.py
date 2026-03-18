@@ -580,16 +580,19 @@ class AnalyticsApiTests(TestCase):
         self.assertEqual(indexed["Total Media Count"]["instagram"], 1106)
 
     def test_aggregate_recent_post_metric_parses_utc_offset_without_colon(self):
+        now = timezone.now()
+        within_window = (now - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%S+0000")
+        also_within_window = (now - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%S+0000")
         total_comments = _aggregate_recent_post_metric(
             [
                 {
                     "platform": "facebook",
-                    "published_at": "2026-03-12T12:30:23+0000",
+                    "published_at": within_window,
                     "total_comments": 4,
                 },
                 {
                     "platform": "facebook",
-                    "published_at": "2026-03-11T12:30:23+0000",
+                    "published_at": also_within_window,
                     "total_comments": 2,
                 },
             ],

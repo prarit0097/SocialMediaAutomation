@@ -61,6 +61,13 @@ Update `.env` values:
 - `OPENAI_API_KEY` (required for AI Insights page)
 - `OPENAI_MODEL` (default: `gpt-4o-mini`)
 - `OPENAI_TIMEOUT_SECONDS` (default: `45`)
+- production security (recommended when domain + HTTPS enabled):
+  - `SECURE_SSL_REDIRECT=True`
+  - `SESSION_COOKIE_SECURE=True`
+  - `CSRF_COOKIE_SECURE=True`
+  - `SECURE_HSTS_SECONDS=31536000`
+  - `SECURE_HSTS_INCLUDE_SUBDOMAINS=True`
+  - `SECURE_HSTS_PRELOAD=True`
 
 ## 3) Database and admin user
 ```bash

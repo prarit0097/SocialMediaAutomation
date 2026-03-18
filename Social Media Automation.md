@@ -502,6 +502,22 @@ This project includes local MCP servers under `mcp_servers/` so Codex or future 
   - directly serve `/static/` and `/media/`
   - include safer proxy timeout settings for longer publish/insight requests
 
+## Live-Readiness Hardening (Django settings)
+- Added explicit production security env toggles in settings:
+  - `SECURE_SSL_REDIRECT`
+  - `SESSION_COOKIE_SECURE`
+  - `CSRF_COOKIE_SECURE`
+  - `SECURE_HSTS_SECONDS`
+  - `SECURE_HSTS_INCLUDE_SUBDOMAINS`
+  - `SECURE_HSTS_PRELOAD`
+- Added proxy-aware defaults for VPS reverse-proxy deployment:
+  - `SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")`
+  - `USE_X_FORWARDED_HOST = True`
+- Enabled baseline hardening headers:
+  - `SECURE_CONTENT_TYPE_NOSNIFF = True`
+  - `X_FRAME_OPTIONS = "DENY"`
+- `.env.example` now includes these security flags so production env setup is predictable for Postgres + Nginx deployments.
+
 ## Future Direction
 This project is not only a scheduler and dashboard. It is becoming a stored-data layer for future analytics tooling.
 
