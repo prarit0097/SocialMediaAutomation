@@ -326,7 +326,8 @@ Operational meaning:
 - Google OAuth callback also upserts `UserProfile` seed data (first name, last name, profile picture URL).
 - Existing users can continue to use login flow; new account creation happens only through Google OAuth.
 - `/login/` shows both classic login form and Google button (`Continue with Google`) when OAuth env is configured.
-- login screen uses a dedicated full-width Google CTA with icon styling so Google sign-in is visually clear and consistent with the app theme.
+- login screen places Google CTA above username/password fields with a `Recommended` badge and helper hint, so operators naturally use OAuth first.
+- login screen still supports classic username/password form below a visual divider for fallback access.
 
 ### User Profiles
 Model: `accounts.UserProfile`
