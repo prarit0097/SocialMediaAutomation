@@ -1,9 +1,10 @@
-# Social Media Automation Project Guide
+# Postzyo Project Guide
 
 ## Project Purpose
-Social Media Automation is an internal Django-based Meta operations app. It connects Facebook Pages and linked Instagram Business accounts, schedules and publishes posts, stores insights snapshots, and keeps enough historical data for future analytics and AI-driven recommendations.
+Postzyo is a Django-based Meta growth operations app. It connects Facebook Pages and linked Instagram Business accounts, schedules and publishes posts, stores insights snapshots, and keeps enough historical data for future analytics and AI-driven recommendations.
 
 This file is the high-level source of truth for what the project does, how the main workflows behave, and what operational rules currently apply.
+Primary product branding is `Postzyo`, and production rollout is planned on `postzyo.com`.
 
 ## Core Outcomes
 - Connect and refresh Facebook Pages and linked Instagram accounts through Meta OAuth.

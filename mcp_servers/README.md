@@ -1,6 +1,6 @@
 # Project MCP Servers
 
-This folder stores Codex MCP servers and launch scripts for the `Social Media Automation` project.
+This folder stores Codex MCP servers and launch scripts for the `Postzyo` project.
 
 ## Included MCPs
 

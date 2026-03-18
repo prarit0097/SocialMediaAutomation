@@ -1457,7 +1457,7 @@
           key: String(orderData.razorpay_key_id || razorpayKey),
           amount: Number(orderData.amount || 0),
           currency: String(orderData.currency || currency),
-          name: "Social Media Automation",
+          name: "Postzyo",
           description: String(orderData.plan_title || "Subscription"),
           order_id: String(orderData.order_id),
           prefill: orderData.prefill || {},

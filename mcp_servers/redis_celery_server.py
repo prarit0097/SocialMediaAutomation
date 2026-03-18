@@ -11,7 +11,7 @@ server = FastMCP(
     name="social-redis-celery",
     instructions=(
         "Inspect Redis, Celery workers, scheduled automations, and publishing pipeline health "
-        "for the Social Media Automation Django project."
+        "for the Postzyo Django project."
     ),
 )
 

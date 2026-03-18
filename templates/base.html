@@ -4,7 +4,7 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Social Automation</title>
+    <title>Postzyo</title>
     <link rel="icon" type="image/svg+xml" href="{% static 'favicon.svg' %}">
     <link rel="stylesheet" href="{% static 'dashboard/styles.css' %}">
   </head>
@@ -17,11 +17,11 @@
         <a class="brand" href="{% if request.user.is_authenticated %}{% url 'dashboard:home' %}{% else %}{% url 'landing' %}{% endif %}">
           <span class="brand-mark">
             <img class="brand-logo" src="{% static 'dashboard/brand/meta-logo.jpg' %}" alt="Meta logo">
-            <span class="brand-mark-fallback">SA</span>
+            <span class="brand-mark-fallback">PZ</span>
           </span>
           <span class="brand-copy">
-            <span class="brand-text">Social Automation</span>
-            <span class="brand-subtext">Meta operations workspace</span>
+            <span class="brand-text">Postzyo</span>
+            <span class="brand-subtext">Meta growth workspace</span>
           </span>
         </a>
         {% with current=request.resolver_match.url_name %}

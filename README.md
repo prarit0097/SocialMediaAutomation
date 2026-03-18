@@ -1,4 +1,4 @@
-﻿# Social Media Automation (Django + Celery)
+﻿# Postzyo (Django + Celery)
 
 Django-based internal admin app to connect Facebook + Instagram accounts, schedule posts, and view insights from one dashboard.
 
@@ -177,3 +177,4 @@ Register them in the local Codex config with:
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\mcp_servers\setup_codex_mcp.ps1
 ```
+
