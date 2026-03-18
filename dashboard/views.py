@@ -1,10 +1,14 @@
 import json
 import os
 import re
+import hmac
+import hashlib
+import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
 
+import requests
 from django.conf import settings
 from django.core.cache import cache
 from django.contrib.auth.decorators import login_required
@@ -26,6 +30,26 @@ def _normalize_base_url(value: str) -> str:
 
 ENV_META_KEYS = ("META_APP_ID", "META_APP_SECRET", "META_REDIRECT_URI")
 ENV_SIMPLE_VALUE_RE = re.compile(r"^[A-Za-z0-9_./:@+-]+$")
+SUBSCRIPTION_MONTHLY_AMOUNT_PAISE = 600000
+SUBSCRIPTION_YEARLY_AMOUNT_PAISE = 7000000
+SUBSCRIPTION_PLAN_CONFIG = {
+    "monthly": {
+        "plan_key": "monthly",
+        "title": "Monthly Growth Plan",
+        "price_label": "INR 6,000 / month",
+        "amount_paise": SUBSCRIPTION_MONTHLY_AMOUNT_PAISE,
+        "billing_cycle": "monthly",
+        "tagline": "Perfect for fast monthly execution and iteration.",
+    },
+    "yearly": {
+        "plan_key": "yearly",
+        "title": "Yearly Scale Plan",
+        "price_label": "INR 70,000 / year",
+        "amount_paise": SUBSCRIPTION_YEARLY_AMOUNT_PAISE,
+        "billing_cycle": "yearly",
+        "tagline": "Best value for long-term growth operations.",
+    },
+}
 
 
 def _env_file_path() -> Path:
@@ -132,6 +156,46 @@ def _profile_payload(user) -> dict:
         "subscription_status": profile.subscription_status,
         "subscription_expires_on": profile.subscription_expires_on.isoformat() if profile.subscription_expires_on else None,
     }
+
+
+def _subscription_page_payload() -> dict:
+    return {
+        "razorpay_key_id": str(getattr(settings, "RAZORPAY_KEY_ID", "") or "").strip(),
+        "currency": str(getattr(settings, "RAZORPAY_CURRENCY", "INR") or "INR").strip().upper(),
+        "plans": SUBSCRIPTION_PLAN_CONFIG,
+        "feature_groups": [
+            {
+                "title": "Operations Core",
+                "items": [
+                    "Connected account control (FB + IG)",
+                    "Reliable local-time post scheduling",
+                    "Queue monitoring with retry support",
+                ],
+            },
+            {
+                "title": "Performance & Insights",
+                "items": [
+                    "Cross-platform insights snapshots",
+                    "Published post performance table",
+                    "Daily heavy auto-refresh automation",
+                ],
+            },
+            {
+                "title": "AI + Planning",
+                "items": [
+                    "AI profile insights and action plans",
+                    "Monthly planning board with drag/drop",
+                    "Growth-focused workflow for teams",
+                ],
+            },
+        ],
+    }
+
+
+def _is_razorpay_configured() -> bool:
+    key_id = str(getattr(settings, "RAZORPAY_KEY_ID", "") or "").strip()
+    key_secret = str(getattr(settings, "RAZORPAY_KEY_SECRET", "") or "").strip()
+    return bool(key_id and key_secret)
 
 
 def _public_url_status_payload(request):
@@ -417,6 +481,11 @@ def profile_page(request):
 
 
 @login_required
+def subscription_page(request):
+    return render(request, "dashboard/subscription.html", {"subscription": _subscription_page_payload()})
+
+
+@login_required
 def public_url_status(request):
     return JsonResponse(_public_url_status_payload(request))
 
@@ -539,3 +608,114 @@ def profile_data(request):
     response["ok"] = True
     response["message"] = "Profile updated successfully."
     return JsonResponse(response)
+
+
+@login_required
+@require_http_methods(["POST"])
+def subscription_create_order(request):
+    if not _is_razorpay_configured():
+        return JsonResponse(
+            {"error": "Razorpay is not configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in .env."},
+            status=400,
+        )
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON body."}, status=400)
+
+    plan_key = str(payload.get("plan") or "").strip().lower()
+    if plan_key not in SUBSCRIPTION_PLAN_CONFIG:
+        return JsonResponse({"error": "Invalid plan selected."}, status=400)
+
+    plan = SUBSCRIPTION_PLAN_CONFIG[plan_key]
+    currency = str(getattr(settings, "RAZORPAY_CURRENCY", "INR") or "INR").strip().upper()
+    key_id = str(getattr(settings, "RAZORPAY_KEY_ID", "") or "").strip()
+    key_secret = str(getattr(settings, "RAZORPAY_KEY_SECRET", "") or "").strip()
+
+    order_payload = {
+        "amount": int(plan["amount_paise"]),
+        "currency": currency,
+        "receipt": f"subs_{plan_key}_{uuid.uuid4().hex[:16]}",
+        "notes": {
+            "plan_key": plan_key,
+            "billing_cycle": plan["billing_cycle"],
+            "user_id": str(request.user.id),
+            "username": str(request.user.username),
+        },
+    }
+
+    try:
+        response = requests.post(
+            "https://api.razorpay.com/v1/orders",
+            auth=(key_id, key_secret),
+            json=order_payload,
+            timeout=20,
+        )
+    except requests.RequestException as exc:
+        return JsonResponse({"error": f"Unable to reach Razorpay: {exc}"}, status=502)
+
+    if response.status_code >= 400:
+        detail = ""
+        try:
+            body = response.json()
+            detail = str(body.get("error", {}).get("description") or body.get("error", {}).get("reason") or "").strip()
+        except ValueError:
+            detail = response.text[:300]
+        return JsonResponse({"error": detail or "Razorpay order creation failed."}, status=502)
+
+    order = response.json()
+    return JsonResponse(
+        {
+            "ok": True,
+            "order_id": order.get("id"),
+            "amount": order.get("amount"),
+            "currency": order.get("currency"),
+            "plan": plan_key,
+            "razorpay_key_id": key_id,
+            "plan_title": plan["title"],
+            "price_label": plan["price_label"],
+            "prefill": {
+                "name": f"{request.user.first_name} {request.user.last_name}".strip() or request.user.username,
+                "email": request.user.email,
+            },
+        }
+    )
+
+
+@login_required
+@require_http_methods(["POST"])
+def subscription_verify_payment(request):
+    if not _is_razorpay_configured():
+        return JsonResponse(
+            {"error": "Razorpay is not configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in .env."},
+            status=400,
+        )
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "Invalid JSON body."}, status=400)
+
+    order_id = str(payload.get("razorpay_order_id") or "").strip()
+    payment_id = str(payload.get("razorpay_payment_id") or "").strip()
+    signature = str(payload.get("razorpay_signature") or "").strip()
+
+    if not order_id or not payment_id or not signature:
+        return JsonResponse({"error": "Missing Razorpay verification fields."}, status=400)
+
+    key_secret = str(getattr(settings, "RAZORPAY_KEY_SECRET", "") or "").strip()
+    signed_payload = f"{order_id}|{payment_id}".encode("utf-8")
+    expected_signature = hmac.new(key_secret.encode("utf-8"), signed_payload, hashlib.sha256).hexdigest()
+
+    if not hmac.compare_digest(expected_signature, signature):
+        return JsonResponse({"error": "Payment signature verification failed."}, status=400)
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "message": "Payment verified successfully.",
+            "payment_id": payment_id,
+            "order_id": order_id,
+        }
+    )

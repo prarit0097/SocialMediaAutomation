@@ -466,6 +466,20 @@ class PublishingServiceTests(TestCase):
         self.assertEqual(result, "photo-post-id")
         mock_publish_photo.assert_called_once()
 
+    @patch("publishing.services.MetaClient.publish_facebook_video", return_value={"id": "video-node-id", "post_id": "fb-page_post-id"})
+    def test_facebook_video_prefers_post_id_for_external_id(self, mock_publish_video):
+        post = ScheduledPost.objects.create(
+            account=self.account,
+            platform=FACEBOOK,
+            message="With video",
+            media_url="https://example.com/a.mp4",
+            scheduled_for=timezone.now(),
+            status="processing",
+        )
+        result = publish_scheduled_post(post)
+        self.assertEqual(result, "fb-page_post-id")
+        mock_publish_video.assert_called_once()
+
     @patch("publishing.services.MetaClient.publish_instagram_media", return_value={"id": "ig-post-id"})
     @patch("publishing.services.MetaClient.create_instagram_media", return_value={"id": "ig-creation-id"})
     @patch("publishing.services.MetaClient.wait_for_instagram_media_ready", return_value={"status_code": "FINISHED"})
@@ -579,6 +593,30 @@ class PublishingServiceTests(TestCase):
 
         with self.assertRaises(MetaTransientError):
             MetaClient()._handle_response(response)
+
+    @patch("core.services.meta_client.MetaClient._get_with_transient_retry")
+    def test_fetch_facebook_post_stats_resolves_numeric_video_id_to_post_id(self, mock_get_with_retry):
+        def _side_effect(path, params, timeout):
+            if path == "/12345" and params.get("fields") == "post_id":
+                return {"post_id": "999_777"}
+            if path == "/999_777" and params.get("fields", "").startswith("reactions.summary"):
+                return {
+                    "reactions": {"summary": {"total_count": 11}},
+                    "comments": {"summary": {"total_count": 3}},
+                }
+            if path == "/999_777/insights":
+                metric = params.get("metric")
+                if metric == "post_impressions_unique":
+                    return {"data": [{"values": [{"value": 101}]}]}
+                return {"data": []}
+            raise AssertionError(f"Unexpected call: path={path} params={params}")
+
+        mock_get_with_retry.side_effect = _side_effect
+
+        stats = MetaClient().fetch_facebook_post_stats("12345", "token")
+        self.assertEqual(stats["total_likes"], 11)
+        self.assertEqual(stats["total_comments"], 3)
+        self.assertEqual(stats["total_views"], 101)
 
     @patch("publishing.media_utils.requests.get")
     def test_media_fetchable_stream_timeout_is_transient(self, mock_get):

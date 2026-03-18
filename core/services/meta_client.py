@@ -511,11 +511,31 @@ class MetaClient:
         shares_count = None
         errors: list[str] = []
         stats_timeout = max(8, int(getattr(settings, "META_POST_STATS_TIMEOUT", 12)))
+        target_post_id = str(post_id or "")
+
+        # Facebook video publishing can return a video node id (numeric) while post insights are tied
+        # to a post id (pageId_postId). Resolve once so stats lookups hit the right node.
+        if "_" not in target_post_id:
+            try:
+                resolved = self._get_with_transient_retry(
+                    f"/{target_post_id}",
+                    {
+                        "access_token": page_access_token,
+                        "fields": "post_id",
+                    },
+                    stats_timeout,
+                )
+                resolved_post_id = str(resolved.get("post_id") or "").strip()
+                if resolved_post_id:
+                    target_post_id = resolved_post_id
+            except MetaAPIError:
+                # Keep original id if resolution is not available for this node.
+                pass
 
         # Secondary fallback.
         try:
             post_data = self._get_with_transient_retry(
-                f"/{post_id}",
+                f"/{target_post_id}",
                 {
                     "access_token": page_access_token,
                     "fields": "reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0)",
@@ -539,7 +559,7 @@ class MetaClient:
         for metric in insight_metrics:
             try:
                 insight_data = self._get_with_transient_retry(
-                    f"/{post_id}/insights",
+                    f"/{target_post_id}/insights",
                     {
                         "access_token": page_access_token,
                         "metric": metric,

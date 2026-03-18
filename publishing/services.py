@@ -52,7 +52,7 @@ def publish_scheduled_post(post):
                     description=caption,
                 )
                 logger.info("facebook video publish response post id=%s response=%s", post.id, result)
-                return result.get("id")
+                return result.get("post_id") or result.get("id")
 
             if ext and ext not in IMAGE_EXTENSIONS:
                 raise MetaPermanentError(f"Unsupported Facebook media type: {ext}")

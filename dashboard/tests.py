@@ -1,6 +1,8 @@
 from unittest.mock import patch
 from datetime import timedelta
 import json
+import hmac
+import hashlib
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -418,3 +420,105 @@ class DashboardAuthTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["error"], "Validation failed.")
+
+    def test_subscription_page_requires_login(self):
+        response = self.client.get("/dashboard/subscription/")
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/login/", response.url)
+
+    def test_subscription_create_order_returns_error_when_razorpay_missing(self):
+        user_model = get_user_model()
+        user_model.objects.create_user(username="subs1", password="pass12345")
+        self.client.login(username="subs1", password="pass12345")
+
+        with self.settings(RAZORPAY_KEY_ID="", RAZORPAY_KEY_SECRET=""):
+            response = self.client.post(
+                "/dashboard/subscription/create-order/",
+                data=json.dumps({"plan": "monthly"}),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Razorpay is not configured", response.json()["error"])
+
+    @patch("dashboard.views.requests.post")
+    def test_subscription_create_order_success(self, mock_post):
+        user_model = get_user_model()
+        user_model.objects.create_user(
+            username="subs2",
+            email="subs2@example.com",
+            first_name="Sub",
+            last_name="User",
+            password="pass12345",
+        )
+        self.client.login(username="subs2", password="pass12345")
+
+        class _Resp:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {"id": "order_test_123", "amount": 600000, "currency": "INR"}
+
+        mock_post.return_value = _Resp()
+
+        with self.settings(RAZORPAY_KEY_ID="rzp_test_abc", RAZORPAY_KEY_SECRET="secret_xyz", RAZORPAY_CURRENCY="INR"):
+            response = self.client.post(
+                "/dashboard/subscription/create-order/",
+                data=json.dumps({"plan": "monthly"}),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["order_id"], "order_test_123")
+        self.assertEqual(body["plan"], "monthly")
+        self.assertEqual(body["razorpay_key_id"], "rzp_test_abc")
+
+    def test_subscription_verify_payment_success(self):
+        user_model = get_user_model()
+        user_model.objects.create_user(username="subs3", password="pass12345")
+        self.client.login(username="subs3", password="pass12345")
+
+        order_id = "order_test_999"
+        payment_id = "pay_test_888"
+        secret = "secret_xyz"
+        signature = hmac.new(secret.encode("utf-8"), f"{order_id}|{payment_id}".encode("utf-8"), hashlib.sha256).hexdigest()
+
+        with self.settings(RAZORPAY_KEY_ID="rzp_test_abc", RAZORPAY_KEY_SECRET=secret):
+            response = self.client.post(
+                "/dashboard/subscription/verify-payment/",
+                data=json.dumps(
+                    {
+                        "razorpay_order_id": order_id,
+                        "razorpay_payment_id": payment_id,
+                        "razorpay_signature": signature,
+                    }
+                ),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["ok"])
+
+    def test_subscription_verify_payment_rejects_bad_signature(self):
+        user_model = get_user_model()
+        user_model.objects.create_user(username="subs4", password="pass12345")
+        self.client.login(username="subs4", password="pass12345")
+
+        with self.settings(RAZORPAY_KEY_ID="rzp_test_abc", RAZORPAY_KEY_SECRET="secret_xyz"):
+            response = self.client.post(
+                "/dashboard/subscription/verify-payment/",
+                data=json.dumps(
+                    {
+                        "razorpay_order_id": "order_test",
+                        "razorpay_payment_id": "pay_test",
+                        "razorpay_signature": "invalid_signature",
+                    }
+                ),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("verification failed", response.json()["error"].lower())

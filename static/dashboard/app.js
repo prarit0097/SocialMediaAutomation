@@ -1141,6 +1141,8 @@
   const profilePlanPreview = document.getElementById("profilePlanPreview");
   const profileStatusPreview = document.getElementById("profileStatusPreview");
   const profileExpiryPreview = document.getElementById("profileExpiryPreview");
+  const subscriptionShell = document.getElementById("subscriptionShell");
+  const subscriptionResult = document.getElementById("subscriptionResult");
 
   if (metaAppConfigForm && saveMetaAppConfigBtn) {
     const runWithMetaConfigLoading = withButtonLoading(
@@ -1326,6 +1328,115 @@
     });
 
     loadProfileData();
+  }
+
+  if (subscriptionShell) {
+    const razorpayKey = String(subscriptionShell.dataset.razorpayKey || "").trim();
+    const currency = String(subscriptionShell.dataset.currency || "INR").trim().toUpperCase();
+    const payButtons = Array.from(subscriptionShell.querySelectorAll(".subscription-pay-btn"));
+
+    const setSubscriptionMessage = (message, isError = false) => {
+      if (!subscriptionResult) return;
+      subscriptionResult.textContent = String(message || "");
+      subscriptionResult.classList.toggle("is-error", Boolean(isError));
+      subscriptionResult.classList.toggle("is-success", !isError && Boolean(message));
+    };
+
+    const openRazorpayCheckout = async (plan, triggerButton) => {
+      if (!razorpayKey) {
+        const msg = "Razorpay not configured. Please set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in .env.";
+        setSubscriptionMessage(msg, true);
+        showAppToast(msg, "error");
+        return;
+      }
+      if (typeof window.Razorpay === "undefined") {
+        const msg = "Razorpay checkout SDK failed to load. Refresh and try again.";
+        setSubscriptionMessage(msg, true);
+        showAppToast(msg, "error");
+        return;
+      }
+
+      const defaultText = triggerButton ? triggerButton.textContent : "Pay Now";
+      if (triggerButton) {
+        triggerButton.disabled = true;
+        triggerButton.textContent = "Creating Order...";
+      }
+
+      try {
+        const orderData = await fetchJSON("/dashboard/subscription/create-order/", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": csrfToken,
+          },
+          body: JSON.stringify({ plan }),
+        });
+
+        if (!orderData || !orderData.order_id) {
+          throw new Error("Invalid order response from Razorpay.");
+        }
+
+        const checkout = new window.Razorpay({
+          key: String(orderData.razorpay_key_id || razorpayKey),
+          amount: Number(orderData.amount || 0),
+          currency: String(orderData.currency || currency),
+          name: "Social Media Automation",
+          description: String(orderData.plan_title || "Subscription"),
+          order_id: String(orderData.order_id),
+          prefill: orderData.prefill || {},
+          notes: {
+            plan: String(orderData.plan || plan),
+            price_label: String(orderData.price_label || ""),
+          },
+          theme: {
+            color: "#1a4d68",
+          },
+          handler: async (response) => {
+            try {
+              const verify = await fetchJSON("/dashboard/subscription/verify-payment/", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "X-CSRFToken": csrfToken,
+                },
+                body: JSON.stringify(response || {}),
+              });
+              const msg = String(verify.message || "Payment successful and verified.");
+              setSubscriptionMessage(msg, false);
+              showAppToast(msg, "success");
+            } catch (err) {
+              const msg = `Payment captured but verification failed: ${err.message}`;
+              setSubscriptionMessage(msg, true);
+              showAppToast(msg, "error");
+            }
+          },
+          modal: {
+            ondismiss: () => {
+              setSubscriptionMessage("Payment popup closed. You can retry anytime.", false);
+            },
+          },
+        });
+
+        checkout.open();
+      } catch (err) {
+        const msg = `Unable to start payment: ${err.message}`;
+        setSubscriptionMessage(msg, true);
+        showAppToast(msg, "error");
+      } finally {
+        if (triggerButton) {
+          triggerButton.disabled = false;
+          triggerButton.textContent = defaultText;
+        }
+      }
+    };
+
+    payButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        const plan = String(button.dataset.plan || "").trim().toLowerCase();
+        if (!plan) return;
+        openRazorpayCheckout(plan, button);
+      });
+    });
   }
 
   const fetchInsightsBtn = document.getElementById("fetchInsightsBtn");

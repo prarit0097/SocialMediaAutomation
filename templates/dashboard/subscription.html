@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="card hero-card hero-split subscription-hero">
+  <div class="hero-main">
+    <p class="eyebrow">Subscription</p>
+    <h1>Choose the right plan and unlock full social growth operations.</h1>
+    <p class="hero-copy">Secure checkout is powered by Razorpay. Pick monthly or yearly billing and activate your workflow without leaving the app.</p>
+    <div class="hero-pill-row">
+      <span class="hero-pill">Secure Razorpay Checkout</span>
+      <span class="hero-pill">Monthly + Yearly plans</span>
+      <span class="hero-pill">Feature-rich operations suite</span>
+    </div>
+  </div>
+  <div class="hero-rail">
+    <article class="hero-stat">
+      <span class="hero-stat-label">Billing Note</span>
+      <strong>Transparent pricing</strong>
+      <p>Monthly plan: INR 6,000. Yearly plan: INR 70,000. Taxes and gateway fees apply as per Razorpay/account policy.</p>
+    </article>
+  </div>
+</section>
+
+<section class="card subscription-shell" id="subscriptionShell" data-razorpay-key="{{ subscription.razorpay_key_id|default:'' }}" data-currency="{{ subscription.currency|default:'INR' }}">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">Plans</p>
+      <h2>Flexible packs for every stage</h2>
+      <p class="section-copy">Choose your billing cycle. You can upgrade the backend flow to live entitlement logic later without changing checkout UX.</p>
+    </div>
+  </div>
+
+  <div class="subscription-plan-grid">
+    <article class="subscription-plan-card">
+      <p class="subscription-plan-tag">Most used</p>
+      <h3>Monthly Growth</h3>
+      <p class="subscription-plan-price">INR 6,000 <span>/ month</span></p>
+      <p class="subscription-plan-copy">Best for operators who want agile month-wise execution and optimization.</p>
+      <button class="btn subscription-pay-btn" data-plan="monthly">Pay Monthly</button>
+    </article>
+
+    <article class="subscription-plan-card featured">
+      <p class="subscription-plan-tag">Best value</p>
+      <h3>Yearly Scale</h3>
+      <p class="subscription-plan-price">INR 70,000 <span>/ year</span></p>
+      <p class="subscription-plan-copy">Perfect for consistent long-term campaigns with lower effective monthly cost.</p>
+      <button class="btn subscription-pay-btn" data-plan="yearly">Pay Yearly</button>
+    </article>
+  </div>
+
+  <p id="subscriptionResult" class="result-note"></p>
+
+  <div class="subscription-features-shell">
+    <p class="eyebrow">What you get in subscription packs</p>
+    <h3>Feature coverage for social media managers</h3>
+    <div class="subscription-feature-grid">
+      {% for group in subscription.feature_groups %}
+        <article class="subscription-feature-card">
+          <strong>{{ group.title }}</strong>
+          <ul>
+            {% for item in group.items %}
+              <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </article>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+{% endblock %}

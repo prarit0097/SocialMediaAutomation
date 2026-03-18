@@ -11,6 +11,7 @@ This file is the high-level source of truth for what the project does, how the m
 - Configure `META_APP_ID`, `META_APP_SECRET`, and `META_REDIRECT_URI` from Dashboard Home and persist them in `.env` without code edits.
 - Allow new operator signup via Google OAuth only (Gmail-based signup flow).
 - Provide a dedicated Profile page for each logged-in user with Google-synced identity data and editable non-email fields.
+- Provide a dedicated Subscription page with Razorpay checkout for monthly/yearly plan purchase flow.
 - Schedule Facebook, Instagram, or combined FB + IG posts.
 - Publish due posts automatically through Celery workers.
 - Store cached insights snapshots for operator review and future analytics.
@@ -49,6 +50,27 @@ What it shows:
 - beginner-friendly setup checklist covering: use-case selection, customize use-case, API/Login setup, required scopes, and FB+IG asset linking
 - quick actions to Accounts, Scheduler, Insights, and AI Insights
 - quick actions to Accounts, Scheduler, Planning, Insights, AI Insights, and Profile
+- quick actions to Accounts, Scheduler, Planning, Insights, AI Insights, Profile, and Subscription
+
+### Subscription
+The Subscription page is the billing workspace (`/dashboard/subscription/`).
+
+What it shows:
+- Monthly plan card: `INR 6,000 / month`
+- Yearly plan card: `INR 70,000 / year`
+- feature blocks under plans, describing core app capabilities included in subscription packs
+- Razorpay-powered payment buttons for each plan
+
+What it does:
+- starts checkout by creating Razorpay order via backend `POST /dashboard/subscription/create-order/`
+- opens Razorpay checkout popup from UI (`checkout.js`)
+- verifies payment signature via backend `POST /dashboard/subscription/verify-payment/`
+- returns clear UI success/error messages for order creation and verification steps
+
+Important runtime meaning:
+- checkout requires `.env` keys: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`
+- currency is controlled by `RAZORPAY_CURRENCY` (default `INR`)
+- current implementation verifies payment cryptographically but does not yet attach entitlement/quota activation logic to users (can be added in next step)
 
 ### Profile
 The Profile page is the logged-in user identity/settings workspace (`/dashboard/profile/`).
@@ -425,6 +447,10 @@ This project includes local MCP servers under `mcp_servers/` so Codex or future 
   - `GOOGLE_OAUTH_CLIENT_ID`
   - `GOOGLE_OAUTH_CLIENT_SECRET`
   - `GOOGLE_OAUTH_REDIRECT_URI` (e.g. `https://your-domain/signup/google/callback/`)
+- Razorpay credentials must be configured for live subscription checkout:
+  - `RAZORPAY_KEY_ID`
+  - `RAZORPAY_KEY_SECRET`
+  - optional `RAZORPAY_CURRENCY` (default `INR`)
 - reconnecting a subset of pages does not automatically refresh every older stored account row.
 - SQLite can still hit transient write locks under high parallel activity; PostgreSQL is strongly recommended for production workloads.
 
