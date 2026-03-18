@@ -32,6 +32,7 @@ What it shows:
 - clear `Login` and `Signup` actions
 - simple step flow explaining setup to analytics journey
 - redesigned premium marketing layout with: hero, capability bar, feature matrix, workflow steps, analytics highlight, AI value band, pricing cards, FAQ, and final CTA
+- pricing section aligned with app billing: exactly 2 cards (`INR 6,000 / month` and `INR 70,000 / year`)
 
 What it does:
 - helps first-time users understand app value before authentication
