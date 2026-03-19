@@ -33,27 +33,33 @@
         throw new Error("Subscription expired.");
       }
       if (typeof data === "string") {
-        throw new Error(formatUiErrorMessage(data));
+        throw new Error(formatUiErrorMessage(data, response.status));
       }
-      throw new Error(formatUiErrorMessage(data));
+      throw new Error(formatUiErrorMessage(data, response.status));
     }
     return data;
   }
 
-  function formatUiErrorMessage(value) {
+  function formatUiErrorMessage(value, statusCode = null) {
     if (value && typeof value === "object") {
       const details = value.details ? String(value.details) : "";
       const error = value.error ? String(value.error) : "";
-      return sanitizeUiError(details || error || "Request failed.");
+      return sanitizeUiError(details || error || "Request failed.", statusCode);
     }
-    return sanitizeUiError(value);
+    return sanitizeUiError(value, statusCode);
   }
 
-  function sanitizeUiError(value) {
+  function sanitizeUiError(value, statusCode = null) {
     const text = String(value || "").trim();
     if (!text) return "Request failed.";
     const compact = text.replace(/\s+/g, " ").trim();
     const lowered = compact.toLowerCase();
+    if (statusCode === 413) {
+      return "Uploaded media is larger than the current server upload limit. Increase VPS nginx client_max_body_size or upload a smaller file.";
+    }
+    if (statusCode === 502 || statusCode === 504) {
+      return "Upstream service is temporarily unavailable. Retry once.";
+    }
     if (lowered.includes("<!doctype html") || lowered.includes("<html") || lowered.includes("</html>")) {
       if (lowered.includes("err_ngrok_3004")) {
         return "Public media URL is unavailable through ngrok right now. Restart ngrok and refresh again.";
