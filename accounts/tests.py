@@ -49,7 +49,7 @@ class AccountsLandingTests(TestCase):
         response = self.client.get("/privacy-policy/")
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Privacy Policy")
-        self.assertContains(response, "1995praritsidana@gmail.com")
+        self.assertContains(response, "1995postzyo@gmail.com")
 
     def test_terms_page_loads(self):
         response = self.client.get("/terms/")

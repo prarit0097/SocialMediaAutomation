@@ -128,7 +128,7 @@ def _legal_page_context(page_key: str) -> dict:
                 {
                     "heading": "How to Request Deletion",
                     "points": [
-                        "Send a deletion request from the email address associated with your Postzyo account to 1995praritsidana@gmail.com.",
+                        "Send a deletion request from the email address associated with your Postzyo account to 1995postzyo@gmail.com.",
                         "Use the subject line: Postzyo Data Deletion Request.",
                         "Include your account email address and any connected workspace identifiers that help us locate the correct account.",
                     ],
