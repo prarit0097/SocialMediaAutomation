@@ -41,6 +41,7 @@ What it does:
 - routes authenticated users directly to Dashboard Home to continue operations
 - uses project media logos across UI touchpoints: Postzyo logo in global brand/top identity and Meta/Instagram logos in platform badges and Meta-connect CTA where context is platform-specific
 - global topbar now uses horizontal Postzyo lockup logo (contain fit) so branding stays clear and non-cropped across desktop/mobile
+- production reverse-proxy chain preserves the original HTTPS protocol header through both host Nginx and container Nginx so Django secure redirects do not loop on live deployment
 
 ### Home
 The Home page is now the workspace setup + navigation surface.
@@ -596,3 +597,4 @@ Step 9:
 This file must be updated whenever project behavior, workflow, automation, stored data, or important UI meaning changes.
 
 If someone asks, "What does this project do?", this file should be the first source of truth.
+
