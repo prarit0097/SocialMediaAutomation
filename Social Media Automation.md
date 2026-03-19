@@ -143,6 +143,7 @@ What it does:
 - force-refresh run status is now auto-reconciled: if snapshot storage succeeds but callback bookkeeping misses, counters self-heal and stale `running` states are auto-finalized
 - force-refresh status endpoint is lock-safe for SQLite contention (`database is locked`): temporary DB locks no longer break UI polling with 500 responses
 - Accounts UI shows a one-time toast when a previously stuck force-refresh run is auto-recovered/finalized
+- accounts list refresh now preserves the last good table if an upstream request is interrupted or returns an unreadable HTML error page, so operators see a retry notice instead of a blank/broken table
 - uses user-token fallback for catalog detail checks (session token first, then current user cache, then latest global reconnect token)
 - keeps only latest reconnect profiles active in scheduling/health
 - blocks scheduling from stale or inactive account rows until the profile is refreshed in a new reconnect

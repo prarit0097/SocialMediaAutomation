@@ -66,6 +66,24 @@
     return compact.length > 240 ? `${compact.slice(0, 237)}...` : compact;
   }
 
+  function isHtmlLikeResponse(value) {
+    const lowered = String(value || "").toLowerCase();
+    return lowered.includes("<!doctype html") || lowered.includes("<html") || lowered.includes("</html>");
+  }
+
+  function isTransientFetchError(error) {
+    const text = String((error && error.message) || error || "").trim().toLowerCase();
+    if (!text) return false;
+    return (
+      text.includes("aborted") ||
+      text.includes("aborterror") ||
+      text.includes("failed to fetch") ||
+      text.includes("networkerror") ||
+      text.includes("load failed") ||
+      text.includes("upstream service returned an unreadable html error page")
+    );
+  }
+
   function withButtonLoading(button, label, loadingLabel) {
     if (!button) return async (fn) => fn();
     const defaultLabel = label || button.textContent || "";
@@ -690,6 +708,7 @@
     const syncStatus = document.getElementById("accountSyncStatus");
     const catalogTable = document.getElementById("metaCatalogTable");
     const catalogStatus = document.getElementById("metaCatalogStatus");
+    const accountsViewMeta = document.getElementById("accountsViewMeta");
     const refreshCatalog = options.refreshCatalog === true;
     const refreshAccounts = options.refreshAccounts === true;
     if (!table) return;
@@ -698,12 +717,26 @@
       // Primary table should load fast and independently.
       const accountsEndpoint = refreshAccounts ? "/api/accounts/?refresh=1" : "/api/accounts/";
       rows = await fetchJSON(accountsEndpoint);
+      if (!Array.isArray(rows)) {
+        throw new Error(formatUiErrorMessage(rows));
+      }
       cachedAccountsRows = rows;
       renderAccountsFromCache();
     } catch (err) {
-      table.innerHTML = `<p>${err.message}</p>`;
-      cachedAccountsRows = [];
-      rows = [];
+      const fallbackMessage = refreshAccounts
+        ? "Refresh was interrupted. Showing last loaded accounts."
+        : "Accounts list is temporarily unavailable. Retry once.";
+      const safeMessage = isTransientFetchError(err) ? fallbackMessage : sanitizeUiError(err && err.message);
+      if (cachedAccountsRows.length) {
+        rows = cachedAccountsRows;
+        renderAccountsFromCache();
+        if (accountsViewMeta) {
+          accountsViewMeta.textContent = `${accountsViewMeta.textContent} | ${safeMessage}`;
+        }
+      } else {
+        table.innerHTML = `<p>${safeMessage}</p>`;
+        rows = [];
+      }
     }
 
     // Non-critical panels load in background; failures should not blank main table.
@@ -750,8 +783,8 @@
         )} | Connectable: ${connectable} | Not Connectable: ${notConnectable}`;
       }
     } else {
-      if (catalogTable) catalogTable.innerHTML = "<p>Catalog unavailable right now.</p>";
-      if (catalogStatus) catalogStatus.textContent = "";
+      if (catalogTable && !catalogTable.innerHTML.trim()) catalogTable.innerHTML = "<p>Catalog unavailable right now.</p>";
+      if (catalogStatus && !catalogStatus.textContent.trim()) catalogStatus.textContent = "";
     }
   }
 
