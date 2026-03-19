@@ -27,6 +27,152 @@ def landing_page(request):
     return render(request, "accounts/landing.html")
 
 
+def _legal_page_context(page_key: str) -> dict:
+    pages = {
+        "privacy_policy": {
+            "eyebrow": "Legal | Privacy",
+            "title": "Privacy Policy",
+            "intro": "This policy explains how Postzyo collects, uses, stores, and protects account, scheduling, and analytics data when users access the platform.",
+            "sections": [
+                {
+                    "heading": "Information We Collect",
+                    "points": [
+                        "Account identity data such as name, email address, and Google profile picture used for login and workspace identity.",
+                        "Connected Meta asset data such as Facebook Page IDs, Instagram Business account IDs, page names, token metadata, and encrypted access tokens.",
+                        "Operator-generated content such as scheduled post captions, media URLs, uploaded media files, planning items, and workspace settings.",
+                        "Analytics and automation records such as insight snapshots, publishing logs, retry states, token health states, and queue execution metadata.",
+                    ],
+                },
+                {
+                    "heading": "How We Use Information",
+                    "points": [
+                        "To authenticate users and maintain secure access to the Postzyo workspace.",
+                        "To connect Meta assets, publish scheduled content, store insights snapshots, and generate profile-specific recommendations.",
+                        "To monitor system health, diagnose failures, prevent duplicate tasks, and improve automation reliability.",
+                        "To comply with platform, security, legal, and audit requirements where applicable.",
+                    ],
+                },
+                {
+                    "heading": "How We Protect Information",
+                    "points": [
+                        "Sensitive Meta access tokens are stored in encrypted form inside the application data layer.",
+                        "Production deployments are intended to run behind HTTPS with secure cookie, HSTS, and reverse-proxy protections enabled.",
+                        "Operational access is restricted to authorized users and infrastructure administrators responsible for support, reliability, and security.",
+                    ],
+                },
+                {
+                    "heading": "Data Sharing",
+                    "points": [
+                        "Postzyo does not sell operator or customer data.",
+                        "Data may be processed through service providers required for app operation, including hosting, database, queueing, authentication, payment, AI, and Meta platform integrations.",
+                        "Data may be disclosed if required by law, legal process, or a legitimate platform security obligation.",
+                    ],
+                },
+                {
+                    "heading": "Data Retention",
+                    "points": [
+                        "User account data, scheduled content, insight snapshots, and automation records are retained for as long as required to operate the service, troubleshoot issues, maintain historical analytics, and satisfy legal obligations.",
+                        "Users may request deletion of account-linked data through the Data Deletion page and support contact listed below.",
+                    ],
+                },
+            ],
+        },
+        "terms": {
+            "eyebrow": "Legal | Terms",
+            "title": "Terms of Service",
+            "intro": "These terms govern access to Postzyo, including Meta connection workflows, social publishing automation, analytics storage, and AI-assisted recommendations.",
+            "sections": [
+                {
+                    "heading": "Service Scope",
+                    "points": [
+                        "Postzyo provides tools for connecting Meta assets, scheduling and publishing social media posts, storing analytics snapshots, and generating operational recommendations.",
+                        "Features may evolve over time, and some capabilities depend on third-party platform availability, permissions, rate limits, and policy approval.",
+                    ],
+                },
+                {
+                    "heading": "User Responsibilities",
+                    "points": [
+                        "Users must provide accurate account information and maintain control over connected Meta and Google accounts.",
+                        "Users are responsible for ensuring they have rights to publish uploaded media, captions, and campaign content.",
+                        "Users must not use Postzyo for unlawful, fraudulent, abusive, spam, or policy-violating automation.",
+                    ],
+                },
+                {
+                    "heading": "Third-Party Platforms",
+                    "points": [
+                        "Postzyo depends on third-party services such as Meta, Google, hosting providers, payment providers, and AI providers.",
+                        "Feature availability, performance, or limits may change when upstream providers change APIs, rate limits, permissions, or policies.",
+                    ],
+                },
+                {
+                    "heading": "Availability and Limits",
+                    "points": [
+                        "The service is provided on a commercially reasonable basis, but uninterrupted availability is not guaranteed.",
+                        "Temporary delays can occur due to upstream API throttling, token expiry, infrastructure maintenance, or scheduled deployments.",
+                    ],
+                },
+                {
+                    "heading": "Termination",
+                    "points": [
+                        "Access may be suspended or terminated if a user violates these terms, abuses the service, or creates security, legal, or platform risk.",
+                        "Users may stop using the service at any time and may request account-related data deletion through the published deletion workflow.",
+                    ],
+                },
+            ],
+        },
+        "data_deletion": {
+            "eyebrow": "Legal | Data Deletion",
+            "title": "User Data Deletion",
+            "intro": "Postzyo provides a documented process for requesting deletion of user-linked account data, Meta connection records, and related workspace information.",
+            "sections": [
+                {
+                    "heading": "How to Request Deletion",
+                    "points": [
+                        "Send a deletion request from the email address associated with your Postzyo account to 1995praritsidana@gmail.com.",
+                        "Use the subject line: Postzyo Data Deletion Request.",
+                        "Include your account email address and any connected workspace identifiers that help us locate the correct account.",
+                    ],
+                },
+                {
+                    "heading": "What We Delete",
+                    "points": [
+                        "User profile details stored in Postzyo, including Google-linked profile metadata kept by the app.",
+                        "Connected Meta account records, encrypted token records, scheduling data, planning items, and stored insight snapshots associated with the account when deletion is approved.",
+                        "Operational logs may be retained where required for fraud prevention, security analysis, legal compliance, or financial record-keeping.",
+                    ],
+                },
+                {
+                    "heading": "Processing Window",
+                    "points": [
+                        "Deletion requests are reviewed manually for identity verification and safety.",
+                        "Approved requests are generally processed within 7 to 15 business days, depending on system scope and legal retention requirements.",
+                    ],
+                },
+                {
+                    "heading": "Important Notes",
+                    "points": [
+                        "Deleting Postzyo data does not automatically delete data held directly by Meta, Google, or other third-party providers.",
+                        "Users may also need to remove Postzyo access from connected Meta or Google account settings separately.",
+                    ],
+                },
+            ],
+        },
+    }
+    return pages[page_key]
+
+
+def privacy_policy_view(request):
+    return render(request, "accounts/legal_page.html", _legal_page_context("privacy_policy"))
+
+
+def terms_view(request):
+    return render(request, "accounts/legal_page.html", _legal_page_context("terms"))
+
+
+def data_deletion_view(request):
+    return render(request, "accounts/legal_page.html", _legal_page_context("data_deletion"))
+
+
 def _google_signup_config() -> dict:
     return {
         "client_id": str(getattr(settings, "GOOGLE_OAUTH_CLIENT_ID", "") or "").strip(),

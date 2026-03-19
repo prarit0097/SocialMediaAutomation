@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="card legal-hero">
+  <div class="legal-hero-copy">
+    <p class="eyebrow">{{ eyebrow }}</p>
+    <h1>{{ title }}</h1>
+    <p class="hero-copy">{{ intro }}</p>
+  </div>
+  <div class="legal-meta-card">
+    <strong>Postzyo Legal Desk</strong>
+    <p>Production domain: <a href="https://postzyo.com/">postzyo.com</a></p>
+    <p>Support email: <a href="mailto:1995praritsidana@gmail.com">1995praritsidana@gmail.com</a></p>
+  </div>
+</section>
+
+<section class="card legal-content-card">
+  <div class="legal-section-list">
+    {% for section in sections %}
+    <article class="legal-section-block">
+      <h2>{{ section.heading }}</h2>
+      <ul class="info-list legal-points-list">
+        {% for point in section.points %}
+        <li>{{ point }}</li>
+        {% endfor %}
+      </ul>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="card legal-footer-card">
+  <div>
+    <p class="eyebrow">Need help?</p>
+    <h2>Contact Postzyo support for policy and data questions.</h2>
+    <p class="section-copy">For legal, privacy, deletion, or account access issues, write to the support mailbox and include the email linked to your Postzyo account.</p>
+  </div>
+  <div class="lp-cta-row">
+    <a class="btn" href="mailto:1995praritsidana@gmail.com">Email Support</a>
+    <a class="btn muted" href="{% url 'signup' %}">Back to Signup</a>
+  </div>
+</section>
+{% endblock %}

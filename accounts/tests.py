@@ -1,9 +1,18 @@
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.core.cache import cache
 from unittest.mock import patch, Mock
 
 
+@override_settings(
+    SECURE_SSL_REDIRECT=False,
+    CACHES={
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "accounts-tests",
+        }
+    },
+)
 class AccountsLandingTests(TestCase):
     def test_root_shows_landing_for_anonymous_user(self):
         response = self.client.get("/")
@@ -35,6 +44,23 @@ class AccountsLandingTests(TestCase):
             response = self.client.get("/login/")
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Continue with Google")
+
+    def test_privacy_policy_page_loads(self):
+        response = self.client.get("/privacy-policy/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Privacy Policy")
+        self.assertContains(response, "1995praritsidana@gmail.com")
+
+    def test_terms_page_loads(self):
+        response = self.client.get("/terms/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Terms of Service")
+
+    def test_data_deletion_page_loads(self):
+        response = self.client.get("/data-deletion/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "User Data Deletion")
+        self.assertContains(response, "Postzyo Data Deletion Request")
 
     @patch("accounts.views.requests.get")
     @patch("accounts.views.requests.post")

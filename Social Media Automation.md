@@ -33,6 +33,7 @@ What it shows:
 - simple step flow explaining setup to analytics journey
 - redesigned premium marketing layout with: hero, capability bar, feature matrix, workflow steps, analytics highlight, AI value band, pricing cards, FAQ, and final CTA
 - pricing section aligned with app billing: exactly 2 cards (`INR 6,000 / month` and `INR 70,000 / year`)
+- public legal pages for Meta compliance: `Privacy Policy`, `Terms of Service`, and `User Data Deletion` available at `/privacy-policy/`, `/terms/`, and `/data-deletion/`
 
 What it does:
 - helps first-time users understand app value before authentication
@@ -598,5 +599,6 @@ Step 9:
 This file must be updated whenever project behavior, workflow, automation, stored data, or important UI meaning changes.
 
 If someone asks, "What does this project do?", this file should be the first source of truth.
+
 
 
