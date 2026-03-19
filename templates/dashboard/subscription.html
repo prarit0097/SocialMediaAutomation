@@ -17,6 +17,11 @@
       <strong>Transparent pricing</strong>
       <p>Monthly plan: INR 6,000. Yearly plan: INR 70,000. Taxes and gateway fees apply as per Razorpay/account policy.</p>
     </article>
+    <article class="hero-stat">
+      <span class="hero-stat-label">Current Access</span>
+      <strong>{{ subscription.current_plan }} | {{ subscription.current_status|title }}</strong>
+      <p>Expiry: {{ subscription.current_expiry|default:"-" }}</p>
+    </article>
   </div>
 </section>
 
@@ -25,9 +30,15 @@
     <div>
       <p class="eyebrow">Plans</p>
       <h2>Flexible packs for every stage</h2>
-      <p class="section-copy">Choose your billing cycle. You can upgrade the backend flow to live entitlement logic later without changing checkout UX.</p>
+      <p class="section-copy">New users start with a 1-day trial. Monthly billing keeps access active for one month. Yearly billing keeps access active for one year.</p>
     </div>
   </div>
+
+  {% if subscription.is_locked %}
+    <div class="status-stack">
+      <p class="result-note is-error">Your app access has expired. Complete payment to continue using Accounts, Scheduler, Planning, Insights, AI Insights, and Profile pages.</p>
+    </div>
+  {% endif %}
 
   <div class="subscription-plan-grid">
     <article class="subscription-plan-card">

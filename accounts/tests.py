@@ -3,6 +3,8 @@ from django.test import TestCase, override_settings
 from django.core.cache import cache
 from unittest.mock import patch, Mock
 
+from .models import UserProfile
+
 
 @override_settings(
     SECURE_SSL_REDIRECT=False,
@@ -92,7 +94,9 @@ class AccountsLandingTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertIn("/dashboard/", response.url)
-        self.assertTrue(get_user_model().objects.filter(email="newoperator@gmail.com").exists())
+        user = get_user_model().objects.get(email="newoperator@gmail.com")
+        self.assertEqual(user.profile.subscription_plan, UserProfile.SUBSCRIPTION_PLAN_TRIAL)
+        self.assertEqual(user.profile.subscription_status, UserProfile.SUBSCRIPTION_STATUS_ACTIVE)
 
     def test_google_signup_start_redirects_to_google_auth(self):
         with self.settings(

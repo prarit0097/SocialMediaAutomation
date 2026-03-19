@@ -11,6 +11,7 @@ urlpatterns = [
     path("ai-insights/", views.ai_insights_page, name="ai_insights"),
     path("profile/", views.profile_page, name="profile"),
     path("subscription/", views.subscription_page, name="subscription"),
+    path("subscription/expired/", views.subscription_expired_page, name="subscription_expired"),
     path("meta-app-config/", views.meta_app_config, name="meta_app_config"),
     path("profile-data/", views.profile_data, name="profile_data"),
     path("subscription/create-order/", views.subscription_create_order, name="subscription_create_order"),

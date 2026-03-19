@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="card hero-card hero-split subscription-hero">
+  <div class="hero-main">
+    <p class="eyebrow">Access Expired</p>
+    <h1>Your app access has expired.</h1>
+    <p class="hero-copy">Complete payment to continue using Postzyo. Until payment is completed, dashboard pages and app APIs stay locked.</p>
+    <div class="hero-pill-row">
+      <span class="hero-pill">Plan: {{ subscription_plan }}</span>
+      <span class="hero-pill">Status: {{ subscription_status|title }}</span>
+      <span class="hero-pill">Expiry: {{ subscription_expires_on|default:"-" }}</span>
+    </div>
+  </div>
+  <div class="hero-rail">
+    <article class="hero-stat">
+      <span class="hero-stat-label">Next Step</span>
+      <strong>Complete payment to reactivate the app</strong>
+      <p>Monthly plan restores access for one month. Yearly plan restores access for one year.</p>
+      <a class="btn" href="{% url 'dashboard:subscription' %}">Continue</a>
+    </article>
+  </div>
+</section>
+{% endblock %}

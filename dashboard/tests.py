@@ -390,7 +390,7 @@ class DashboardAuthTests(TestCase):
         self.assertEqual(user.first_name, "New")
         self.assertEqual(user.last_name, "Person")
         self.assertEqual(profile.profile_picture_url, "")
-        self.assertEqual(profile.subscription_plan, "Starter")
+        self.assertEqual(profile.subscription_plan, "Trial")
         self.assertEqual(profile.subscription_status, "active")
 
     def test_profile_data_post_ignores_non_name_fields_in_payload(self):
@@ -408,7 +408,8 @@ class DashboardAuthTests(TestCase):
             last_name="Name",
             profile_picture_url="https://example.com/old-avatar.jpg",
             subscription_plan="Pro",
-            subscription_status=UserProfile.SUBSCRIPTION_STATUS_EXPIRED,
+            subscription_status=UserProfile.SUBSCRIPTION_STATUS_ACTIVE,
+            subscription_expires_on=timezone.now().date() + timedelta(days=10),
         )
         self.client.login(username="profileinvalid", password="pass12345")
 
@@ -419,7 +420,7 @@ class DashboardAuthTests(TestCase):
                     "first_name": "Test",
                     "last_name": "User",
                     "profile_picture_url": "https://example.com/new-avatar.jpg",
-                    "subscription_plan": "Starter",
+                    "subscription_plan": "Trial",
                     "subscription_status": "paused",
                     "subscription_expires_on": "2026-12-31",
                 }
@@ -434,7 +435,7 @@ class DashboardAuthTests(TestCase):
         self.assertEqual(user.last_name, "User")
         self.assertEqual(profile.profile_picture_url, "https://example.com/old-avatar.jpg")
         self.assertEqual(profile.subscription_plan, "Pro")
-        self.assertEqual(profile.subscription_status, UserProfile.SUBSCRIPTION_STATUS_EXPIRED)
+        self.assertEqual(profile.subscription_status, UserProfile.SUBSCRIPTION_STATUS_ACTIVE)
 
     def test_subscription_page_requires_login(self):
         response = self.client.get("/dashboard/subscription/")
@@ -490,16 +491,22 @@ class DashboardAuthTests(TestCase):
         self.assertEqual(body["order_id"], "order_test_123")
         self.assertEqual(body["plan"], "monthly")
         self.assertEqual(body["razorpay_key_id"], "rzp_test_abc")
+        self.assertEqual(cache.get("subscription_order:order_test_123")["billing_cycle"], "monthly")
 
     def test_subscription_verify_payment_success(self):
         user_model = get_user_model()
-        user_model.objects.create_user(username="subs3", password="pass12345")
+        user = user_model.objects.create_user(username="subs3", password="pass12345")
         self.client.login(username="subs3", password="pass12345")
 
         order_id = "order_test_999"
         payment_id = "pay_test_888"
         secret = "secret_xyz"
         signature = hmac.new(secret.encode("utf-8"), f"{order_id}|{payment_id}".encode("utf-8"), hashlib.sha256).hexdigest()
+        cache.set(
+            f"subscription_order:{order_id}",
+            {"user_id": user.id, "plan_key": "monthly", "billing_cycle": "monthly"},
+            timeout=3600,
+        )
 
         with self.settings(RAZORPAY_KEY_ID="rzp_test_abc", RAZORPAY_KEY_SECRET=secret):
             response = self.client.post(
@@ -516,6 +523,9 @@ class DashboardAuthTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()["ok"])
+        user.refresh_from_db()
+        self.assertEqual(user.profile.subscription_plan, "Monthly")
+        self.assertEqual(user.profile.subscription_status, "active")
 
     def test_subscription_verify_payment_rejects_bad_signature(self):
         user_model = get_user_model()
@@ -537,3 +547,85 @@ class DashboardAuthTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("verification failed", response.json()["error"].lower())
+
+    def test_subscription_verify_payment_can_activate_yearly_plan(self):
+        user_model = get_user_model()
+        user = user_model.objects.create_user(username="subs5", password="pass12345")
+        self.client.login(username="subs5", password="pass12345")
+
+        order_id = "order_test_yearly"
+        payment_id = "pay_test_yearly"
+        secret = "secret_xyz"
+        signature = hmac.new(secret.encode("utf-8"), f"{order_id}|{payment_id}".encode("utf-8"), hashlib.sha256).hexdigest()
+        cache.set(
+            f"subscription_order:{order_id}",
+            {"user_id": user.id, "plan_key": "yearly", "billing_cycle": "yearly"},
+            timeout=3600,
+        )
+
+        with self.settings(RAZORPAY_KEY_ID="rzp_test_abc", RAZORPAY_KEY_SECRET=secret):
+            response = self.client.post(
+                "/dashboard/subscription/verify-payment/",
+                data=json.dumps(
+                    {
+                        "razorpay_order_id": order_id,
+                        "razorpay_payment_id": payment_id,
+                        "razorpay_signature": signature,
+                    }
+                ),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        user.refresh_from_db()
+        self.assertEqual(user.profile.subscription_plan, "Yearly")
+
+    def test_expired_user_is_redirected_to_subscription_expired_page(self):
+        user_model = get_user_model()
+        user = user_model.objects.create_user(username="expired1", password="pass12345")
+        profile = UserProfile.objects.create(
+            user=user,
+            subscription_plan="Trial",
+            subscription_status=UserProfile.SUBSCRIPTION_STATUS_ACTIVE,
+            subscription_expires_on=timezone.now().date() - timedelta(days=1),
+        )
+        self.client.login(username="expired1", password="pass12345")
+
+        response = self.client.get("/dashboard/accounts/")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/dashboard/subscription/expired/", response.url)
+        profile.refresh_from_db()
+        self.assertEqual(profile.subscription_status, UserProfile.SUBSCRIPTION_STATUS_EXPIRED)
+
+    def test_expired_user_api_request_returns_payment_required(self):
+        user_model = get_user_model()
+        user = user_model.objects.create_user(username="expired2", password="pass12345")
+        UserProfile.objects.create(
+            user=user,
+            subscription_plan="Trial",
+            subscription_status=UserProfile.SUBSCRIPTION_STATUS_ACTIVE,
+            subscription_expires_on=timezone.now().date() - timedelta(days=1),
+        )
+        self.client.login(username="expired2", password="pass12345")
+
+        response = self.client.get("/api/accounts/")
+
+        self.assertEqual(response.status_code, 402)
+        self.assertEqual(response.json()["code"], "subscription_expired")
+
+    def test_expired_user_can_open_subscription_page(self):
+        user_model = get_user_model()
+        user = user_model.objects.create_user(username="expired3", password="pass12345")
+        UserProfile.objects.create(
+            user=user,
+            subscription_plan="Monthly",
+            subscription_status=UserProfile.SUBSCRIPTION_STATUS_ACTIVE,
+            subscription_expires_on=timezone.now().date() - timedelta(days=1),
+        )
+        self.client.login(username="expired3", password="pass12345")
+
+        response = self.client.get("/dashboard/subscription/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Your app access has expired")

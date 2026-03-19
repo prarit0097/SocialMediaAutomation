@@ -319,7 +319,9 @@ def google_signup_callback(request):
         if changed:
             user.save(update_fields=["first_name", "last_name"])
 
-    user_profile, _ = UserProfile.objects.get_or_create(user=user)
+    user_profile, created = UserProfile.objects.get_or_create(user=user)
+    if created:
+        user_profile.activate_trial(commit=False)
     profile_changed = False
     if first_name and user_profile.first_name != first_name:
         user_profile.first_name = first_name
@@ -330,8 +332,9 @@ def google_signup_callback(request):
     if profile_picture_url and user_profile.profile_picture_url != profile_picture_url:
         user_profile.profile_picture_url = profile_picture_url
         profile_changed = True
-    if profile_changed:
-        user_profile.save(update_fields=["first_name", "last_name", "profile_picture_url", "updated_at"])
+    user_profile.refresh_subscription_state(commit=False)
+    if profile_changed or created:
+        user_profile.save()
 
     login(request, user, backend="django.contrib.auth.backends.ModelBackend")
     return redirect("dashboard:home")

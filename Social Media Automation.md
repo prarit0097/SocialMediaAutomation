@@ -13,6 +13,7 @@ Primary product branding is `Postzyo`, and production rollout is planned on `pos
 - Allow new operator signup via Google OAuth only (Gmail-based signup flow).
 - Provide a dedicated Profile page for each logged-in user with Google-synced identity data and editable non-email fields.
 - Provide a dedicated Subscription page with Razorpay checkout for monthly/yearly plan purchase flow.
+- Give every new user a 1-day trial and lock the app after expiry until payment is completed.
 - Schedule Facebook, Instagram, or combined FB + IG posts.
 - Publish due posts automatically through Celery workers.
 - Store cached insights snapshots for operator review and future analytics.
@@ -70,17 +71,25 @@ What it shows:
 - Yearly plan card: `INR 70,000 / year`
 - feature blocks under plans, describing core app capabilities included in subscription packs
 - Razorpay-powered payment buttons for each plan
+- current entitlement summary: active plan, status, and expiry date
+- locked-access warning when a user has expired and needs payment to continue
 
 What it does:
+- new Google-signup users start on `Trial` plan with 1-day app access
 - starts checkout by creating Razorpay order via backend `POST /dashboard/subscription/create-order/`
 - opens Razorpay checkout popup from UI (`checkout.js`)
 - verifies payment signature via backend `POST /dashboard/subscription/verify-payment/`
+- activates paid entitlement after successful verification
+- monthly payment switches the user to `Monthly` and extends access by one calendar month
+- yearly payment switches the user to `Yearly` and extends access by one calendar year
 - returns clear UI success/error messages for order creation and verification steps
+- redirects the user back into the app after successful payment verification
 
 Important runtime meaning:
 - checkout requires `.env` keys: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`
 - currency is controlled by `RAZORPAY_CURRENCY` (default `INR`)
-- current implementation verifies payment cryptographically but does not yet attach entitlement/quota activation logic to users (can be added in next step)
+- order metadata is cached server-side before checkout so verified payments can be mapped back to the correct logged-in user and selected billing cycle
+- expired users are redirected to a dedicated locked page and can only access subscription/payment routes until payment reactivates the app
 
 ### Profile
 The Profile page is the logged-in user identity/settings workspace (`/dashboard/profile/`).
@@ -90,7 +99,7 @@ What it shows:
 - editable first name and last name
 - read-only profile picture URL
 - live profile preview card (avatar, name, email, plan badge)
-- dummy subscription fields in read-only mode: plan name, status (`active` / `expired`), and expiry date
+- real subscription fields in read-only mode: plan name, status (`active` / `expired`), and expiry date
 
 What it does:
 - loads profile data from `GET /dashboard/profile-data/`
@@ -334,7 +343,7 @@ Operational meaning:
 ### User Account Signup Mode
 - `/signup/` is Google-only onboarding UI.
 - Google OAuth callback creates user with unusable password and logs in via Django session.
-- Google OAuth callback also upserts `UserProfile` seed data (first name, last name, profile picture URL).
+- Google OAuth callback also upserts `UserProfile` seed data (first name, last name, profile picture URL) and initializes a 1-day `Trial` subscription.
 - Existing users can continue to use login flow; new account creation happens only through Google OAuth.
 - `/login/` shows both classic login form and Google button (`Continue with Google`) when OAuth env is configured.
 - login screen places Google CTA above username/password fields with a `Recommended` badge and helper hint, so operators naturally use OAuth first.
@@ -347,10 +356,15 @@ Stores:
 - one-to-one link with Django user
 - editable first name and last name (display values)
 - read-only profile picture URL (from Google or backend state)
-- read-only dummy subscription plan (`subscription_plan`)
-- read-only dummy subscription status (`active` / `expired`)
-- read-only dummy subscription expiry date (`subscription_expires_on`)
+- current subscription plan (`Trial`, `Monthly`, `Yearly`)
+- current subscription status (`active` / `expired`)
+- current subscription expiry date (`subscription_expires_on`)
 - created and updated timestamps
+
+Behavior:
+- every authenticated request refreshes subscription state from expiry date
+- expired users are blocked from dashboard pages and app APIs except subscription/payment routes
+- locked users are redirected to `/dashboard/subscription/expired/`, which only shows the expiry message and continue button
 
 ### Scheduled Posts
 Model: `publishing.ScheduledPost`

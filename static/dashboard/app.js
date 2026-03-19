@@ -22,6 +22,16 @@
     const data = contentType.includes("application/json") ? await response.json() : await response.text();
 
     if (!response.ok) {
+      if (
+        response.status === 402 &&
+        data &&
+        typeof data === "object" &&
+        data.code === "subscription_expired" &&
+        data.redirect_url
+      ) {
+        window.location.href = String(data.redirect_url);
+        throw new Error("Subscription expired.");
+      }
       if (typeof data === "string") {
         throw new Error(formatUiErrorMessage(data));
       }
@@ -1303,7 +1313,7 @@
 
     if (profileNamePreview) profileNamePreview.textContent = fullName;
     if (profileEmailPreview) profileEmailPreview.textContent = email || "-";
-    if (profilePlanPreview) profilePlanPreview.textContent = String(data.subscription_plan || "Starter");
+    if (profilePlanPreview) profilePlanPreview.textContent = String(data.subscription_plan || "Trial");
     if (profileStatusPreview) {
       const statusText = String(data.subscription_status || "active").toLowerCase() === "expired" ? "Expired" : "Active";
       profileStatusPreview.textContent = statusText;
@@ -1335,7 +1345,7 @@
     if (profileFirstName) profileFirstName.value = String(data.first_name || "");
     if (profileLastName) profileLastName.value = String(data.last_name || "");
     if (profilePictureUrl) profilePictureUrl.value = String(data.profile_picture_url || "");
-    if (profilePlan) profilePlan.value = String(data.subscription_plan || "Starter");
+    if (profilePlan) profilePlan.value = String(data.subscription_plan || "Trial");
     if (profilePlanStatus) profilePlanStatus.value = String(data.subscription_status || "active");
     if (profilePlanExpiry) profilePlanExpiry.value = String(data.subscription_expires_on || "");
     setProfilePreview(data);
@@ -1481,6 +1491,9 @@
               const msg = String(verify.message || "Payment successful and verified.");
               setSubscriptionMessage(msg, false);
               showAppToast(msg, "success");
+              window.setTimeout(() => {
+                window.location.href = "/dashboard/";
+              }, 900);
             } catch (err) {
               const msg = `Payment captured but verification failed: ${err.message}`;
               setSubscriptionMessage(msg, true);

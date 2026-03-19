@@ -35,7 +35,7 @@
           </span>
         </a>
         {% with current=request.resolver_match.url_name %}
-        {% if request.user.is_authenticated %}
+        {% if request.user.is_authenticated and current != 'subscription_expired' %}
         <nav class="topnav">
           <div class="health-nav" id="tokenHealthNav" hidden>
             <button type="button" class="health-chip" id="tokenHealthButton" aria-expanded="false" aria-controls="tokenHealthPopover">
@@ -59,7 +59,7 @@
           <a class="{% if current == 'profile' %}is-active{% endif %}" href="{% url 'dashboard:profile' %}">Profile</a>
           <a class="logout-link" href="{% url 'logout' %}">Logout</a>
         </nav>
-        {% else %}
+        {% elif not request.user.is_authenticated %}
         <nav class="topnav topnav-public">
           <a class="{% if current == 'landing' %}is-active{% endif %}" href="{% url 'landing' %}">Home</a>
           <a class="{% if current == 'login' %}is-active{% endif %}" href="{% url 'login' %}">Login</a>

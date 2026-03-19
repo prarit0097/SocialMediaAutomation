@@ -31,10 +31,12 @@ ENV_META_KEYS = ("META_APP_ID", "META_APP_SECRET", "META_REDIRECT_URI")
 ENV_SIMPLE_VALUE_RE = re.compile(r"^[A-Za-z0-9_./:@+-]+$")
 SUBSCRIPTION_MONTHLY_AMOUNT_PAISE = 600000
 SUBSCRIPTION_YEARLY_AMOUNT_PAISE = 7000000
+SUBSCRIPTION_ORDER_CACHE_TTL = 3600
 SUBSCRIPTION_PLAN_CONFIG = {
     "monthly": {
         "plan_key": "monthly",
         "title": "Monthly Growth Plan",
+        "profile_label": UserProfile.SUBSCRIPTION_PLAN_MONTHLY,
         "price_label": "INR 6,000 / month",
         "amount_paise": SUBSCRIPTION_MONTHLY_AMOUNT_PAISE,
         "billing_cycle": "monthly",
@@ -43,6 +45,7 @@ SUBSCRIPTION_PLAN_CONFIG = {
     "yearly": {
         "plan_key": "yearly",
         "title": "Yearly Scale Plan",
+        "profile_label": UserProfile.SUBSCRIPTION_PLAN_YEARLY,
         "price_label": "INR 70,000 / year",
         "amount_paise": SUBSCRIPTION_YEARLY_AMOUNT_PAISE,
         "billing_cycle": "yearly",
@@ -146,6 +149,7 @@ def _validate_meta_config(app_id: str, app_secret: str, redirect_uri: str) -> li
 
 def _profile_payload(user) -> dict:
     profile, _ = UserProfile.objects.get_or_create(user=user)
+    profile.refresh_subscription_state()
     return {
         "email": user.email,
         "first_name": profile.resolved_first_name,
@@ -157,11 +161,17 @@ def _profile_payload(user) -> dict:
     }
 
 
-def _subscription_page_payload() -> dict:
+def _subscription_page_payload(user) -> dict:
+    profile, _ = UserProfile.objects.get_or_create(user=user)
+    profile.refresh_subscription_state()
     return {
         "razorpay_key_id": str(getattr(settings, "RAZORPAY_KEY_ID", "") or "").strip(),
         "currency": str(getattr(settings, "RAZORPAY_CURRENCY", "INR") or "INR").strip().upper(),
         "plans": SUBSCRIPTION_PLAN_CONFIG,
+        "current_plan": profile.subscription_plan,
+        "current_status": profile.subscription_status,
+        "current_expiry": profile.subscription_expires_on.isoformat() if profile.subscription_expires_on else None,
+        "is_locked": not profile.is_subscription_active,
         "feature_groups": [
             {
                 "title": "Operations Core",
@@ -188,7 +198,11 @@ def _subscription_page_payload() -> dict:
                 ],
             },
         ],
-    }
+}
+
+
+def _subscription_order_cache_key(order_id: str) -> str:
+    return f"subscription_order:{order_id}"
 
 
 def _is_razorpay_configured() -> bool:
@@ -481,7 +495,22 @@ def profile_page(request):
 
 @login_required
 def subscription_page(request):
-    return render(request, "dashboard/subscription.html", {"subscription": _subscription_page_payload()})
+    return render(request, "dashboard/subscription.html", {"subscription": _subscription_page_payload(request.user)})
+
+
+@login_required
+def subscription_expired_page(request):
+    profile, _ = UserProfile.objects.get_or_create(user=request.user)
+    profile.refresh_subscription_state()
+    return render(
+        request,
+        "dashboard/subscription_expired.html",
+        {
+            "subscription_plan": profile.subscription_plan,
+            "subscription_status": profile.subscription_status,
+            "subscription_expires_on": profile.subscription_expires_on.isoformat() if profile.subscription_expires_on else None,
+        },
+    )
 
 
 @login_required
@@ -637,10 +666,23 @@ def subscription_create_order(request):
         return JsonResponse({"error": detail or "Razorpay order creation failed."}, status=502)
 
     order = response.json()
+    order_id = str(order.get("id") or "").strip()
+    if order_id:
+        cache.set(
+            _subscription_order_cache_key(order_id),
+            {
+                "user_id": request.user.id,
+                "plan_key": plan_key,
+                "billing_cycle": plan["billing_cycle"],
+                "price_label": plan["price_label"],
+                "title": plan["title"],
+            },
+            SUBSCRIPTION_ORDER_CACHE_TTL,
+        )
     return JsonResponse(
         {
             "ok": True,
-            "order_id": order.get("id"),
+            "order_id": order_id,
             "amount": order.get("amount"),
             "currency": order.get("currency"),
             "plan": plan_key,
@@ -683,11 +725,31 @@ def subscription_verify_payment(request):
     if not hmac.compare_digest(expected_signature, signature):
         return JsonResponse({"error": "Payment signature verification failed."}, status=400)
 
+    cached_order = cache.get(_subscription_order_cache_key(order_id)) or {}
+    if int(cached_order.get("user_id") or 0) != int(request.user.id):
+        return JsonResponse({"error": "Payment verification context expired. Please start checkout again."}, status=400)
+
+    billing_cycle = str(cached_order.get("billing_cycle") or "").strip().lower()
+    if billing_cycle not in SUBSCRIPTION_PLAN_CONFIG:
+        return JsonResponse({"error": "Payment verification context is incomplete. Please retry checkout."}, status=400)
+
+    profile, _ = UserProfile.objects.get_or_create(user=request.user)
+    try:
+        profile.activate_paid_plan(billing_cycle)
+    except ValueError:
+        return JsonResponse({"error": "Unsupported billing cycle returned by payment verification."}, status=400)
+
+    cache.delete(_subscription_order_cache_key(order_id))
+
     return JsonResponse(
         {
             "ok": True,
-            "message": "Payment verified successfully.",
+            "message": (
+                f"Payment verified successfully. Your {profile.subscription_plan} plan is active until "
+                f"{profile.subscription_expires_on.isoformat()}."
+            ),
             "payment_id": payment_id,
             "order_id": order_id,
+            "subscription": _profile_payload(request.user),
         }
     )
