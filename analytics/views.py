@@ -31,6 +31,44 @@ def _insight_cache_ttl() -> int:
         return 90
 
 
+def _queue_background_insight_refresh(account: ConnectedAccount) -> None:
+    if not account.access_token:
+        return
+    lock_key = f"insight-background-refresh:{account.id}"
+    if not cache.add(lock_key, 1, timeout=180):
+        return
+    try:
+        refresh_account_insights_snapshot.apply_async(
+            args=[account.id],
+            kwargs={"force": False, "bulk_run_id": None},
+            priority=2,
+        )
+        logger.info("background insight refresh queued account_id=%s", account.id)
+    except Exception as exc:  # noqa: BLE001
+        cache.delete(lock_key)
+        logger.warning("background insight refresh enqueue failed account_id=%s error=%s", account.id, str(exc))
+
+
+def _empty_insight_placeholder(account: ConnectedAccount) -> dict:
+    platform = FACEBOOK if account.platform == FACEBOOK else INSTAGRAM
+    payload = build_insight_response(
+        account=account,
+        platform=platform,
+        insights=[],
+        snapshot_id=None,
+        fetched_at=None,
+        cached=False,
+        published_posts=[],
+    )
+    payload["pending_refresh"] = True
+    payload["warning"] = (
+        "Insights are being prepared in the background. Refresh again in a few seconds."
+        if account.access_token
+        else "No active token is available for this profile right now."
+    )
+    return payload
+
+
 def _serialize_bulk_run(run: BulkInsightRefreshRun | None) -> dict:
     if not run:
         return {
@@ -285,6 +323,10 @@ def _load_single_account_insights(
         )
         cache.set(cache_key, data, timeout=_insight_cache_ttl())
         return data, None
+
+    if not force_refresh:
+        _queue_background_insight_refresh(account)
+        return _empty_insight_placeholder(account), None
 
     try:
         data = fetch_and_store_insights(account)

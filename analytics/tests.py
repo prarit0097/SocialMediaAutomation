@@ -51,6 +51,28 @@ class AnalyticsApiTests(TestCase):
         self.assertIn("low_distribution_alerts", body)
         self.assertIn("early_engagement_monitor", body)
 
+    @patch("analytics.views.refresh_account_insights_snapshot.apply_async")
+    @patch("analytics.views.fetch_and_store_insights")
+    def test_fetch_insights_without_snapshot_returns_placeholder_and_queues_background_refresh(
+        self,
+        mock_fetch_and_store,
+        mock_apply_async,
+    ):
+        response = self.client.get(f"/api/insights/{self.account.id}/")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertTrue(body["pending_refresh"])
+        self.assertIn("background", body["warning"].lower())
+        self.assertEqual(body["insights"], [])
+        self.assertEqual(body["published_posts"], [])
+        mock_fetch_and_store.assert_not_called()
+        mock_apply_async.assert_called_once_with(
+            args=[self.account.id],
+            kwargs={"force": False, "bulk_run_id": None},
+            priority=2,
+        )
+
     @patch("analytics.services.MetaClient.fetch_facebook_published_posts_count")
     @patch("analytics.services.MetaClient.fetch_facebook_insights")
     def test_scheduler_assist_endpoint_returns_profile_wise_strategy(self, mock_fetch, mock_posts_count):
