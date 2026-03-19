@@ -363,6 +363,7 @@ Stores:
 
 Behavior:
 - every authenticated request refreshes subscription state from expiry date
+- legacy `Starter` profile values are normalized to `Trial` during migration/runtime refresh so old placeholder plan names do not remain visible in Profile
 - expired users are blocked from dashboard pages and app APIs except subscription/payment routes
 - locked users are redirected to `/dashboard/subscription/expired/`, which only shows the expiry message and continue button
 

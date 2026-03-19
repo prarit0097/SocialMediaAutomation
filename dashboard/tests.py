@@ -629,3 +629,19 @@ class DashboardAuthTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Your app access has expired")
+
+    def test_profile_payload_normalizes_legacy_starter_plan_to_trial(self):
+        user_model = get_user_model()
+        user = user_model.objects.create_user(username="legacyplan", password="pass12345")
+        UserProfile.objects.create(
+            user=user,
+            subscription_plan="Starter",
+            subscription_status=UserProfile.SUBSCRIPTION_STATUS_ACTIVE,
+            subscription_expires_on=timezone.now().date() + timedelta(days=1),
+        )
+        self.client.login(username="legacyplan", password="pass12345")
+
+        response = self.client.get("/dashboard/profile-data/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["subscription_plan"], "Trial")
