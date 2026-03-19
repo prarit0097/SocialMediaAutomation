@@ -367,6 +367,11 @@ Behavior:
 - expired users are blocked from dashboard pages and app APIs except subscription/payment routes
 - locked users are redirected to `/dashboard/subscription/expired/`, which only shows the expiry message and continue button
 
+### Token Health UX
+- topbar Health indicator is red until at least one Meta account is connected
+- "no connected accounts" is treated as action required, not healthy
+- token-health cache is scoped per user request context so one user does not see another user's cached health state
+
 ### Scheduled Posts
 Model: `publishing.ScheduledPost`
 

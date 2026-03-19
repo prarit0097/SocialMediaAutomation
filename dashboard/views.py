@@ -256,7 +256,7 @@ def _public_url_status_payload(request):
     }
 
 
-TOKEN_HEALTH_CACHE_KEY = "meta_token_health_summary_v1"
+TOKEN_HEALTH_CACHE_KEY_PREFIX = "meta_token_health_summary_v1"
 TOKEN_HEALTH_CACHE_TTL = 300
 
 
@@ -283,26 +283,27 @@ def _stale_connected_accounts(accounts: list[ConnectedAccount], user) -> list[Co
 
 
 def _token_health_payload(user):
-    cached = cache.get(TOKEN_HEALTH_CACHE_KEY)
+    cache_key = f"{TOKEN_HEALTH_CACHE_KEY_PREFIX}:{getattr(user, 'id', 'anon')}"
+    cached = cache.get(cache_key)
     if cached:
         return {**cached, "cached": True}
 
     accounts, scope = _sync_scoped_accounts(user)
     if not accounts:
         payload = {
-            "ok": True,
-            "level": "ok",
-            "label": "Healthy",
+            "ok": False,
+            "level": "bad",
+            "label": "Connect required",
             "summary": "No connected Meta accounts found.",
-            "reason": "There are no stored page tokens to validate yet.",
-            "next_steps": ["Connect Facebook + Instagram from the Accounts page to start token monitoring."],
+            "reason": "Connect Facebook and Instagram first. Health stays red until at least one account is connected.",
+            "next_steps": ["Open Accounts and click Connect Facebook + Instagram to start token monitoring."],
             "checked_accounts": 0,
             "checked_tokens": 0,
             "scope": scope,
             "invalid_accounts": [],
             "validation_error": None,
         }
-        cache.set(TOKEN_HEALTH_CACHE_KEY, payload, TOKEN_HEALTH_CACHE_TTL)
+        cache.set(cache_key, payload, TOKEN_HEALTH_CACHE_TTL)
         return {**payload, "cached": False}
 
     token_groups: dict[str, list[ConnectedAccount]] = {}
@@ -448,7 +449,7 @@ def _token_health_payload(user):
             "validation_error": validation_error,
         }
 
-    cache.set(TOKEN_HEALTH_CACHE_KEY, payload, TOKEN_HEALTH_CACHE_TTL)
+    cache.set(cache_key, payload, TOKEN_HEALTH_CACHE_TTL)
     return {**payload, "cached": False}
 
 
@@ -556,7 +557,7 @@ def meta_app_config(request):
         return JsonResponse({"error": "Unable to update .env", "details": str(exc)}, status=500)
 
     _apply_meta_runtime_settings(updates)
-    cache.delete(TOKEN_HEALTH_CACHE_KEY)
+    cache.clear()
 
     response = _meta_config_payload()
     response["ok"] = True

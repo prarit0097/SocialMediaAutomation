@@ -123,6 +123,45 @@ class DashboardAuthTests(TestCase):
         self.assertEqual(body["checked_tokens"], 1)
         self.assertEqual(body["invalid_accounts"], [])
 
+    def test_token_health_status_reports_red_when_no_accounts_connected(self):
+        user_model = get_user_model()
+        user_model.objects.create_user(username="noaccounts", password="pass12345")
+        self.client.login(username="noaccounts", password="pass12345")
+
+        response = self.client.get("/dashboard/token-health-status/")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertFalse(body["ok"])
+        self.assertEqual(body["level"], "bad")
+        self.assertEqual(body["checked_accounts"], 0)
+        self.assertIn("No connected Meta accounts found", body["summary"])
+        self.assertIn("Connect Facebook + Instagram", body["next_steps"][0])
+
+    @patch("dashboard.views.MetaClient.debug_token")
+    def test_token_health_cache_is_scoped_per_user(self, mock_debug_token):
+        user_model = get_user_model()
+        user_one = user_model.objects.create_user(username="cacheuser1", password="pass12345")
+        user_two = user_model.objects.create_user(username="cacheuser2", password="pass12345")
+
+        self.client.login(username="cacheuser1", password="pass12345")
+        first = self.client.get("/dashboard/token-health-status/")
+        self.client.logout()
+
+        ConnectedAccount.objects.create(
+            platform="facebook",
+            page_id="fb-cache",
+            page_name="Cache FB",
+            access_token="cache-token",
+        )
+        mock_debug_token.return_value = {"data": {"is_valid": True}}
+
+        self.client.login(username="cacheuser2", password="pass12345")
+        second = self.client.get("/dashboard/token-health-status/")
+
+        self.assertFalse(first.json()["ok"])
+        self.assertTrue(second.json()["ok"])
+
     @patch("dashboard.views.MetaClient.debug_token")
     def test_token_health_status_reports_red_when_token_invalid(self, mock_debug_token):
         user_model = get_user_model()
