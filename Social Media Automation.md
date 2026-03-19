@@ -371,6 +371,7 @@ Behavior:
 - topbar Health indicator is red until at least one Meta account is connected
 - "no connected accounts" is treated as action required, not healthy
 - token-health cache is scoped per user request context so one user does not see another user's cached health state
+- once active Meta accounts are connected in the workspace, topbar Health shows green by default unless tokens are explicitly marked invalid/expired by Meta
 
 ### Scheduled Posts
 Model: `publishing.ScheduledPost`

@@ -313,11 +313,6 @@ def _token_health_payload(user):
     client = MetaClient()
     invalid_accounts: list[dict] = []
     validation_error = None
-    stale_accounts = _stale_connected_accounts(
-        list(ConnectedAccount.objects.filter(is_active=True).order_by("id")),
-        user,
-    )
-
     for token, grouped_accounts in token_groups.items():
         try:
             data = client.debug_token(token).get("data", {})
@@ -364,31 +359,6 @@ def _token_health_payload(user):
             "stale_accounts": [],
             "validation_error": validation_error,
         }
-    elif stale_accounts:
-        payload = {
-            "ok": False,
-            "level": "bad",
-            "label": "Needs reconnect",
-            "summary": "Some connected profiles were not refreshed in the latest Meta reconnect.",
-            "reason": (
-                f"{len(stale_accounts)} stored account row(s) are older than the latest reconnect window. "
-                "Scheduling from those rows can fail until they are refreshed."
-            ),
-            "next_steps": [
-                "Open Accounts and click Connect Facebook + Instagram.",
-                "Reconnect the missing profiles so fresh page tokens are stored.",
-                "Click Refresh List and use the current synced rows for scheduling.",
-            ],
-            "checked_accounts": len(accounts),
-            "checked_tokens": len(token_groups),
-            "scope": scope,
-            "invalid_accounts": [],
-            "stale_accounts": [
-                {"account_id": account.id, "page_name": account.page_name, "platform": account.platform}
-                for account in stale_accounts[:6]
-            ],
-            "validation_error": validation_error,
-        }
     elif is_rate_limited:
         payload = {
             "ok": True,
@@ -430,16 +400,16 @@ def _token_health_payload(user):
         }
     else:
         payload = {
-            "ok": False,
-            "level": "bad",
-            "label": "Needs reconnect",
-            "summary": "Meta token health could not be fully validated right now.",
-            "reason": validation_error,
+            "ok": True,
+            "level": "ok",
+            "label": "Connected",
+            "summary": "Connected Meta accounts are available in the app.",
+            "reason": (
+                "Accounts are connected and usable in the workspace. "
+                f"Meta health validation returned: {validation_error}"
+            ),
             "next_steps": [
-                "Open Accounts and click Connect Facebook + Instagram.",
-                "Complete Meta reconnect so fresh page tokens are stored.",
-                "Click Refresh List after reconnect.",
-                "Retry failed posts or run insights refresh again.",
+                "If scheduling or insights fail later, reconnect from Accounts and refresh the list.",
             ],
             "checked_accounts": len(accounts),
             "checked_tokens": len(token_groups),

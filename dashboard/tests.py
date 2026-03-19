@@ -214,7 +214,7 @@ class DashboardAuthTests(TestCase):
         self.assertIn("rate limit", body["summary"].lower())
 
     @patch("dashboard.views.MetaClient.debug_token")
-    def test_token_health_status_reports_red_when_stale_accounts_exist(self, mock_debug_token):
+    def test_token_health_status_stays_green_when_connected_accounts_exist_but_some_rows_are_stale(self, mock_debug_token):
         user_model = get_user_model()
         user = user_model.objects.create_user(username="staleadmin", password="pass12345")
         self.client.login(username="staleadmin", password="pass12345")
@@ -238,10 +238,8 @@ class DashboardAuthTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertFalse(body["ok"])
-        self.assertEqual(body["level"], "bad")
-        self.assertTrue(body["stale_accounts"])
-        self.assertEqual(body["stale_accounts"][0]["page_name"], "Stale FB")
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["level"], "ok")
 
     def test_meta_app_config_updates_env_and_runtime_settings(self):
         user_model = get_user_model()
