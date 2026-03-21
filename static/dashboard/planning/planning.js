@@ -11,6 +11,9 @@
   const createForm = document.getElementById("planningCreateForm");
   const tagForm = document.getElementById("planningTagForm");
   const tagsList = document.getElementById("planningTagsList");
+  const aiForm = document.getElementById("planningAiForm");
+  const aiStatus = document.getElementById("planningAiStatus");
+  const aiResult = document.getElementById("planningAiResult");
 
   let cursor = new Date();
   cursor.setDate(1);
@@ -69,7 +72,7 @@
           badge.className = `planning-item ${statusClass(item.status)}`;
           badge.draggable = true;
           badge.dataset.id = String(item.id);
-          badge.title = `${item.title}\n${item.platform} • ${item.status}`;
+          badge.title = `${item.title}\n${item.platform} | ${item.status}`;
           badge.textContent = `${item.title}`;
           badge.addEventListener("dragstart", (ev) => {
             ev.dataTransfer.setData("text/plain", String(item.id));
@@ -192,6 +195,65 @@
       await loadTags();
     } catch (err) {
       alert(`Tag create failed: ${err.message}`);
+    }
+  });
+
+  aiForm?.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const formData = new FormData(aiForm);
+    const body = {
+      niche: String(formData.get("niche") || "").trim(),
+      goal: String(formData.get("goal") || "").trim(),
+      platform: String(formData.get("platform") || "both"),
+      duration_days: Number(formData.get("duration_days") || 7),
+    };
+    const accountId = Number(formData.get("account_id") || 0);
+    if (accountId > 0) body.account_id = accountId;
+    try {
+      if (aiStatus) aiStatus.textContent = "Generating AI content calendar...";
+      const payload = await fetchJSON(`/api/planning/ai-calendar/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrfToken,
+        },
+        body: JSON.stringify(body),
+      });
+      const plan = payload.plan || {};
+      const rows = Array.isArray(plan.calendar_items) ? plan.calendar_items : [];
+      if (aiStatus) {
+        aiStatus.textContent = `AI plan ready${payload.account_context?.page_name ? ` for ${payload.account_context.page_name}` : ""}. Generated ${rows.length} items.`;
+      }
+      if (aiResult) {
+        aiResult.innerHTML = `
+          <article class="ai-report-card">
+            <h3>Strategy summary</h3>
+            <p>${plan.strategy_summary || "-"}</p>
+            <p><strong>Cadence:</strong> ${plan.cadence_recommendation || "-"}</p>
+            <p><strong>Best time:</strong> ${plan.best_time_recommendation || "-"}</p>
+          </article>
+          <div class="planning-ai-list">
+            ${rows
+              .map(
+                (row) => `
+                  <article class="planning-ai-item">
+                    <p class="eyebrow">${row.day_label || "-"}</p>
+                    <h3>${row.post_type || "-"} | ${row.platform || "-"}</h3>
+                    <p><strong>Topic:</strong> ${row.topic || "-"}</p>
+                    <p><strong>Hook:</strong> ${row.hook || "-"}</p>
+                    <p><strong>CTA:</strong> ${row.cta || "-"}</p>
+                    <p><strong>Best time:</strong> ${row.best_time_window || "-"}</p>
+                    <p><strong>Goal:</strong> ${row.goal || "-"}</p>
+                  </article>
+                `
+              )
+              .join("")}
+          </div>
+        `;
+      }
+    } catch (err) {
+      if (aiStatus) aiStatus.textContent = `AI planner unavailable: ${err.message}`;
+      if (aiResult) aiResult.innerHTML = "<p class='ai-output-empty'>Unable to generate AI content calendar.</p>";
     }
   });
 

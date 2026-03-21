@@ -1,5 +1,6 @@
 import json
 from datetime import datetime
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
@@ -65,3 +66,41 @@ class PlanningApiTests(TestCase):
         self.assertEqual(update_res.status_code, 200)
         item.refresh_from_db()
         self.assertEqual(item.start_at.day, 25)
+
+    @patch("planning.views.generate_content_calendar_plan")
+    def test_generate_ai_calendar_plan_returns_rows(self, mock_generate):
+        mock_generate.return_value = {
+            "strategy_summary": "Use reels + education mix.",
+            "cadence_recommendation": "Post daily.",
+            "best_time_recommendation": "Tue 10:00-12:00",
+            "calendar_items": [
+                {
+                    "day_label": "Day 1",
+                    "post_type": "reel",
+                    "platform": "instagram",
+                    "topic": "Ayurveda morning routine",
+                    "hook": "Start your day right",
+                    "cta": "Save this routine.",
+                    "best_time_window": "Tue 10:00-12:00",
+                    "goal": "Reach",
+                }
+            ],
+        }
+
+        response = self.client.post(
+            reverse("generate_ai_calendar_plan"),
+            data=json.dumps(
+                {
+                    "niche": "Ayurveda",
+                    "goal": "Increase reach",
+                    "platform": "instagram",
+                    "duration_days": 7,
+                }
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertIn("plan", body)
+        self.assertEqual(body["plan"]["calendar_items"][0]["post_type"], "reel")

@@ -534,6 +534,7 @@ def _normalize_posts_for_ai(data: dict) -> list[dict]:
                 "platform": platform,
                 "published_at": published_at,
                 "message": row.get("message"),
+                "media_url": row.get("media_url"),
                 "views": _coerce_numeric(row.get("total_views")),
                 "likes": _coerce_numeric(row.get("total_likes")),
                 "comments": _coerce_numeric(row.get("total_comments")),
@@ -596,6 +597,7 @@ def _top_posts_snapshot(posts: list[dict], limit: int = 5) -> list[dict]:
                 "platform": row.get("platform"),
                 "published_at": row.get("published_at").isoformat() if row.get("published_at") else None,
                 "message_preview": _short_text(row.get("message")),
+                "media_url": row.get("media_url"),
                 "views": row.get("views"),
                 "likes": row.get("likes"),
                 "comments": row.get("comments"),
@@ -605,6 +607,101 @@ def _top_posts_snapshot(posts: list[dict], limit: int = 5) -> list[dict]:
             }
         )
     return top_rows
+
+
+def _infer_post_format(post: dict) -> str:
+    media_url = str(post.get("media_url") or "").lower()
+    message = str(post.get("message") or "").strip()
+    if any(media_url.endswith(ext) for ext in (".mp4", ".mov", ".avi", ".mkv", ".webm")):
+        return "reel"
+    if any(media_url.endswith(ext) for ext in (".jpg", ".jpeg", ".png", ".webp")):
+        return "image quote" if len(message) <= 120 else "carousel"
+    if len(message) >= 180:
+        return "educational post"
+    if "?" in message or "comment" in message.lower():
+        return "CTA post"
+    return "educational post"
+
+
+def _suggested_topic(posts: list[dict]) -> str:
+    for post in posts:
+        message = str(post.get("message") or post.get("message_preview") or "").strip()
+        if not message:
+            continue
+        hashtags = [word.lstrip("#") for word in message.split() if word.startswith("#") and len(word) > 2]
+        if hashtags:
+            return f"{hashtags[0].replace('_', ' ')}"
+        words = [word.strip(".,!?") for word in message.split() if len(word.strip(".,!?")) > 3]
+        if words:
+            return " ".join(words[:6])
+    return "educational pain-point breakdown"
+
+
+def _best_format(posts: list[dict], platform: str, days: int = 30) -> dict:
+    cutoff = timezone.now() - timedelta(days=days)
+    grouped: dict[str, dict[str, float]] = defaultdict(lambda: {"score": 0.0, "count": 0})
+    for post in posts:
+        if post.get("platform") != platform:
+            continue
+        published_at = post.get("published_at")
+        if not published_at or published_at < cutoff:
+            continue
+        key = _infer_post_format(post)
+        grouped[key]["score"] += _engagement_score(post)
+        grouped[key]["count"] += 1
+
+    ranked = []
+    for format_name, data in grouped.items():
+        if data["count"] <= 0:
+            continue
+        ranked.append(
+            {
+                "format": format_name,
+                "avg_score": round(data["score"] / data["count"], 2),
+                "sample_posts": int(data["count"]),
+            }
+        )
+    ranked.sort(key=lambda row: (row["avg_score"], row["sample_posts"]), reverse=True)
+    return ranked[0] if ranked else {"format": "reel", "avg_score": None, "sample_posts": 0}
+
+
+def _next_post_recommendation(posts: list[dict], data: dict) -> dict:
+    platforms = [platform for platform in ("instagram", "facebook") if any(p.get("platform") == platform for p in posts)]
+    if not platforms:
+        raw_platform = str(data.get("platform") or "").lower()
+        platforms = ["instagram", "facebook"] if raw_platform == "facebook+instagram" else ([raw_platform] if raw_platform else ["instagram"])
+
+    ranked_platforms = []
+    for platform in platforms:
+        top_slot_rows = _best_time_slots(posts, platform=platform, limit=1)
+        top_slot = top_slot_rows[0] if top_slot_rows else {}
+        best_format = _best_format(posts, platform=platform)
+        ranked_platforms.append(
+            {
+                "platform": platform,
+                "best_time_window": top_slot.get("label") or "Not enough data",
+                "slot_score": float(top_slot.get("avg_score") or 0),
+                "best_format": best_format.get("format") or "reel",
+                "sample_posts": int(best_format.get("sample_posts") or 0),
+            }
+        )
+    ranked_platforms.sort(key=lambda row: (row["slot_score"], row["sample_posts"]), reverse=True)
+    selected = ranked_platforms[0] if ranked_platforms else {
+        "platform": "instagram",
+        "best_time_window": "Not enough data",
+        "best_format": "reel",
+    }
+    topic = _suggested_topic(_top_posts_snapshot(posts, limit=3))
+    return {
+        "platform_focus": selected["platform"],
+        "best_time_window": selected["best_time_window"],
+        "best_format": selected["best_format"],
+        "suggested_topic": topic,
+        "reasoning": (
+            f"{selected['platform'].title()} has the strongest recent slot/format signal, so the next post should be a "
+            f"{selected['best_format']} about {topic} in the {selected['best_time_window']} window."
+        ),
+    }
 
 
 def _ai_context_payload(data: dict, focus: str):
@@ -651,6 +748,7 @@ def _ai_context_payload(data: dict, focus: str):
         },
         "comparison_rows": condensed_comparison,
         "top_posts": _top_posts_snapshot(posts, limit=6),
+        "historical_recommendations": _next_post_recommendation(posts, data),
     }
     return context
 
@@ -794,6 +892,8 @@ def _build_scheduler_assist_payload(data: dict) -> dict:
             **cadence,
             "best_time_slots": slots,
             "next_best_window": slots[0]["label"] if slots else "Not enough posting history yet",
+            "best_format": _best_format(posts, platform=platform),
+            "next_topic": _suggested_topic([post for post in posts if post.get("platform") == platform][:5]),
             "caption_ab_test": _caption_ab_recommendation(posts, platform=platform),
         }
 
@@ -952,6 +1052,7 @@ def ai_profile_insights(request: HttpRequest, account_id: int) -> JsonResponse:
                 "performance_last_7d": ai_context.get("performance_last_7d"),
                 "comparison_rows_count": len(ai_context.get("comparison_rows") or []),
                 "top_posts_count": len(ai_context.get("top_posts") or []),
+                "historical_recommendations": ai_context.get("historical_recommendations") or {},
             },
         }
     )

@@ -84,5 +84,41 @@
   </div>
 </section>
 
+<section class="card">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">AI Planner</p>
+      <h2>Generate a 7-day or 30-day content calendar</h2>
+      <p class="section-copy">Give niche, goal, platform, and optional account context. AI returns a ready-to-schedule calendar with format mix and best-time guidance.</p>
+    </div>
+  </div>
+  <div class="planning-ai-grid">
+    <form id="planningAiForm" class="form-grid planning-ai-form">
+      {% csrf_token %}
+      <label>Niche<input type="text" name="niche" placeholder="Ayurveda for women health" required></label>
+      <label>Goal<textarea name="goal" rows="3" placeholder="Increase reach and saves in next 30 days"></textarea></label>
+      <label>Platform
+        <select name="platform">
+          <option value="both">Facebook + Instagram</option>
+          <option value="facebook">Facebook</option>
+          <option value="instagram">Instagram</option>
+        </select>
+      </label>
+      <label>Duration
+        <select name="duration_days">
+          <option value="7">7-day plan</option>
+          <option value="30">30-day plan</option>
+        </select>
+      </label>
+      <label>Account ID (optional)<input type="number" name="account_id" placeholder="Use latest insights from a connected account"></label>
+      <button type="submit" class="btn">Generate AI Plan</button>
+    </form>
+    <div class="planning-ai-output">
+      <p id="planningAiStatus" class="meta-note">AI planner is ready.</p>
+      <div id="planningAiResult" class="ai-output-empty">Run AI planner to generate a content calendar.</div>
+    </div>
+  </div>
+</section>
+
 <script src="{% static 'dashboard/planning/planning.js' %}"></script>
 {% endblock %}

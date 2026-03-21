@@ -10,6 +10,51 @@ class AIInsightsError(Exception):
     pass
 
 
+def _openai_json_completion(system_prompt: str, user_prompt: str, temperature: float = 0.25) -> dict[str, Any]:
+    api_key = (settings.OPENAI_API_KEY or "").strip()
+    if not api_key:
+        raise AIInsightsError("OPENAI_API_KEY is missing. Add it in .env and restart Django.")
+
+    model = (settings.OPENAI_MODEL or "").strip() or "gpt-4o-mini"
+    timeout = int(settings.OPENAI_TIMEOUT_SECONDS or 45)
+
+    try:
+        response = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "temperature": temperature,
+                "response_format": {"type": "json_object"},
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+            },
+            timeout=timeout,
+        )
+    except requests.RequestException as exc:
+        raise AIInsightsError(f"OpenAI request failed: {exc}") from exc
+
+    if response.status_code >= 400:
+        try:
+            err_payload = response.json()
+        except ValueError:
+            err_payload = {"error": {"message": response.text}}
+        message = str((err_payload.get("error") or {}).get("message") or "OpenAI API returned an error.")
+        raise AIInsightsError(message)
+
+    try:
+        content = response.json()["choices"][0]["message"]["content"]
+    except Exception as exc:  # noqa: BLE001
+        raise AIInsightsError("OpenAI response format was unexpected.") from exc
+
+    return _json_from_text(content)
+
+
 def _json_from_text(value: str) -> dict[str, Any]:
     raw = (value or "").strip()
     if not raw:
@@ -108,6 +153,22 @@ def _normalize_kpi_rows(value: Any) -> list[dict[str, str]]:
             }
         )
     return rows
+
+
+def _normalize_next_post(value: Any) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {
+            "best_time_window": "",
+            "recommended_format": "",
+            "recommended_topic": "",
+            "why_now": "",
+        }
+    return {
+        "best_time_window": str(value.get("best_time_window") or "").strip(),
+        "recommended_format": str(value.get("recommended_format") or "").strip(),
+        "recommended_topic": str(value.get("recommended_topic") or "").strip(),
+        "why_now": str(value.get("why_now") or "").strip(),
+    }
 
 
 def _to_number(value: Any) -> float | None:
@@ -251,6 +312,65 @@ def _default_best_recommendations(payload: dict[str, Any]) -> list[str]:
     ]
 
 
+def _fallback_worked_flopped(payload: dict[str, Any]) -> tuple[list[str], list[str]]:
+    top_posts = payload.get("top_posts") if isinstance(payload.get("top_posts"), list) else []
+    posting_cadence = payload.get("posting_cadence") if isinstance(payload.get("posting_cadence"), dict) else {}
+    performance = payload.get("performance_last_7d") if isinstance(payload.get("performance_last_7d"), dict) else {}
+    historical = payload.get("historical_recommendations") if isinstance(payload.get("historical_recommendations"), dict) else {}
+    worked: list[str] = []
+    flopped: list[str] = []
+
+    if top_posts:
+        top = top_posts[0] if isinstance(top_posts[0], dict) else {}
+        worked.append(
+            "Top-performing recent post reached "
+            f"{_format_number(_to_number(top.get('views')), 0)} views with engagement score "
+            f"{_format_number(_to_number(top.get('engagement_score')))}."
+        )
+    if historical.get("platform_focus"):
+        worked.append(
+            f"{historical.get('platform_focus')} currently shows the stronger next-post setup based on recent slot and format history."
+        )
+    if _to_number(performance.get("shares")) not in (None, 0):
+        worked.append(
+            f"Shares are active at {_format_number(_to_number(performance.get('shares')), 0)} in the last 7 days, so practical/shareable topics are landing."
+        )
+
+    avg_posts = _to_number(posting_cadence.get("avg_posts_per_day_last_7d"))
+    if avg_posts is not None and avg_posts < 1:
+        flopped.append(
+            f"Cadence is light at {_format_number(avg_posts)}/day in the last 7 days, which limits distribution learning and repeat reach."
+        )
+    if _to_number(performance.get("comments")) in (None, 0):
+        flopped.append("Comments are flat or not available, so conversation-led hooks and CTA prompts are underperforming.")
+    if not worked:
+        worked.append("Recent snapshot data is usable, but clear winning patterns are still limited.")
+    if not flopped:
+        flopped.append("No single failure pattern dominates, but the profile still needs tighter post-format and posting-time discipline.")
+    return worked[:4], flopped[:4]
+
+
+def _fallback_next_best_post(payload: dict[str, Any]) -> dict[str, str]:
+    historical = payload.get("historical_recommendations") if isinstance(payload.get("historical_recommendations"), dict) else {}
+    posting_cadence = payload.get("posting_cadence") if isinstance(payload.get("posting_cadence"), dict) else {}
+    profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
+    page_name = str(profile.get("page_name") or "this profile").strip()
+    platform_focus = str(historical.get("platform_focus") or "Instagram").strip() or "Instagram"
+    topic = str(historical.get("suggested_topic") or "a practical problem-solution post").strip()
+    best_time = str(historical.get("best_time_window") or "next proven slot").strip()
+    best_format = str(historical.get("best_format") or "reel").strip()
+    cadence = _format_number(_to_number(posting_cadence.get("avg_posts_per_day_last_7d")))
+    return {
+        "best_time_window": best_time,
+        "recommended_format": best_format,
+        "recommended_topic": topic,
+        "why_now": (
+            f"For {page_name}, publish the next {best_format} in the {best_time} window on {platform_focus}. "
+            f"Recent cadence is {cadence}/day, so a strong next post should focus on one clear topic and one clear CTA."
+        ),
+    }
+
+
 def _ensure_profile_name_in_recommendations(payload: dict[str, Any], rows: list[str]) -> list[str]:
     profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
     profile_name = str(profile.get("page_name") or "").strip()
@@ -271,12 +391,6 @@ def _ensure_profile_name_in_recommendations(payload: dict[str, Any], rows: list[
 
 
 def generate_profile_ai_insights(payload: dict[str, Any], focus: str | None = None) -> dict[str, Any]:
-    api_key = (settings.OPENAI_API_KEY or "").strip()
-    if not api_key:
-        raise AIInsightsError("OPENAI_API_KEY is missing. Add it in .env and restart Django.")
-
-    model = (settings.OPENAI_MODEL or "").strip() or "gpt-4o-mini"
-    timeout = int(settings.OPENAI_TIMEOUT_SECONDS or 45)
     focus_text = str(focus or "").strip()
 
     system_prompt = (
@@ -309,10 +423,18 @@ def generate_profile_ai_insights(payload: dict[str, Any], focus: str | None = No
         '  "cons": string[],\n'
         '  "risks": string[],\n'
         '  "opportunities": string[],\n'
+        '  "what_worked": string[],\n'
+        '  "what_flopped": string[],\n'
         '  "posting_strategy": {\n'
         '    "current_posting": string,\n'
         '    "recommended_posting": string,\n'
         '    "reasoning": string\n'
+        "  },\n"
+        '  "next_best_post": {\n'
+        '    "best_time_window": string,\n'
+        '    "recommended_format": string,\n'
+        '    "recommended_topic": string,\n'
+        '    "why_now": string\n'
         "  },\n"
         '  "action_plan_7d": [\n'
         '    {"action": string, "why": string, "expected_impact": string, "timeline": string}\n'
@@ -327,6 +449,8 @@ def generate_profile_ai_insights(payload: dict[str, Any], focus: str | None = No
         "Output requirements:\n"
         "- executive_summary: 4-7 lines, include strongest issue and top growth lever.\n"
         "- pros/cons/risks/opportunities: each ideally 4-8 clear bullets.\n"
+        "- what_worked: 3-5 plain-English bullets about patterns that are currently helping reach/engagement.\n"
+        "- what_flopped: 3-5 plain-English bullets about patterns that are currently weak, inconsistent, or dragging results.\n"
         "- posting_strategy:\n"
         "  - current_posting: MUST report both platforms separately using last-7-days data.\n"
         "    Required format: 'Facebook: <posts_7d> posts in last 7 days (avg <x>/day) | Instagram: <posts_7d> posts in last 7 days (avg <y>/day)'.\n"
@@ -335,6 +459,7 @@ def generate_profile_ai_insights(payload: dict[str, Any], focus: str | None = No
         "  - recommended_posting: MUST give separate FB and IG posting plan (posts/day and posts/7d), with short content-mix guidance.\n"
         "  - reasoning: MUST explain platform-wise why recommendation should work, referencing observed metrics/cadence from input.\n"
         "    Include at least 3 concrete data anchors from provided JSON (for example views, likes, comments, shares, saves, cadence gap).\n"
+        "- next_best_post: recommend exactly one next post move with best time window, format, topic, and plain-English rationale using historical recommendations from input when available.\n"
         "- action_plan_7d: 5-10 prioritized actions; each action should be concrete and measurable.\n"
         "- kpi_growth_plan: include at least these metrics when available: views, reach, likes, comments, shares, saves, interactions, post cadence.\n"
         "  For each metric: give current (or 'not available'), realistic 7-day target, and method.\n"
@@ -358,43 +483,11 @@ def generate_profile_ai_insights(payload: dict[str, Any], focus: str | None = No
         f"Profile data JSON:\n{json.dumps(payload, ensure_ascii=False)}"
     )
 
-    try:
-        response = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": model,
-                "temperature": 0.25,
-                "response_format": {"type": "json_object"},
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-            },
-            timeout=timeout,
-        )
-    except requests.RequestException as exc:
-        raise AIInsightsError(f"OpenAI request failed: {exc}") from exc
-
-    if response.status_code >= 400:
-        try:
-            err_payload = response.json()
-        except ValueError:
-            err_payload = {"error": {"message": response.text}}
-        message = str((err_payload.get("error") or {}).get("message") or "OpenAI API returned an error.")
-        raise AIInsightsError(message)
-
-    try:
-        content = response.json()["choices"][0]["message"]["content"]
-    except Exception as exc:  # noqa: BLE001
-        raise AIInsightsError("OpenAI response format was unexpected.") from exc
-
-    parsed = _json_from_text(content)
+    parsed = _openai_json_completion(system_prompt, user_prompt, temperature=0.25)
     fallback_posting_strategy = _default_posting_strategy(payload)
     fallback_best_recommendations = _default_best_recommendations(payload)
+    fallback_worked, fallback_flopped = _fallback_worked_flopped(payload)
+    fallback_next_best_post = _fallback_next_best_post(payload)
     parsed_posting_strategy = parsed.get("posting_strategy") if isinstance(parsed.get("posting_strategy"), dict) else {}
 
     current_posting = str(parsed_posting_strategy.get("current_posting") or "").strip()
@@ -416,11 +509,14 @@ def generate_profile_ai_insights(payload: dict[str, Any], focus: str | None = No
         "cons": _normalize_list(parsed.get("cons")),
         "risks": _normalize_list(parsed.get("risks")),
         "opportunities": _normalize_list(parsed.get("opportunities")),
+        "what_worked": _normalize_list(parsed.get("what_worked")),
+        "what_flopped": _normalize_list(parsed.get("what_flopped")),
         "posting_strategy": {
             "current_posting": current_posting,
             "recommended_posting": recommended_posting,
             "reasoning": reasoning,
         },
+        "next_best_post": _normalize_next_post(parsed.get("next_best_post")),
         "action_plan_7d": _normalize_plan_rows(parsed.get("action_plan_7d")),
         "kpi_growth_plan": _normalize_kpi_rows(parsed.get("kpi_growth_plan")),
         "content_ideas": _normalize_list(parsed.get("content_ideas")),
@@ -432,4 +528,103 @@ def generate_profile_ai_insights(payload: dict[str, Any], focus: str | None = No
         payload,
         normalized["best_recommendations_for_growth"],
     )
+    if len(normalized["what_worked"]) < 2:
+        normalized["what_worked"] = fallback_worked
+    if len(normalized["what_flopped"]) < 2:
+        normalized["what_flopped"] = fallback_flopped
+    if not normalized["next_best_post"]["best_time_window"]:
+        normalized["next_best_post"] = fallback_next_best_post
     return normalized
+
+
+def generate_content_calendar_plan(payload: dict[str, Any]) -> dict[str, Any]:
+    niche = str(payload.get("niche") or "").strip()
+    goal = str(payload.get("goal") or "").strip()
+    platform = str(payload.get("platform") or "both").strip().lower()
+    duration_days = int(payload.get("duration_days") or 7)
+    account_context = payload.get("account_context") if isinstance(payload.get("account_context"), dict) else {}
+    historical_recommendations = payload.get("historical_recommendations") if isinstance(payload.get("historical_recommendations"), dict) else {}
+
+    if not niche:
+        raise AIInsightsError("niche is required for content planning.")
+    if duration_days not in {7, 30}:
+        raise AIInsightsError("duration_days must be 7 or 30.")
+
+    system_prompt = (
+        "You are a senior content strategist building actionable social media calendars. "
+        "Return strict JSON only. Build plans that are realistic, platform-aware, and easy to schedule."
+    )
+    user_prompt = (
+        "Create a content calendar plan.\n"
+        "Required output schema:\n"
+        "{\n"
+        '  "strategy_summary": string,\n'
+        '  "cadence_recommendation": string,\n'
+        '  "best_time_recommendation": string,\n'
+        '  "calendar_items": [\n'
+        '    {\n'
+        '      "day_label": string,\n'
+        '      "post_type": string,\n'
+        '      "platform": string,\n'
+        '      "topic": string,\n'
+        '      "hook": string,\n'
+        '      "cta": string,\n'
+        '      "best_time_window": string,\n'
+        '      "goal": string\n'
+        "    }\n"
+        "  ]\n"
+        "}\n"
+        "Rules:\n"
+        f"- duration_days is {duration_days}; generate exactly {duration_days} rows for 7-day plan or 12 rows for 30-day plan.\n"
+        "- Use a healthy mix of reel, carousel, image quote, educational post, and CTA post when suitable.\n"
+        "- Keep hooks short and human.\n"
+        "- Use historical recommendation context when available for time windows, format bias, or topic direction.\n"
+        "- Strategy summary should be plain English and operator-friendly.\n"
+        f"Planner input JSON:\n{json.dumps({'niche': niche, 'goal': goal, 'platform': platform, 'duration_days': duration_days, 'account_context': account_context, 'historical_recommendations': historical_recommendations}, ensure_ascii=False)}"
+    )
+
+    parsed = _openai_json_completion(system_prompt, user_prompt, temperature=0.35)
+    items = parsed.get("calendar_items") if isinstance(parsed.get("calendar_items"), list) else []
+    normalized_items: list[dict[str, str]] = []
+    max_rows = 7 if duration_days == 7 else 12
+    for idx, row in enumerate(items[:max_rows], start=1):
+        if not isinstance(row, dict):
+            continue
+        normalized_items.append(
+            {
+                "day_label": str(row.get("day_label") or f"Day {idx}").strip(),
+                "post_type": str(row.get("post_type") or "educational post").strip(),
+                "platform": str(row.get("platform") or platform).strip(),
+                "topic": str(row.get("topic") or niche).strip(),
+                "hook": str(row.get("hook") or "").strip(),
+                "cta": str(row.get("cta") or "").strip(),
+                "best_time_window": str(
+                    row.get("best_time_window") or historical_recommendations.get("best_time_window") or "Best recent window not available"
+                ).strip(),
+                "goal": str(row.get("goal") or goal or "Build reach and engagement").strip(),
+            }
+        )
+
+    if not normalized_items:
+        default_window = str(historical_recommendations.get("best_time_window") or "Best recent window not available").strip()
+        default_platform = platform if platform in {"facebook", "instagram", "both"} else "both"
+        for idx in range(1, max_rows + 1):
+            normalized_items.append(
+                {
+                    "day_label": f"Day {idx}",
+                    "post_type": "educational post" if idx % 5 else "CTA post",
+                    "platform": default_platform,
+                    "topic": niche,
+                    "hook": f"{niche.title()} content angle #{idx}",
+                    "cta": "Save this and follow for the next post.",
+                    "best_time_window": default_window,
+                    "goal": goal or "Build steady reach and engagement",
+                }
+            )
+
+    return {
+        "strategy_summary": str(parsed.get("strategy_summary") or "").strip() or f"Build a {duration_days}-day {platform} plan around {niche}.",
+        "cadence_recommendation": str(parsed.get("cadence_recommendation") or "").strip() or f"Stay consistent across the next {duration_days} days with a mixed post-type calendar.",
+        "best_time_recommendation": str(parsed.get("best_time_recommendation") or "").strip() or str(historical_recommendations.get("best_time_window") or "Best recent window not available"),
+        "calendar_items": normalized_items,
+    }

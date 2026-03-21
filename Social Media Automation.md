@@ -224,16 +224,21 @@ What it shows:
 - content status coloring (`draft`, `review`, `approved`, `scheduled`, `published`)
 - pillars/tags creation panel
 - quick create form for planned content items
+- AI planner form for niche, goal, platform, duration (`7` or `30` day), and optional connected account context
+- AI-generated content calendar cards with topic, hook, CTA, format, and best-time guidance per day
 
 What it supports:
 - operator-scoped planning data per logged-in user
 - API-backed monthly read/write calendar
 - API-backed pillar/tag management
 - item updates (including drag/drop date movement)
+- OpenAI-backed content planner endpoint at `POST /api/planning/ai-calendar/`
+- optional profile-aware planning when account ID is provided and latest snapshot/post history exists
 
 Important runtime meaning:
 - planning items are editorial plans, separate from `ScheduledPost` publish queue
 - this allows teams to plan first, then schedule approved items into the publishing engine
+- AI planner can generate ready-to-schedule calendars without writing directly into the publish queue, so operators can review first and then schedule selectively
 
 ### Insights
 The Insights page is the reporting view for account-level Meta data and recent post performance.
@@ -259,6 +264,7 @@ What it supports:
 - full-width published posts section with comparison table below it
 - resilient Facebook published-post fetch: if rich fields are rejected for a page, API auto-falls back to minimal field set so FB rows still appear in Published Posts
 - API assist endpoint for scheduler guidance: `GET /api/insights/scheduler-assist/<account_id>/`
+- scheduler assist now combines best posting window, strongest recent format, and next likely topic direction per platform
 
 Important runtime meaning:
 - UI primarily uses stored snapshots
@@ -274,7 +280,10 @@ What it shows:
 - AI executive summary for selected profile
 - strengths (pros) and weaknesses (cons)
 - risks and improvement opportunities
+- plain-English `What Worked` summary
+- plain-English `What Flopped` summary
 - recommended posting strategy (current vs suggested cadence) with mandatory separate FB/IG current cadence using last-7-days posts and avg/day
+- `Next Best Post` recommendation with best time window, format, topic, and why-now explanation
 - 7-day action plan and KPI growth targets
 - content ideas aligned to current profile data
 - final section: **Best recommendation for grow your profile** (bullet points), tied to profile data and trend-aware execution with serious source references (for example Meta for Creators / Instagram Creators)
@@ -288,6 +297,7 @@ What it supports:
 - OpenAI-backed JSON report generation from latest stored insight snapshot + recent published posts
 - stronger prompt framework with strict metric-grounded reasoning, platform-specific diagnosis, and 7-day execution planning
 - fallback normalization for posting strategy so output always contains platform-separated FB/IG current posting, recommended cadence, and reasoning
+- hybrid recommendation context that blends historical best-time / best-format / topic signals from stored post performance into the AI report
 
 Important runtime meaning:
 - AI advice is generated from available snapshot/post data; missing metrics are marked as unavailable

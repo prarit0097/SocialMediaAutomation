@@ -6,6 +6,11 @@ from django.http import HttpRequest, JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods
 
+from analytics.ai_service import AIInsightsError, generate_content_calendar_plan
+from analytics.models import InsightSnapshot
+from analytics.views import _next_post_recommendation, _normalize_posts_for_ai
+from integrations.models import ConnectedAccount
+
 from .models import CalendarContentItem, ContentTag
 
 
@@ -77,6 +82,38 @@ def _serialize_item(item: CalendarContentItem) -> dict:
         "connected_account_name": item.connected_account.page_name if item.connected_account else "",
         "tags": [_serialize_tag(tag) for tag in item.tags.all()],
     }
+
+
+def _planner_account_context(_user, account_id: int | None) -> tuple[dict, dict]:
+    if not account_id:
+        return {}, {}
+    account = ConnectedAccount.objects.filter(id=account_id, is_active=True).first()
+    if not account:
+        return {}, {}
+    snapshot = InsightSnapshot.objects.filter(account=account).order_by("-fetched_at", "-id").first()
+    if not snapshot:
+        return {
+            "account_id": account.id,
+            "page_name": account.page_name,
+            "platform": account.platform,
+        }, {}
+    payload = snapshot.payload if isinstance(snapshot.payload, dict) else {}
+    normalized_posts = _normalize_posts_for_ai(
+        {
+            "platform": account.platform,
+            "published_posts": payload.get("published_posts") or [],
+        }
+    )
+    return (
+        {
+            "account_id": account.id,
+            "page_name": account.page_name,
+            "platform": account.platform,
+            "fetched_at": snapshot.fetched_at.isoformat() if snapshot.fetched_at else None,
+            "summary": payload.get("summary") or {},
+        },
+        _next_post_recommendation(normalized_posts, {"platform": account.platform}) if normalized_posts else {},
+    )
 
 
 @require_GET
@@ -208,3 +245,58 @@ def update_calendar_item(request: HttpRequest, item_id: int) -> JsonResponse:
 
     item.refresh_from_db()
     return JsonResponse(_serialize_item(item))
+
+
+@require_http_methods(["POST"])
+@login_required
+def generate_ai_calendar_plan(request: HttpRequest) -> JsonResponse:
+    payload = _parse_json(request)
+    if payload is None:
+        return _bad_request("Invalid JSON body")
+
+    niche = str(payload.get("niche") or "").strip()
+    goal = str(payload.get("goal") or "").strip()
+    platform = str(payload.get("platform") or "both").strip().lower()
+    duration_days = payload.get("duration_days") or 7
+    account_id = payload.get("account_id")
+
+    try:
+        duration_days = int(duration_days)
+    except (TypeError, ValueError):
+        return _bad_request("duration_days must be 7 or 30")
+    if duration_days not in {7, 30}:
+        return _bad_request("duration_days must be 7 or 30")
+    if platform not in {"facebook", "instagram", "both"}:
+        return _bad_request("platform must be facebook, instagram, or both")
+    if not niche:
+        return _bad_request("niche is required")
+
+    account_context, historical_recommendations = _planner_account_context(request.user, account_id)
+    try:
+        plan = generate_content_calendar_plan(
+            {
+                "niche": niche,
+                "goal": goal,
+                "platform": platform,
+                "duration_days": duration_days,
+                "account_context": account_context,
+                "historical_recommendations": historical_recommendations,
+            }
+        )
+    except AIInsightsError as exc:
+        return JsonResponse(
+            {
+                "error": "AI content planner unavailable",
+                "details": str(exc),
+            },
+            status=502,
+        )
+
+    return JsonResponse(
+        {
+            "generated_at": timezone.now().isoformat(),
+            "account_context": account_context,
+            "historical_recommendations": historical_recommendations,
+            "plan": plan,
+        }
+    )

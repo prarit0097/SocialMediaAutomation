@@ -1144,7 +1144,11 @@
               .map((s) => `${s.label} (${s.sample_posts} posts)`)
               .join(", ")
           : "";
-        bestTimeBlocks.push(`<li><strong>${label}:</strong> next best window ${topSlot}${sampleText ? ` | top slots: ${sampleText}` : ""}</li>`);
+        const bestFormat = row.best_format && row.best_format.format ? row.best_format.format : "not available";
+        const nextTopic = row.next_topic || "not available";
+        bestTimeBlocks.push(
+          `<li><strong>${label}:</strong> next best window ${topSlot}${sampleText ? ` | top slots: ${sampleText}` : ""} | best format: ${bestFormat} | topic: ${nextTopic}</li>`
+        );
 
         const ab = row.caption_ab_test || {};
         captionBlocks.push(`<li><strong>${label}:</strong> ${ab.primary_test || "Short vs Medium captions"} | ${ab.reasoning || ""}</li>`);
@@ -2183,6 +2187,10 @@
         ${renderAiListCard("Risks", analysis.risks || [], "tone-bad")}
         ${renderAiListCard("Opportunities", analysis.opportunities || [], "tone-good")}
       </div>
+      <div class="ai-report-grid">
+        ${renderAiListCard("What Worked", analysis.what_worked || [], "tone-good")}
+        ${renderAiListCard("What Flopped", analysis.what_flopped || [], "tone-bad")}
+      </div>
       <article class="ai-report-card">
         <h3>Posting strategy</h3>
         <p><strong>Current:</strong> ${escapeHtml(
@@ -2192,6 +2200,13 @@
           (analysis.posting_strategy || {}).recommended_posting || "Not specified"
         )}</p>
         <p><strong>Reasoning:</strong> ${escapeHtml((analysis.posting_strategy || {}).reasoning || "Not specified")}</p>
+      </article>
+      <article class="ai-report-card">
+        <h3>Next Best Post</h3>
+        <p><strong>Best time:</strong> ${escapeHtml(((analysis.next_best_post || {}).best_time_window) || "Not specified")}</p>
+        <p><strong>Format:</strong> ${escapeHtml(((analysis.next_best_post || {}).recommended_format) || "Not specified")}</p>
+        <p><strong>Topic:</strong> ${escapeHtml(((analysis.next_best_post || {}).recommended_topic) || "Not specified")}</p>
+        <p><strong>Why:</strong> ${escapeHtml(((analysis.next_best_post || {}).why_now) || "Not specified")}</p>
       </article>
       ${renderAiPlanTable("7-day action plan", analysis.action_plan_7d || [])}
       ${renderAiKpiTable(analysis.kpi_growth_plan || [])}
