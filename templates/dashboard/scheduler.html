@@ -69,6 +69,10 @@
       <div id="schedulerBestTimeAssist" class="assist-panel"></div>
       <div id="schedulerCaptionAssist" class="assist-panel"></div>
     </div>
+    <div class="scheduler-assist-block">
+      <p class="eyebrow">Publish Health</p>
+      <p id="publishHealthStatus" class="meta-note">Loading publish health...</p>
+    </div>
   </aside>
 </div>
 
@@ -79,7 +83,17 @@
       <h2>Scheduled Queue</h2>
       <p class="section-copy">Refresh the queue to review pending, published, and failed jobs without leaving the page.</p>
     </div>
-    <button id="refreshScheduledBtn" class="btn muted">Refresh</button>
+    <div class="inline-controls">
+      <select id="scheduledStatusFilter" aria-label="Filter scheduled posts by status">
+        <option value="all">All statuses</option>
+        <option value="retrying">Retrying</option>
+        <option value="pending">Pending</option>
+        <option value="processing">Processing</option>
+        <option value="published">Published</option>
+        <option value="failed">Failed</option>
+      </select>
+      <button id="refreshScheduledBtn" class="btn muted">Refresh</button>
+    </div>
   </div>
   <div id="scheduledTable" class="table-wrap table-wrap-strong"></div>
 </section>

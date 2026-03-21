@@ -78,6 +78,32 @@ class PublishingApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         mock_process_due_posts.assert_called_once_with(run_inline=True)
 
+    def test_publish_health_status_counts_retrying_rows(self):
+        ScheduledPost.objects.create(
+            account=self.ig_account,
+            platform=INSTAGRAM,
+            message="retrying ig",
+            media_url="https://example.com/a.mp4",
+            scheduled_for=timezone.now() + timedelta(minutes=4),
+            status=POST_STATUS_PENDING,
+            error_message="Meta is temporarily pacing requests. Auto-retry in 180s. Last Meta response: (#4)",
+        )
+        ScheduledPost.objects.create(
+            account=self.account,
+            platform=FACEBOOK,
+            message="processing fb",
+            scheduled_for=timezone.now(),
+            status="processing",
+        )
+
+        response = self.client.get(reverse("publish_health_status"))
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["retrying_count"], 1)
+        self.assertEqual(body["retrying_instagram_count"], 1)
+        self.assertEqual(body["processing_count"], 1)
+
     def test_schedule_post_rejects_account_platform_mismatch(self):
         response = self.client.post(
             reverse("schedule_post"),

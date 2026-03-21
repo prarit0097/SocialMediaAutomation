@@ -149,6 +149,8 @@ What it does:
 - production Docker Compose file now omits the obsolete top-level `version` key, so `docker compose` commands no longer emit the legacy schema warning during routine ops
 - publish retries for transient Meta throttles now use DB-scheduled backoff instead of Celery self-retry, which avoids duplicate publish-task collisions on Instagram and keeps throttled posts in a paced auto-retry state until Meta recovers
 - scheduler queue now labels throttled pending rows as `retrying`, and due-dispatch only advances one Instagram post per batch so Meta-facing publish pressure is reduced during busy windows
+- force refresh-all now refuses to start while Instagram due posts are already close to publish/processing, so operators do not create avoidable Meta contention right before scheduled delivery
+- publish health status is exposed to the dashboard, showing retrying/processing/due-pending pressure and the next known retry time for throttled posts
 - uses user-token fallback for catalog detail checks (session token first, then current user cache, then latest global reconnect token)
 - keeps only latest reconnect profiles active in scheduling/health
 - blocks scheduling from stale or inactive account rows until the profile is refreshed in a new reconnect

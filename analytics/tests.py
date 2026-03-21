@@ -200,6 +200,37 @@ class AnalyticsApiTests(TestCase):
         self.assertTrue(body["has_active_run"])
         self.assertEqual(body["status"], "running")
 
+    @patch("analytics.views.refresh_account_insights_snapshot.apply_async")
+    def test_force_refresh_all_accounts_blocks_when_instagram_due_posts_are_near(self, mock_apply_async):
+        ig_account = ConnectedAccount.objects.create(
+            platform=INSTAGRAM,
+            page_id="17890009",
+            page_name="IG Block",
+            ig_user_id="17890009",
+            access_token="token-ig",
+        )
+        from publishing.models import ScheduledPost
+
+        ScheduledPost.objects.create(
+            account=ig_account,
+            platform=INSTAGRAM,
+            message="due soon",
+            media_url="https://example.com/a.mp4",
+            scheduled_for=timezone.now() + timedelta(minutes=5),
+            status="pending",
+        )
+
+        response = self.client.post(
+            "/api/insights/force-refresh-all/",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 409)
+        body = response.json()
+        self.assertEqual(body["error"], "Instagram publishing window is busy")
+        mock_apply_async.assert_not_called()
+
     @patch("analytics.views._reconcile_bulk_run_progress", side_effect=OperationalError("database is locked"))
     def test_force_refresh_all_accounts_status_handles_database_lock(self, _mock_reconcile):
         run = BulkInsightRefreshRun.objects.create(

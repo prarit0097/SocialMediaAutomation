@@ -1,5 +1,6 @@
 ﻿(function () {
   let cachedAccountsRows = [];
+  let cachedScheduledRows = [];
 
   function getCookie(name) {
     const value = `; ${document.cookie}`;
@@ -805,6 +806,7 @@
 
   async function loadScheduledPosts() {
     const table = document.getElementById("scheduledTable");
+    const scheduledStatusFilter = document.getElementById("scheduledStatusFilter");
     if (!table) return;
     try {
       const rows = await fetchJSON("/api/posts/scheduled/");
@@ -847,9 +849,42 @@
           due_in: formatDueIn(utcValue, row.status),
         };
       });
-      renderScheduledTable(table, rowsWithLocalTime);
+      cachedScheduledRows = rowsWithLocalTime;
+      const selectedStatus = scheduledStatusFilter ? String(scheduledStatusFilter.value || "all") : "all";
+      const filteredRows = cachedScheduledRows.filter((row) => {
+        const normalizedError = String(row.error_message || "").toLowerCase();
+        const retrying = row.status === "pending" && normalizedError.includes("auto-retry in");
+        if (selectedStatus === "all") return true;
+        if (selectedStatus === "retrying") return retrying;
+        return String(row.status || "").toLowerCase() === selectedStatus;
+      });
+      renderScheduledTable(table, filteredRows);
     } catch (err) {
       table.innerHTML = `<p>${err.message}</p>`;
+    }
+  }
+
+  async function loadPublishHealthStatus() {
+    const schedulerTarget = document.getElementById("publishHealthStatus");
+    const homeTarget = document.getElementById("publishHealthSummary");
+    if (!schedulerTarget && !homeTarget) return;
+    try {
+      const data = await fetchJSON("/api/posts/publish-health-status/");
+      const parts = [
+        `${Number(data.retrying_count || 0)} retrying`,
+        `${Number(data.processing_count || 0)} processing`,
+        `${Number(data.due_pending_count || 0)} due pending`,
+        `${Number(data.published_last_6h || 0)} published in last 6h`,
+      ];
+      const latestRetry = String(data.latest_retry_scheduled_for || "").trim();
+      const retrySuffix = latestRetry ? ` Next retry: ${toIndianDateTime(latestRetry) || latestRetry}.` : "";
+      const summary = `${parts.join(" | ")}.${retrySuffix}`;
+      if (schedulerTarget) schedulerTarget.textContent = summary;
+      if (homeTarget) homeTarget.textContent = summary;
+    } catch (err) {
+      const message = `Publish health unavailable: ${err.message}`;
+      if (schedulerTarget) schedulerTarget.textContent = message;
+      if (homeTarget) homeTarget.textContent = message;
     }
   }
 
@@ -1022,11 +1057,18 @@
   const refreshScheduledBtn = document.getElementById("refreshScheduledBtn");
   if (refreshScheduledBtn) {
     const runWithRefreshScheduleLoading = withButtonLoading(refreshScheduledBtn, "Refresh", "Refreshing...");
-    refreshScheduledBtn.addEventListener("click", () => runWithRefreshScheduleLoading(loadScheduledPosts));
+    refreshScheduledBtn.addEventListener("click", () => runWithRefreshScheduleLoading(async () => {
+      await loadScheduledPosts();
+      await loadPublishHealthStatus();
+    }));
     loadScheduledPosts();
   }
   const scheduledTable = document.getElementById("scheduledTable");
+  const scheduledStatusFilter = document.getElementById("scheduledStatusFilter");
   if (scheduledTable) {
+    if (scheduledStatusFilter) {
+      scheduledStatusFilter.addEventListener("change", () => loadScheduledPosts());
+    }
     scheduledTable.addEventListener("click", async (event) => {
       const target = event.target;
       if (!(target instanceof HTMLElement) || !target.classList.contains("retry-failed-btn")) {
@@ -1038,10 +1080,14 @@
       if (!ok) return;
       try {
         await retryFailedPost(postId);
+        await loadPublishHealthStatus();
       } catch (err) {
         window.alert(`Retry failed: ${err.message}`);
       }
     });
+  }
+  if (document.getElementById("publishHealthStatus") || document.getElementById("publishHealthSummary")) {
+    loadPublishHealthStatus();
   }
 
   const scheduleForm = document.getElementById("scheduleForm");

@@ -15,6 +15,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from core.exceptions import MetaAPIError
 from integrations.models import ConnectedAccount
+from publishing.models import ScheduledPost
 
 from .ai_service import AIInsightsError, generate_profile_ai_insights
 from .models import BulkInsightRefreshRun, InsightSnapshot
@@ -22,6 +23,38 @@ from .services import build_comparison_rows, build_insight_response, build_post_
 from .tasks import refresh_account_insights_snapshot
 
 logger = logging.getLogger("analytics")
+
+
+def _force_refresh_guard_payload() -> dict | None:
+    try:
+        horizon_minutes = max(5, int(getattr(settings, "FORCE_REFRESH_IG_GUARD_MINUTES", 20)))
+    except (TypeError, ValueError):
+        horizon_minutes = 20
+    try:
+        due_limit = max(1, int(getattr(settings, "FORCE_REFRESH_IG_GUARD_DUE_LIMIT", 1)))
+    except (TypeError, ValueError):
+        due_limit = 1
+
+    now = timezone.now()
+    ig_due_soon = ScheduledPost.objects.filter(
+        platform="instagram",
+        status="pending",
+        scheduled_for__lte=now + timedelta(minutes=horizon_minutes),
+    ).count()
+    ig_processing = ScheduledPost.objects.filter(platform="instagram", status="processing").count()
+    if ig_due_soon < due_limit and ig_processing == 0:
+        return None
+    return {
+        "error": "Instagram publishing window is busy",
+        "details": (
+            f"Force refresh is temporarily blocked because {ig_due_soon} Instagram post(s) are due within "
+            f"{horizon_minutes} minute(s) and {ig_processing} are currently processing. "
+            "Wait for the scheduler queue to clear, then retry force refresh."
+        ),
+        "ig_due_soon": ig_due_soon,
+        "ig_processing": ig_processing,
+        "guard_window_minutes": horizon_minutes,
+    }
 
 
 def _insight_cache_ttl() -> int:
@@ -941,6 +974,10 @@ def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
             }
         )
         return JsonResponse(payload, status=409)
+
+    guard_payload = _force_refresh_guard_payload()
+    if guard_payload:
+        return JsonResponse(guard_payload, status=409)
 
     accounts = list(ConnectedAccount.objects.filter(is_active=True).order_by("id"))
     total_accounts = len(accounts)

@@ -38,6 +38,10 @@ def _bad_request(message: str, details: dict | None = None) -> JsonResponse:
     return JsonResponse(body, status=400)
 
 
+def _is_retrying_post(row: dict) -> bool:
+    return str(row.get("status") or "").lower() == POST_STATUS_PENDING and "auto-retry in" in str(row.get("error_message") or "").lower()
+
+
 def _build_public_media_url(request: HttpRequest, relative_url: str) -> str:
     if settings.PUBLIC_BASE_URL:
         return urljoin(settings.PUBLIC_BASE_URL.rstrip("/") + "/", relative_url.lstrip("/"))
@@ -330,6 +334,43 @@ def list_scheduled_posts(_request: HttpRequest) -> JsonResponse:
     return JsonResponse(rows, safe=False)
 
 
+@require_GET
+@login_required
+def publish_health_status(_request: HttpRequest) -> JsonResponse:
+    now = timezone.now()
+    rows = list(
+        ScheduledPost.objects.values(
+            "id",
+            "status",
+            "platform",
+            "scheduled_for",
+            "published_at",
+            "error_message",
+        ).order_by("-updated_at")[:200]
+    )
+    retrying = [row for row in rows if _is_retrying_post(row)]
+    retrying_instagram = [row for row in retrying if str(row.get("platform") or "").lower() == INSTAGRAM]
+    processing = [row for row in rows if str(row.get("status") or "").lower() == POST_STATUS_PROCESSING]
+    due_pending = [
+        row
+        for row in rows
+        if str(row.get("status") or "").lower() == POST_STATUS_PENDING and row.get("scheduled_for") and row["scheduled_for"] <= now
+    ]
+    published_recent = [row for row in rows if row.get("published_at") and row["published_at"] >= now - timedelta(hours=6)]
+
+    latest_retry = retrying_instagram[0] if retrying_instagram else (retrying[0] if retrying else None)
+    payload = {
+        "retrying_count": len(retrying),
+        "retrying_instagram_count": len(retrying_instagram),
+        "processing_count": len(processing),
+        "due_pending_count": len(due_pending),
+        "published_last_6h": len(published_recent),
+        "latest_retry_message": str((latest_retry or {}).get("error_message") or ""),
+        "latest_retry_scheduled_for": latest_retry["scheduled_for"].isoformat() if latest_retry and latest_retry.get("scheduled_for") else None,
+    }
+    return JsonResponse(payload)
+
+
 @require_POST
 @login_required
 def retry_failed_post(request: HttpRequest, post_id: int) -> JsonResponse:
@@ -388,4 +429,3 @@ def retry_failed_post(request: HttpRequest, post_id: int) -> JsonResponse:
 
     logger.info("failed post retried id=%s by_user=%s scheduled_for=%s", post.id, request.user.id, post.scheduled_for)
     return JsonResponse({"id": post.id, "status": post.status, "scheduled_for": post.scheduled_for.isoformat()})
-
