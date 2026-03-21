@@ -470,7 +470,7 @@
         <th>scheduled_for</th>
         <th>due_in</th>
         <th>status</th>
-        <th>error_message</th>
+        <th>status_note</th>
         <th>page_name</th>
         <th>actions</th>
       </tr>
@@ -481,13 +481,18 @@
         const canRetry = row.status === "failed";
         const normalizedError = String(row.error_message || "");
         const isRetrying = row.status === "pending" && /auto-retry in/i.test(normalizedError);
-        const statusLabel = isRetrying ? "retrying" : row.status;
+        const statusLabel = isRetrying ? "retrying" : String(row.status || "");
         const statusClass = `queue-status queue-status-${String(statusLabel || "unknown")
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, "-")}`;
-        const errorDisplay = isRetrying
-          ? normalizedError.replace(/^Meta is temporarily pacing requests\.\s*/i, "Meta is pacing requests. ")
-          : normalizedError;
+        let errorDisplay = normalizedError;
+        if (isRetrying) {
+          const retryWindowMatch = normalizedError.match(/auto-retry in\s+\d+s/i);
+          const retryWindow = retryWindowMatch ? retryWindowMatch[0].replace(/^auto/i, "Auto") : "Auto-retry scheduled";
+          errorDisplay = `Meta is pacing requests. ${retryWindow}.`;
+        }
+        const errorCellTitle = normalizedError || errorDisplay;
+        const prettyStatusLabel = statusLabel ? statusLabel.charAt(0).toUpperCase() + statusLabel.slice(1) : "Unknown";
         return `
           <tr>
             <td>${escapeHtml(row.id)}</td>
@@ -498,8 +503,8 @@
             <td>${escapeHtml(row.media_url)}</td>
             <td>${escapeHtml(row.scheduled_for)}</td>
             <td>${escapeHtml(row.due_in)}</td>
-            <td><span class="${statusClass}">${escapeHtml(statusLabel)}</span></td>
-            <td>${escapeHtml(errorDisplay)}</td>
+            <td><span class="${statusClass}">${escapeHtml(prettyStatusLabel)}</span></td>
+            <td title="${escapeHtml(errorCellTitle)}">${escapeHtml(errorDisplay)}</td>
             <td>${escapeHtml(row.page_name)}</td>
             <td>${canRetry ? `<button class="btn retry-failed-btn" data-post-id="${row.id}">Retry Failed</button>` : "-"}</td>
           </tr>

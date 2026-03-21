@@ -151,6 +151,7 @@ What it does:
 - scheduler queue now labels throttled pending rows as `retrying`, and due-dispatch only advances one Instagram post per batch so Meta-facing publish pressure is reduced during busy windows
 - force refresh-all now refuses to start while Instagram due posts are already close to publish/processing, so operators do not create avoidable Meta contention right before scheduled delivery
 - publish health status is exposed to the dashboard, showing retrying/processing/due-pending pressure and the next known retry time for throttled posts
+- scheduler queue now shortens transient Meta throttle text into a compact retry note in the table while preserving the full raw detail in the cell tooltip
 - uses user-token fallback for catalog detail checks (session token first, then current user cache, then latest global reconnect token)
 - keeps only latest reconnect profiles active in scheduling/health
 - blocks scheduling from stale or inactive account rows until the profile is refreshed in a new reconnect
