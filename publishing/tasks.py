@@ -50,6 +50,18 @@ def _clear_publish_attempts(post_id: int) -> None:
     cache.delete(_publish_attempt_cache_key(post_id))
 
 
+def _limit_instagram_batch(posts: list[ScheduledPost]) -> list[ScheduledPost]:
+    limited: list[ScheduledPost] = []
+    ig_taken = False
+    for post in posts:
+        if post.platform == INSTAGRAM:
+            if ig_taken:
+                continue
+            ig_taken = True
+        limited.append(post)
+    return limited
+
+
 def _get_due_posts(batch_size: int = 20) -> list[ScheduledPost]:
     now = timezone.now()
     with transaction.atomic():
@@ -59,7 +71,7 @@ def _get_due_posts(batch_size: int = 20) -> list[ScheduledPost]:
         )
         if _is_ig_globally_throttled():
             base_qs = base_qs.exclude(platform=INSTAGRAM)
-        due_posts = list(base_qs.order_by("scheduled_for")[:batch_size])
+        due_posts = _limit_instagram_batch(list(base_qs.order_by("scheduled_for")[:batch_size]))
 
         for post in due_posts:
             post.status = POST_STATUS_PROCESSING
@@ -82,7 +94,7 @@ def process_due_posts(run_inline: bool = False):
         )
         if _is_ig_globally_throttled():
             fallback_qs = fallback_qs.exclude(platform=INSTAGRAM)
-        due_posts = list(fallback_qs.order_by("scheduled_for")[:20])
+        due_posts = _limit_instagram_batch(list(fallback_qs.order_by("scheduled_for")[:20]))
         for post in due_posts:
             post.status = POST_STATUS_PROCESSING
             post.error_message = ""

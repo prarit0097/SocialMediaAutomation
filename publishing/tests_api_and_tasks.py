@@ -430,6 +430,37 @@ class PublishingTaskTests(TestCase):
         self.assertIn(fb_due.id, due_ids)
         self.assertNotIn(ig_due.id, due_ids)
 
+    def test_get_due_posts_limits_batch_to_one_instagram_post(self):
+        ig_account = ConnectedAccount.objects.create(
+            platform=INSTAGRAM,
+            page_id="17890004",
+            page_name="IG Page 4",
+            ig_user_id="17890004",
+            access_token="token",
+        )
+        first_ig = ScheduledPost.objects.create(
+            account=ig_account,
+            platform=INSTAGRAM,
+            message="ig due 1",
+            media_url="https://example.com/a.jpg",
+            scheduled_for=timezone.now() - timedelta(minutes=2),
+            status=POST_STATUS_PENDING,
+        )
+        second_ig = ScheduledPost.objects.create(
+            account=ig_account,
+            platform=INSTAGRAM,
+            message="ig due 2",
+            media_url="https://example.com/b.jpg",
+            scheduled_for=timezone.now() - timedelta(minutes=1),
+            status=POST_STATUS_PENDING,
+        )
+
+        due_posts = _get_due_posts(batch_size=10)
+        due_ids = {post.id for post in due_posts}
+
+        self.assertIn(first_ig.id, due_ids)
+        self.assertNotIn(second_ig.id, due_ids)
+
 
 class PublishingServiceTests(TestCase):
     def setUp(self):

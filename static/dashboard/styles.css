@@ -1938,6 +1938,52 @@ button[disabled],
   border-radius: 10px;
 }
 
+.queue-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 88px;
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.35px;
+  text-transform: uppercase;
+  border: 1px solid rgba(56, 78, 92, 0.16);
+  background: rgba(227, 233, 238, 0.9);
+  color: var(--navy);
+}
+
+.queue-status-published {
+  background: rgba(208, 238, 223, 0.95);
+  color: #165b36;
+  border-color: rgba(22, 91, 54, 0.2);
+}
+
+.queue-status-failed {
+  background: rgba(248, 216, 210, 0.95);
+  color: #8b2e1f;
+  border-color: rgba(139, 46, 31, 0.2);
+}
+
+.queue-status-processing {
+  background: rgba(214, 231, 244, 0.95);
+  color: #124e78;
+  border-color: rgba(18, 78, 120, 0.2);
+}
+
+.queue-status-pending {
+  background: rgba(232, 232, 232, 0.92);
+  color: #445260;
+}
+
+.queue-status-retrying {
+  background: rgba(255, 236, 204, 0.96);
+  color: #8a4b00;
+  border-color: rgba(138, 75, 0, 0.2);
+}
+
 .inline-controls {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
