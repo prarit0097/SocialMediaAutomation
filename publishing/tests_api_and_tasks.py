@@ -333,26 +333,22 @@ class PublishingTaskTests(TestCase):
         self.assertEqual(self.post.status, POST_STATUS_FAILED)
         self.assertIn("Reconnect the profile from Accounts", self.post.error_message)
 
-    @patch("publishing.tasks.publish_post_task.retry")
     @patch("publishing.tasks.publish_scheduled_post")
-    def test_publish_post_task_uses_longer_backoff_for_graph_rate_limit(self, mock_publish, mock_retry):
+    def test_publish_post_task_uses_longer_backoff_for_graph_rate_limit(self, mock_publish):
         before_schedule = self.post.scheduled_for
         mock_publish.side_effect = MetaTransientError("(#4) Application request limit reached (code=4)")
-        mock_retry.side_effect = RuntimeError("retry-invoked")
 
-        with self.assertRaises(RuntimeError):
-            publish_post_task(self.post.id)
+        result = publish_post_task(self.post.id)
 
-        mock_retry.assert_called_once()
-        self.assertGreaterEqual(mock_retry.call_args.kwargs["countdown"], 90)
+        self.assertEqual(result["status"], "requeued_transient")
+        self.assertGreaterEqual(result["retry_in"], 90)
         self.post.refresh_from_db()
         self.assertEqual(self.post.status, POST_STATUS_PENDING)
         self.assertIn("Auto-retry in", self.post.error_message)
         self.assertGreater(self.post.scheduled_for, before_schedule)
 
-    @patch("publishing.tasks.publish_post_task.retry")
     @patch("publishing.tasks.publish_scheduled_post")
-    def test_publish_post_task_sets_global_ig_cooldown_on_code4(self, mock_publish, mock_retry):
+    def test_publish_post_task_sets_global_ig_cooldown_on_code4(self, mock_publish):
         ig_account = ConnectedAccount.objects.create(
             platform=INSTAGRAM,
             page_id="17890003",
@@ -369,11 +365,10 @@ class PublishingTaskTests(TestCase):
             status="processing",
         )
         mock_publish.side_effect = MetaTransientError("(#4) Application request limit reached (code=4)")
-        mock_retry.side_effect = RuntimeError("retry-invoked")
 
-        with self.assertRaises(RuntimeError):
-            publish_post_task(ig_post.id)
+        result = publish_post_task(ig_post.id)
 
+        self.assertEqual(result["status"], "requeued_transient")
         self.assertTrue(bool(cache.get("publishing:ig_global_cooldown")))
 
     @override_settings(IG_PUBLISH_LANE_RETRY_SECONDS=45)
