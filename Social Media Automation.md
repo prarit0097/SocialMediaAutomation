@@ -546,6 +546,124 @@ This project includes local MCP servers under `mcp_servers/` so Codex or future 
   - directly serve `/static/` and `/media/`
   - include safer proxy timeout settings for longer publish/insight requests
 
+## VPS Access + Health Check Guide
+This section is for anyone new to the live environment who needs to access, inspect, or verify the production deployment quickly.
+
+### Live VPS App Location
+- production app path on VPS: `/opt/apps/postzyo`
+- expected working directory before most ops commands:
+  - `cd /opt/apps/postzyo`
+
+### Live Production Stack
+The live app runs in Docker containers under the Compose project name `postzyo`.
+
+Current production services/container names:
+- `postzyo-web-1`
+- `postzyo-worker-1`
+- `postzyo-beat-1`
+- `postzyo-nginx-1`
+- `postzyo-db-1`
+- `postzyo-redis-1`
+
+Important runtime meaning:
+- host machine Nginx is also active and proxies traffic into the app container Nginx
+- production compose metadata on running containers points to:
+  - `/opt/apps/postzyo/deploy/prod/docker-compose.prod.yml`
+- if a pasted command ever shows blank `docker compose ... ps` output, verify with direct Docker container commands before assuming the app is down
+
+### Basic VPS Access Commands
+- move into project:
+  - `cd /opt/apps/postzyo`
+- confirm repo state:
+  - `git status`
+  - `git log -1 --oneline`
+- list live Postzyo containers:
+  - `docker ps --filter "name=postzyo"`
+
+### Core Health Check Commands
+Run these when you want a fast production sanity check.
+
+- Docker containers:
+  - `docker ps --filter "name=postzyo"`
+- Django app health:
+  - `docker exec postzyo-web-1 python manage.py check`
+- migration status:
+  - `docker exec postzyo-web-1 python manage.py showmigrations`
+- connected token/account inventory:
+  - `docker exec postzyo-web-1 python manage.py check_meta_tokens`
+- Redis health:
+  - `docker exec postzyo-redis-1 redis-cli ping`
+- PostgreSQL health:
+  - `docker exec postzyo-db-1 pg_isready -U postgres`
+- Celery worker health:
+  - `docker exec postzyo-worker-1 celery -A social_automation inspect ping`
+- container Nginx config health:
+  - `docker exec postzyo-nginx-1 nginx -t`
+
+### Useful Log Commands
+- web logs:
+  - `docker logs --tail=100 postzyo-web-1`
+- worker logs:
+  - `docker logs --tail=100 postzyo-worker-1`
+- beat logs:
+  - `docker logs --tail=100 postzyo-beat-1`
+- app nginx logs:
+  - `docker logs --tail=100 postzyo-nginx-1`
+
+What healthy logs usually mean:
+- `postzyo-web-1` should show Gunicorn booted and listening on `0.0.0.0:8000`
+- `postzyo-worker-1` should show Celery receiving and completing `publishing.tasks.process_due_posts`
+- `postzyo-beat-1` should show `Scheduler: Sending due task process-due-posts-every-minute`
+- `postzyo-nginx-1` will also show normal traffic plus random bot scans; repeated `404` requests for WordPress paths do not mean this app is broken
+
+### Public Endpoint Checks
+- home page:
+  - `curl -I https://postzyo.com`
+- login page:
+  - `curl -I https://postzyo.com/login/`
+- dashboard auth redirect behavior:
+  - `curl -I https://postzyo.com/dashboard/`
+
+Expected quick outcomes:
+- home page should return `200 OK`
+- login page should return `200 OK`
+- dashboard should return `302` to `/login/?next=/dashboard/` when not authenticated
+
+### Host-Level Checks
+- disk:
+  - `df -h`
+- memory:
+  - `free -h`
+- uptime/load:
+  - `uptime`
+- process view:
+  - `top`
+- host Nginx status:
+  - `systemctl status nginx`
+
+### Compose-Based Commands
+When using Compose directly for the production stack, use:
+- `docker compose -f deploy/prod/docker-compose.prod.yml ps`
+- `docker compose -f deploy/prod/docker-compose.prod.yml logs web --tail=100`
+- `docker compose -f deploy/prod/docker-compose.prod.yml logs worker --tail=100`
+- `docker compose -f deploy/prod/docker-compose.prod.yml logs beat --tail=100`
+- `docker compose -f deploy/prod/docker-compose.prod.yml logs nginx --tail=100`
+
+If Compose output ever looks inconsistent, confirm the running containers with:
+- `docker inspect postzyo-web-1 --format '{{json .Config.Labels}}'`
+
+This should show labels including:
+- Compose project: `postzyo`
+- config file: `/opt/apps/postzyo/deploy/prod/docker-compose.prod.yml`
+
+### Common Operator Interpretation
+- if `docker exec postzyo-web-1 python manage.py check` passes, Django config is structurally healthy
+- if `pg_isready` passes, database is reachable
+- if Redis responds `PONG`, cache/broker is reachable
+- if Celery inspect returns `pong`, worker is online
+- if Beat logs keep sending minute tasks and Worker logs keep receiving them, publishing automation loop is healthy
+- if website returns `200 OK` but Compose commands appear empty, check pasted command integrity and direct container status before troubleshooting deployment
+
 ## Live-Readiness Hardening (Django settings)
 - Added explicit production security env toggles in settings:
   - `SECURE_SSL_REDIRECT`
