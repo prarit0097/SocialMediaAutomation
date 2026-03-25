@@ -1559,7 +1559,9 @@
         let shouldDisable = false;
         if (isLocked) {
           shouldDisable = false;
-        } else if (isActive && normalizedPlan && buttonPlan === normalizedPlan) {
+        } else if (isActive && normalizedPlan === "monthly" && buttonPlan === "monthly") {
+          shouldDisable = true;
+        } else if (isActive && normalizedPlan === "yearly") {
           shouldDisable = true;
         }
 

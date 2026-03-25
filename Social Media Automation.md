@@ -81,7 +81,8 @@ What it does:
 - yearly payment switches the user to `Yearly` and extends access by one calendar year
 - returns clear UI success/error messages for order creation and verification steps
 - redirects the user back into the app after successful payment verification
-- when a plan is active, the UI disables the matching plan button only (Monthly active disables monthly, Yearly active disables yearly) so users can upgrade/downgrade only when needed
+- when Monthly plan is active, only the monthly button is disabled (yearly upgrade allowed)
+- when Yearly plan is active, both monthly + yearly buttons are disabled until expiry
 
 Important runtime meaning:
 - checkout requires `.env` keys: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`
