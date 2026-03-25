@@ -279,7 +279,7 @@ class IntegrationsViewTests(TestCase):
 
     @patch("integrations.views.MetaClient._get")
     @patch("integrations.views.MetaClient.debug_token")
-    def test_meta_pages_catalog_uses_global_user_token_fallback(self, mock_debug_token, mock_get):
+    def test_meta_pages_catalog_does_not_use_global_user_token_fallback(self, mock_debug_token, mock_get):
         ConnectedAccount.objects.create(
             platform="facebook",
             page_id="10",
@@ -305,10 +305,11 @@ class IntegrationsViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         by_id = {row["page_id"]: row for row in payload["rows"]}
-        self.assertEqual(by_id["58"]["status"], "connected")
-        self.assertEqual(by_id["58"]["connectability"], "connected")
-        self.assertTrue(any("global-user-token" in str(call) for call in mock_get.call_args_list))
-        self.assertTrue(MetaUserToken.objects.filter(user=self.user).exists())
+        self.assertEqual(by_id["58"]["status"], "catalog-only")
+        self.assertEqual(by_id["58"]["connectability"], "connectable")
+        self.assertIn("Connect Facebook + Instagram", by_id["58"]["reason"])
+        self.assertFalse(any("global-user-token" in str(call) for call in mock_get.call_args_list))
+        self.assertFalse(MetaUserToken.objects.filter(user=self.user).exists())
 
     @patch("integrations.views.MetaClient._get")
     @patch("integrations.views.MetaClient.debug_token")

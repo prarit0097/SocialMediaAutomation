@@ -679,3 +679,21 @@ class PublishingServiceTests(TestCase):
 
         with self.assertRaises(MetaTransientError):
             ensure_public_media_fetchable("https://example.com/a.jpg")
+
+    @patch("publishing.media_utils.requests.get")
+    def test_media_fetchable_rejects_private_ip_targets_before_request(self, mock_get):
+        with self.assertRaises(MetaPermanentError):
+            ensure_public_media_fetchable("http://127.0.0.1/internal.jpg")
+        mock_get.assert_not_called()
+
+    @patch("publishing.media_utils.requests.get")
+    def test_media_fetchable_rejects_localhost_hostname_before_request(self, mock_get):
+        with self.assertRaises(MetaPermanentError):
+            ensure_public_media_fetchable("http://localhost/internal.jpg")
+        mock_get.assert_not_called()
+
+    @patch("publishing.media_utils.requests.get")
+    def test_media_fetchable_rejects_non_http_scheme_before_request(self, mock_get):
+        with self.assertRaises(MetaPermanentError):
+            ensure_public_media_fetchable("file:///etc/passwd")
+        mock_get.assert_not_called()

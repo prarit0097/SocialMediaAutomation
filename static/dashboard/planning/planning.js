@@ -21,6 +21,14 @@
 
   const pad = (n) => String(n).padStart(2, "0");
   const monthKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+  const escapeHtml = (value) =>
+    String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  const safeTagColor = (value) => (/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(String(value || "").trim()) ? String(value).trim() : "#1f6feb");
   const fmtLocalInput = (iso) => {
     const d = new Date(iso);
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -120,9 +128,14 @@
   async function loadTags() {
     const payload = await fetchJSON(`/api/planning/tags/`);
     const tags = payload.tags || [];
-    tagsList.innerHTML = tags
-      .map((tag) => `<span class="planning-tag-pill" style="--tag-color:${tag.color}">#${tag.id} ${tag.name} (${tag.category})</span>`)
-      .join("");
+    tagsList.innerHTML = "";
+    tags.forEach((tag) => {
+      const pill = document.createElement("span");
+      pill.className = "planning-tag-pill";
+      pill.style.setProperty("--tag-color", safeTagColor(tag.color));
+      pill.textContent = `#${tag.id} ${tag.name} (${tag.category})`;
+      tagsList.appendChild(pill);
+    });
   }
 
   prevBtn?.addEventListener("click", async () => {
@@ -228,22 +241,22 @@
         aiResult.innerHTML = `
           <article class="ai-report-card">
             <h3>Strategy summary</h3>
-            <p>${plan.strategy_summary || "-"}</p>
-            <p><strong>Cadence:</strong> ${plan.cadence_recommendation || "-"}</p>
-            <p><strong>Best time:</strong> ${plan.best_time_recommendation || "-"}</p>
+            <p>${escapeHtml(plan.strategy_summary || "-")}</p>
+            <p><strong>Cadence:</strong> ${escapeHtml(plan.cadence_recommendation || "-")}</p>
+            <p><strong>Best time:</strong> ${escapeHtml(plan.best_time_recommendation || "-")}</p>
           </article>
           <div class="planning-ai-list">
             ${rows
               .map(
                 (row) => `
                   <article class="planning-ai-item">
-                    <p class="eyebrow">${row.day_label || "-"}</p>
-                    <h3>${row.post_type || "-"} | ${row.platform || "-"}</h3>
-                    <p><strong>Topic:</strong> ${row.topic || "-"}</p>
-                    <p><strong>Hook:</strong> ${row.hook || "-"}</p>
-                    <p><strong>CTA:</strong> ${row.cta || "-"}</p>
-                    <p><strong>Best time:</strong> ${row.best_time_window || "-"}</p>
-                    <p><strong>Goal:</strong> ${row.goal || "-"}</p>
+                    <p class="eyebrow">${escapeHtml(row.day_label || "-")}</p>
+                    <h3>${escapeHtml(row.post_type || "-")} | ${escapeHtml(row.platform || "-")}</h3>
+                    <p><strong>Topic:</strong> ${escapeHtml(row.topic || "-")}</p>
+                    <p><strong>Hook:</strong> ${escapeHtml(row.hook || "-")}</p>
+                    <p><strong>CTA:</strong> ${escapeHtml(row.cta || "-")}</p>
+                    <p><strong>Best time:</strong> ${escapeHtml(row.best_time_window || "-")}</p>
+                    <p><strong>Goal:</strong> ${escapeHtml(row.goal || "-")}</p>
                   </article>
                 `
               )

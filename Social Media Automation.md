@@ -144,7 +144,8 @@ What it does:
 - force refresh-all now refuses to start while Instagram due posts are already close to publish/processing, so operators do not create avoidable Meta contention right before scheduled delivery
 - publish health status is exposed to the dashboard, showing retrying/processing/due-pending pressure and the next known retry time for throttled posts
 - scheduler queue now shortens transient Meta throttle text into a compact retry note in the table while preserving the full raw detail in the cell tooltip
-- uses user-token fallback for catalog detail checks (session token first, then current user cache, then latest global reconnect token)
+- uses user-token fallback for catalog detail checks in this order only: session token -> per-user cache -> encrypted per-user DB token
+- does not reuse another user's cached Meta user-access token for catalog lookups
 - keeps only latest reconnect profiles active in scheduling/health
 - blocks scheduling from stale or inactive account rows until the profile is refreshed in a new reconnect
 - shows Meta catalog in merged FB_IG rows when linked, and separate rows when unlinked
@@ -218,6 +219,7 @@ What it shows:
 - quick create form for planned content items
 - AI planner form for niche, goal, platform, duration (`7` or `30` day), and optional connected account context
 - AI-generated content calendar cards with topic, hook, CTA, format, and best-time guidance per day
+- planning tag pills and AI planner result cards now escape dynamic text before rendering, so user/API/AI content cannot inject raw HTML into the page
 
 What it supports:
 - operator-scoped planning data per logged-in user
@@ -348,8 +350,8 @@ Stores:
 
 Operational meaning:
 - catalog detail lookups can recover after cache/server restarts
-- token resolution order is session token -> per-user cache -> encrypted DB token -> global cache token
-- when catalog API sees a valid session/cache/global token, it auto-persists that token into DB for durability
+- token resolution order is session token -> per-user cache -> encrypted DB token
+- when catalog API sees a valid session/cache token for the current user, it auto-persists that token into DB for durability
 
 ### User Account Signup Mode
 - `/signup/` is Google-only onboarding UI.
@@ -364,6 +366,7 @@ Operational meaning:
   - `SESSION_COOKIE_AGE=2592000` (`30` days)
   - `SESSION_EXPIRE_AT_BROWSER_CLOSE=False`
   - `SESSION_SAVE_EVERY_REQUEST=True` so active use keeps extending the cookie window
+- runtime Meta app config endpoint still exists for controlled recovery/admin use, but it is blocked for normal logged-in users and only available in debug or for staff/admin accounts
 
 ### User Profiles
 Model: `accounts.UserProfile`
@@ -675,15 +678,28 @@ This should show labels including:
   - `SESSION_COOKIE_AGE`
   - `SESSION_EXPIRE_AT_BROWSER_CLOSE`
   - `SESSION_SAVE_EVERY_REQUEST`
+  - `SESSION_COOKIE_HTTPONLY`
+  - `SESSION_COOKIE_SAMESITE`
+  - `CSRF_COOKIE_SAMESITE`
   - `SECURE_HSTS_SECONDS`
   - `SECURE_HSTS_INCLUDE_SUBDOMAINS`
   - `SECURE_HSTS_PRELOAD`
+  - `SECURE_REFERRER_POLICY`
+  - `SECURE_CROSS_ORIGIN_OPENER_POLICY`
+  - `SECURE_CROSS_ORIGIN_RESOURCE_POLICY`
 - Added proxy-aware defaults for VPS reverse-proxy deployment:
   - `SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")`
   - `USE_X_FORWARDED_HOST = True`
 - Enabled baseline hardening headers:
   - `SECURE_CONTENT_TYPE_NOSNIFF = True`
   - `X_FRAME_OPTIONS = "DENY"`
+- production container Nginx now also adds:
+  - `Referrer-Policy: same-origin`
+  - `Cross-Origin-Opener-Policy: same-origin`
+  - `Permissions-Policy: camera=(), microphone=(), geolocation=()`
+  - `server_tokens off`
+- Instagram/public-media fetch preflight now validates that media URLs use public http/https hosts only and rejects localhost/private-IP targets before any server-side request is made
+- dashboard JS now escapes dynamic table, AI-insight, scheduler-assist, and planning content before using `innerHTML`, reducing XSS exposure from API/user/AI text
 - `.env.example` now includes these security flags so production env setup is predictable for Postgres + Nginx deployments.
 
 ## Future Direction
@@ -750,12 +766,12 @@ Step 8:
 - Compliance + Security
   - production secret manager support (instead of raw `.env`)
   - audit logs for configuration and critical operations
-  - stronger encryption/rotation policy for sensitive tokens
+  - role/ownership scoping so connected accounts, schedules, and analytics are isolated per customer/workspace
   - backup/restore + retention lifecycle for snapshots/media
 
 Step 9:
 - Business Layer
-  - subscription plans and usage quotas
+  - usage quotas / fair-use controls
   - AI credit accounting model
   - in-app onboarding checklist
   - health dashboard with one-click remediation actions

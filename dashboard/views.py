@@ -423,6 +423,12 @@ def _token_health_payload(user):
     return {**payload, "cached": False}
 
 
+def _can_manage_runtime_meta_config(user) -> bool:
+    if getattr(settings, "DEBUG", False):
+        return True
+    return bool(getattr(user, "is_authenticated", False) and getattr(user, "is_staff", False))
+
+
 @login_required
 def home(request):
     return render(request, "dashboard/home.html")
@@ -491,6 +497,9 @@ def token_health_status(request):
 @login_required
 @require_http_methods(["GET", "POST"])
 def meta_app_config(request):
+    if not _can_manage_runtime_meta_config(request.user):
+        return JsonResponse({"error": "Forbidden."}, status=403)
+
     if request.method == "GET":
         return JsonResponse(_meta_config_payload())
 

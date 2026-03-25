@@ -25,7 +25,6 @@ from .sync_state import SYNC_CACHE_KEY_TEMPLATE, build_account_sync_state
 
 logger = logging.getLogger("integrations")
 TOKEN_HEALTH_CACHE_KEY = "meta_token_health_summary_v1"
-GLOBAL_META_USER_ACCESS_TOKEN_KEY = "meta_user_access_token:global"
 META_USER_ACCESS_TOKEN_TTL = 60 * 60 * 24 * 30
 META_USER_SESSION_TOKEN_KEY = "meta_user_access_token"
 
@@ -134,10 +133,7 @@ def _resolve_user_access_token(request: HttpRequest, user_id: int | None) -> str
             cache.set(f"meta_user_access_token:{user_id}", db_token, timeout=META_USER_ACCESS_TOKEN_TTL)
             return db_token
 
-    global_token = str(cache.get(GLOBAL_META_USER_ACCESS_TOKEN_KEY) or "").strip()
-    if global_token:
-        _persist_user_access_token(user_id, global_token)
-    return global_token
+    return ""
 
 
 @require_GET
@@ -195,11 +191,6 @@ def meta_callback(request: HttpRequest) -> HttpResponse:
 
     if user_id:
         _persist_user_access_token(user_id, token_data["access_token"])
-        cache.set(
-            GLOBAL_META_USER_ACCESS_TOKEN_KEY,
-            token_data["access_token"],
-            timeout=META_USER_ACCESS_TOKEN_TTL,
-        )
         cache.set(
             SYNC_CACHE_KEY_TEMPLATE.format(user_id=user_id),
             {

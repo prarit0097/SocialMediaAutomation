@@ -149,9 +149,9 @@
     }
 
     const headers = Object.keys(rows[0]);
-    const head = `<tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr>`;
+    const head = `<tr>${headers.map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr>`;
     const body = rows
-      .map((row) => `<tr>${headers.map((h) => `<td>${row[h] ?? ""}</td>`).join("")}</tr>`)
+      .map((row) => `<tr>${headers.map((h) => `<td>${escapeHtml(row[h] ?? "")}</td>`).join("")}</tr>`)
       .join("");
 
     container.innerHTML = `<table>${head}${body}</table>`;
@@ -316,7 +316,7 @@
     const pageId = avatarResolver ? avatarResolver(row) : row.page_id ? String(row.page_id) : "";
     const name = row.page_name || row.platform || "Account";
     const initials = escapeHtml(String(name).replace(/\s+/g, " ").trim().slice(0, 2).toUpperCase() || "NA");
-    const explicitImage = row.profile_picture_url ? String(row.profile_picture_url) : "";
+    const explicitImage = sanitizeUrl(row.profile_picture_url);
     if (!pageId) {
       return `
         <span class="profile-cell">
@@ -329,7 +329,7 @@
     return `
       <span class="profile-cell">
         <span class="avatar-wrap">
-          <img class="avatar-img" src="${graphUrl}" alt="${escapeHtml(name)}" loading="lazy"
+          <img class="avatar-img" src="${escapeHtml(graphUrl)}" alt="${escapeHtml(name)}" loading="lazy"
             onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-grid';" />
           <span class="avatar-fallback" style="display:none;">${initials}</span>
         </span>
@@ -452,6 +452,20 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
+  }
+
+  function sanitizeUrl(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return "";
+    try {
+      const parsed = new URL(raw, window.location.origin);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        return "";
+      }
+      return parsed.href;
+    } catch (_err) {
+      return "";
+    }
   }
 
   function renderScheduledTable(container, rows) {
@@ -755,7 +769,7 @@
           accountsViewMeta.textContent = `${accountsViewMeta.textContent} | ${safeMessage}`;
         }
       } else {
-        table.innerHTML = `<p>${safeMessage}</p>`;
+        table.innerHTML = `<p>${escapeHtml(safeMessage)}</p>`;
         rows = [];
       }
     }
@@ -865,7 +879,7 @@
       });
       renderScheduledTable(table, filteredRows);
     } catch (err) {
-      table.innerHTML = `<p>${err.message}</p>`;
+      table.innerHTML = `<p>${escapeHtml(err.message)}</p>`;
     }
   }
 
@@ -1130,28 +1144,34 @@
       const captionBlocks = [];
       platformKeys.forEach((platform) => {
         const row = platforms[platform] || {};
-        const label = platform === "facebook" ? "Facebook" : platform === "instagram" ? "Instagram" : platform;
+        const label = escapeHtml(platform === "facebook" ? "Facebook" : platform === "instagram" ? "Instagram" : platform);
         cadenceBlocks.push(
-          `<li><strong>${label}:</strong> current ${row.avg_posts_per_day_7d ?? "-"} post/day (${row.posts_last_7d ?? "-"} in 7d). Recommended: ${
-            row.recommended_cadence || "-"
+          `<li><strong>${label}:</strong> current ${escapeHtml(row.avg_posts_per_day_7d ?? "-")} post/day (${escapeHtml(
+            row.posts_last_7d ?? "-"
+          )} in 7d). Recommended: ${
+            escapeHtml(row.recommended_cadence || "-")
           }</li>`
         );
 
-        const topSlot = row.next_best_window || "Not enough data";
+        const topSlot = escapeHtml(row.next_best_window || "Not enough data");
         const sampleText = Array.isArray(row.best_time_slots)
           ? row.best_time_slots
               .slice(0, 3)
-              .map((s) => `${s.label} (${s.sample_posts} posts)`)
+              .map((s) => `${escapeHtml(s.label)} (${escapeHtml(s.sample_posts)} posts)`)
               .join(", ")
           : "";
-        const bestFormat = row.best_format && row.best_format.format ? row.best_format.format : "not available";
-        const nextTopic = row.next_topic || "not available";
+        const bestFormat = escapeHtml(row.best_format && row.best_format.format ? row.best_format.format : "not available");
+        const nextTopic = escapeHtml(row.next_topic || "not available");
         bestTimeBlocks.push(
           `<li><strong>${label}:</strong> next best window ${topSlot}${sampleText ? ` | top slots: ${sampleText}` : ""} | best format: ${bestFormat} | topic: ${nextTopic}</li>`
         );
 
         const ab = row.caption_ab_test || {};
-        captionBlocks.push(`<li><strong>${label}:</strong> ${ab.primary_test || "Short vs Medium captions"} | ${ab.reasoning || ""}</li>`);
+        captionBlocks.push(
+          `<li><strong>${label}:</strong> ${escapeHtml(ab.primary_test || "Short vs Medium captions")} | ${escapeHtml(
+            ab.reasoning || ""
+          )}</li>`
+        );
       });
 
       if (schedulerCadenceAssist) {
@@ -1411,7 +1431,7 @@
     const firstName = String(data.first_name || "").trim();
     const lastName = String(data.last_name || "").trim();
     const email = String(data.email || "").trim();
-    const avatarUrl = String(data.profile_picture_url || "").trim();
+    const avatarUrl = sanitizeUrl(data.profile_picture_url);
     const fullName = `${firstName} ${lastName}`.trim() || "Your Name";
 
     if (profileNamePreview) profileNamePreview.textContent = fullName;
@@ -1860,11 +1880,12 @@
   }
 
   function mediaPreviewHtml(url) {
-    if (!url) return "<span class='media-empty'>No media</span>";
-    if (isVideoUrl(url)) {
-      return `<video class="media-preview" src="${url}" controls preload="metadata"></video>`;
+    const safeUrl = sanitizeUrl(url);
+    if (!safeUrl) return "<span class='media-empty'>No media</span>";
+    if (isVideoUrl(safeUrl)) {
+      return `<video class="media-preview" src="${escapeHtml(safeUrl)}" controls preload="metadata"></video>`;
     }
-    return `<img class="media-preview" src="${url}" alt="post-media" loading="lazy" />`;
+    return `<img class="media-preview" src="${escapeHtml(safeUrl)}" alt="post-media" loading="lazy" />`;
   }
 
   function renderPostsTable(container, rows) {
@@ -1894,7 +1915,7 @@
 
     function metricCell(value, err) {
       if (value !== null && value !== undefined && value !== "") return String(value);
-      const title = err ? String(err).replace(/"/g, "&quot;") : "Metric unavailable";
+      const title = escapeHtml(err || "Metric unavailable");
       return `<span title="${title}">-</span>`;
     }
 

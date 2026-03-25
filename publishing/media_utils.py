@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import io
 import os
+import socket
+import ipaddress
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -24,6 +26,11 @@ INSTAGRAM_IMAGE_MAX_SIZE = (1080, 1350)
 INSTAGRAM_IMAGE_TARGET_BYTES = 1_500_000
 INSTAGRAM_VIDEO_MAX_BYTES = 100 * 1024 * 1024
 MEDIA_FETCH_TIMEOUT_SECONDS = 12
+ALLOWED_PUBLIC_MEDIA_SCHEMES = {"http", "https"}
+DISALLOWED_MEDIA_HOSTNAMES = {
+    "localhost",
+    "localhost.localdomain",
+}
 
 
 def media_extension(media_url: str) -> str:
@@ -120,7 +127,54 @@ def prepare_instagram_media_url(media_url: str) -> str:
     return media_url
 
 
+def _is_public_ip_address(value: str) -> bool:
+    try:
+        return ipaddress.ip_address(value.split("%", 1)[0]).is_global
+    except ValueError:
+        return False
+
+
+def _validate_public_media_url(media_url: str) -> None:
+    parsed = urlparse(str(media_url or "").strip())
+    scheme = str(parsed.scheme or "").lower()
+    hostname = str(parsed.hostname or "").strip().lower()
+
+    if scheme not in ALLOWED_PUBLIC_MEDIA_SCHEMES:
+        raise MetaPermanentError("Media URL must use a public http/https address.")
+    if parsed.username or parsed.password:
+        raise MetaPermanentError("Media URL cannot include embedded credentials.")
+    if not hostname:
+        raise MetaPermanentError("Media URL host is missing.")
+    if hostname in DISALLOWED_MEDIA_HOSTNAMES or hostname.endswith(".local"):
+        raise MetaPermanentError("Media URL must not target localhost or local-network hostnames.")
+    if _is_public_ip_address(hostname):
+        return
+    try:
+        ipaddress.ip_address(hostname.split("%", 1)[0])
+    except ValueError:
+        pass
+    else:
+        raise MetaPermanentError("Media URL must not target private or reserved IP addresses.")
+
+    try:
+        resolved = {
+            item[4][0]
+            for item in socket.getaddrinfo(hostname, parsed.port or None, type=socket.SOCK_STREAM)
+            if item and item[4]
+        }
+    except socket.gaierror as exc:
+        raise MetaTransientError(
+            "Public media host could not be resolved before publish. Check PUBLIC_BASE_URL/DNS and retry."
+        ) from exc
+
+    if not resolved:
+        raise MetaTransientError("Public media host could not be resolved before publish.")
+    if any(not _is_public_ip_address(address) for address in resolved):
+        raise MetaPermanentError("Media URL must resolve only to public IP addresses.")
+
+
 def ensure_public_media_fetchable(media_url: str) -> None:
+    _validate_public_media_url(media_url)
     try:
         response = requests.get(
             media_url,

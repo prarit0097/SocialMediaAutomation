@@ -36,6 +36,16 @@ class DashboardAuthTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn("/login/", response.url)
 
+    def test_meta_app_config_forbids_non_staff_user(self):
+        user_model = get_user_model()
+        user_model.objects.create_user(username="metablocked", password="pass12345")
+        self.client.login(username="metablocked", password="pass12345")
+
+        response = self.client.get("/dashboard/meta-app-config/")
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["error"], "Forbidden.")
+
     def test_ai_insights_page_loads_for_authenticated_user(self):
         user_model = get_user_model()
         user_model.objects.create_user(username="aiadmin", password="pass12345")
@@ -259,7 +269,7 @@ class DashboardAuthTests(TestCase):
 
     def test_meta_app_config_updates_env_and_runtime_settings(self):
         user_model = get_user_model()
-        user_model.objects.create_user(username="metaadmin", password="pass12345")
+        user_model.objects.create_superuser(username="metaadmin", email="metaadmin@example.com", password="pass12345")
         self.client.login(username="metaadmin", password="pass12345")
 
         with TemporaryDirectory() as tmp_dir:
@@ -313,7 +323,7 @@ class DashboardAuthTests(TestCase):
 
     def test_meta_app_config_keeps_existing_secret_when_field_blank(self):
         user_model = get_user_model()
-        user_model.objects.create_user(username="metaadmin2", password="pass12345")
+        user_model.objects.create_superuser(username="metaadmin2", email="metaadmin2@example.com", password="pass12345")
         self.client.login(username="metaadmin2", password="pass12345")
 
         with TemporaryDirectory() as tmp_dir:
@@ -354,7 +364,7 @@ class DashboardAuthTests(TestCase):
 
     def test_meta_app_config_rejects_invalid_redirect_uri(self):
         user_model = get_user_model()
-        user_model.objects.create_user(username="metaadmin3", password="pass12345")
+        user_model.objects.create_superuser(username="metaadmin3", email="metaadmin3@example.com", password="pass12345")
         self.client.login(username="metaadmin3", password="pass12345")
 
         response = self.client.post(
