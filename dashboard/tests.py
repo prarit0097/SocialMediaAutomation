@@ -60,7 +60,7 @@ class DashboardAuthTests(TestCase):
         response = self.client.get("/dashboard/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Open exactly the module you need.")
+        self.assertContains(response, "Choose where you want to work today.")
         self.assertNotContains(response, "Meta App Configuration")
         self.assertNotContains(response, "Setup Guide")
         self.assertNotContains(response, 'id="metaAppConfigForm"', html=False)

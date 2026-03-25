@@ -1,123 +1,289 @@
-﻿{% extends 'base.html' %}
+{% extends 'base.html' %}
+{% load static %}
 {% block content %}
-<section class="card hero-card hero-split home-hero-redesign">
-  <div class="hero-main">
-    <p class="eyebrow">Postzyo Control Center</p>
-    <h1>Run connected publishing, insights, and AI growth from one workspace.</h1>
-    <p class="hero-copy">This home page is the operator control surface for connected assets, scheduling, performance review, and profile-wise AI recommendations built on stored snapshots.</p>
-    <div class="hero-pill-row">
-      <span class="hero-pill">Connected account control</span>
-      <span class="hero-pill">Scheduler + queue</span>
-      <span class="hero-pill">Snapshot-backed insights</span>
-      <span class="hero-pill">AI profile reports</span>
-    </div>
-  </div>
-  <div class="hero-rail">
-    <article class="hero-stat">
-      <span class="hero-stat-label">Live workflow</span>
-      <strong>Connect -> Publish -> Analyze -> Improve</strong>
-      <p>Every module is linked to the same account model, so operators can move quickly without data mismatch.</p>
-    </article>
-    <article class="hero-stat">
-      <span class="hero-stat-label">Automation depth</span>
-      <strong>Daily heavy refresh at 03:00 AM</strong>
-      <p>Stored snapshots reduce repeated live API calls and power both Insights and AI Insights pages.</p>
-    </article>
-  </div>
-</section>
+<div class="page-stack">
+  <section class="card hero-card home-command-hero">
+    <div class="home-command-main">
+      <p class="eyebrow">Dashboard Home</p>
+      <h1>Everything you need to run daily Facebook and Instagram operations with clarity.</h1>
+      <p class="hero-copy">Use one clean workspace to connect profiles, plan content, schedule posts, review performance, and turn stored data into AI-backed next actions. This page is organized around the flow real operators follow every day.</p>
 
-<section class="card home-ops-grid-shell">
-  <div class="section-head">
-    <div>
-      <p class="eyebrow">Core Outcomes</p>
-      <h2>What this app is optimized to do daily.</h2>
-    </div>
-  </div>
-  <div class="home-ops-grid">
-    <article class="home-ops-card">
-      <p class="tile-kicker">1. Account control</p>
-      <h3>Connect FB Pages + linked IG profiles</h3>
-      <p>Meta OAuth flow stores encrypted page tokens and keeps connectable assets visible in Accounts.</p>
-    </article>
-    <article class="home-ops-card">
-      <p class="tile-kicker">2. Publishing engine</p>
-      <h3>Schedule FB/IG/both with queue safety</h3>
-      <p>Celery beat + worker publish due jobs, retries transient Meta errors, and avoids stuck processing loops.</p>
-    </article>
-    <article class="home-ops-card">
-      <p class="tile-kicker">3. Performance layer</p>
-      <h3>Cross-platform insights + post stats</h3>
-      <p>Combined FB + IG insight responses show totals, comparison rows, and newest-first published posts.</p>
-    </article>
-    <article class="home-ops-card">
-      <p class="tile-kicker">4. AI growth layer</p>
-      <h3>Profile-wise recommendations</h3>
-      <p>AI reports use stored snapshots first, then generate practical strategy, risks, and targeted next steps.</p>
-    </article>
-  </div>
-</section>
+      <div class="home-hero-actions">
+        <a class="btn" href="{% url 'dashboard:accounts' %}">Open Accounts</a>
+        <a class="btn muted" href="{% url 'dashboard:scheduler' %}">Go to Scheduler</a>
+        <a class="inline-link-btn" href="{% url 'dashboard:insights' %}">Review Insights</a>
+      </div>
 
-<section class="card">
-  <div class="section-head">
-    <div>
-      <p class="eyebrow">Quick Actions</p>
-      <h2>Open exactly the module you need.</h2>
-      <p class="section-copy">These are the core operational surfaces described in project guide.</p>
-    </div>
-  </div>
-  <div class="grid two">
-    <a class="tile" href="{% url 'dashboard:accounts' %}">
-      <p class="tile-kicker">Account setup</p>
-      <h3>Connected Accounts</h3>
-      <p>Sync assets, verify merged FB_IG rows, and run force refresh safely.</p>
-    </a>
-    <a class="tile" href="{% url 'dashboard:scheduler' %}">
-      <p class="tile-kicker">Publishing queue</p>
-      <h3>Scheduler</h3>
-      <p>Create FB/IG jobs, monitor queue states, and retry failed rows with guidance.</p>
-    </a>
-    <a class="tile" href="{% url 'dashboard:planning' %}">
-      <p class="tile-kicker">Editorial workflow</p>
-      <h3>Planning</h3>
-      <p>Plan monthly content with drag/drop calendar and pillar/tag structure.</p>
-    </a>
-    <a class="tile" href="{% url 'dashboard:insights' %}">
-      <p class="tile-kicker">Performance review</p>
-      <h3>Insights</h3>
-      <p>Read totals, post table, alerts, and FB vs IG comparison in one place.</p>
-    </a>
-    <a class="tile" href="{% url 'dashboard:ai_insights' %}">
-      <p class="tile-kicker">AI advisor</p>
-      <h3>AI Insights</h3>
-      <p>Generate profile-wise diagnosis and growth recommendations from stored data.</p>
-    </a>
-    <a class="tile" href="{% url 'dashboard:subscription' %}">
-      <p class="tile-kicker">Billing</p>
-      <h3>Subscription</h3>
-      <p>Use monthly (INR 6,000) or yearly (INR 70,000) plan checkout with Razorpay.</p>
-    </a>
-  </div>
-</section>
+      <div class="home-trust-row">
+        <span class="home-trust-pill home-trust-pill-platform">
+          <img src="{% static 'dashboard/brand/meta-logo.jpg' %}" alt="Meta logo">
+          <img src="{% static 'dashboard/brand/instagram-logo.webp' %}" alt="Instagram logo">
+          Facebook + Instagram ready
+        </span>
+        <span class="home-trust-pill">Queue-safe publishing</span>
+        <span class="home-trust-pill">Snapshot-backed reporting</span>
+        <span class="home-trust-pill">AI next-step guidance</span>
+      </div>
 
-<section class="card split-highlights">
-  <article class="highlight-panel">
-    <p class="eyebrow">Operational Guarantees</p>
-    <h2>Built for reliable multi-user execution.</h2>
-    <p class="section-copy">Postzyo uses queue-safe patterns from the project guide: retry/backoff, stale-row protection, lock-based refresh handling, and persistent snapshot strategy.</p>
-  </article>
-  <article class="highlight-list">
-    <div class="highlight-item">
-      <strong>Token-safe workflows</strong>
-      <span>Health status, reconnect guidance, and stale account protection reduce invalid token failures.</span>
+      <article class="home-help-strip">
+        <strong>Best starting point for new users</strong>
+        <span>Go to Accounts first, connect your pages and linked Instagram profiles, then move to Scheduler once your assets are visible and healthy.</span>
+      </article>
     </div>
-    <div class="highlight-item">
-      <strong>Data-first reporting</strong>
-      <span>Daily heavy collection and cached snapshots keep dashboards responsive and consistent.</span>
+
+    <div class="home-command-visual">
+      <div class="home-visual-frame">
+        <div class="home-visual-head">
+          <p>Recommended daily flow</p>
+          <span>Every module uses the same connected account context</span>
+        </div>
+
+        <div class="home-visual-grid">
+          <article class="home-visual-module">
+            <img src="{% static 'dashboard/illustrations/connect.svg' %}" alt="Connected accounts illustration">
+            <strong>Accounts</strong>
+            <span>Connect and verify assets</span>
+          </article>
+          <article class="home-visual-module">
+            <img src="{% static 'dashboard/illustrations/schedule.svg' %}" alt="Scheduler illustration">
+            <strong>Scheduler</strong>
+            <span>Publish with timing control</span>
+          </article>
+          <article class="home-visual-module">
+            <img src="{% static 'dashboard/illustrations/insights.svg' %}" alt="Insights illustration">
+            <strong>Insights</strong>
+            <span>Read performance clearly</span>
+          </article>
+          <article class="home-visual-module">
+            <img src="{% static 'dashboard/illustrations/ai.svg' %}" alt="AI insights illustration">
+            <strong>AI Insights</strong>
+            <span>Decide the next best move</span>
+          </article>
+        </div>
+
+        <div class="home-visual-footer">
+          <span>Daily heavy snapshots at 03:00 AM</span>
+          <span>Shared account model across publishing, insights, and AI</span>
+        </div>
+      </div>
     </div>
-    <div class="highlight-item">
-      <strong>Execution clarity</strong>
-      <span>Scheduling, insights, and AI modules share one account context to avoid operational confusion.</span>
+  </section>
+
+  <section class="card home-guided-flow">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">Start Here</p>
+        <h2>A simple path that feels clear even on day one.</h2>
+        <p class="section-copy">If someone opens Postzyo for the first time, this is the easiest sequence to follow. Each step below removes confusion and sets up the next one.</p>
+      </div>
     </div>
-  </article>
-</section>
+
+    <div class="home-start-grid">
+      <article class="home-start-card">
+        <span class="home-step-badge">1</span>
+        <h3>Connect your profiles first</h3>
+        <p>Make sure the right Facebook Pages and linked Instagram profiles are visible before doing anything else.</p>
+        <ul class="home-start-points">
+          <li>Confirm merged FB + IG rows appear correctly</li>
+          <li>Check token health and stale-row status</li>
+          <li>Refresh the list after reconnecting assets</li>
+        </ul>
+        <a class="inline-link-btn" href="{% url 'dashboard:accounts' %}">Go to Accounts</a>
+      </article>
+
+      <article class="home-start-card">
+        <span class="home-step-badge">2</span>
+        <h3>Plan or schedule your next post</h3>
+        <p>Use Planning when you want a calendar view, or go straight to Scheduler when the content is ready to publish.</p>
+        <ul class="home-start-points">
+          <li>Build content ideas in monthly workflow</li>
+          <li>Schedule FB, IG, or both from one place</li>
+          <li>Monitor pending, retrying, and published rows</li>
+        </ul>
+        <div class="home-start-actions">
+          <a class="inline-link-btn" href="{% url 'dashboard:planning' %}">Open Planning</a>
+          <a class="inline-link-btn muted" href="{% url 'dashboard:scheduler' %}">Open Scheduler</a>
+        </div>
+      </article>
+
+      <article class="home-start-card">
+        <span class="home-step-badge">3</span>
+        <h3>Review results and improve</h3>
+        <p>Once posts are live, use stored snapshots and AI guidance to understand what worked and what should change next.</p>
+        <ul class="home-start-points">
+          <li>Read totals, published posts, and comparisons</li>
+          <li>See AI recommendations for cadence and next post</li>
+          <li>Turn stored performance into weekly decisions</li>
+        </ul>
+        <div class="home-start-actions">
+          <a class="inline-link-btn" href="{% url 'dashboard:insights' %}">Open Insights</a>
+          <a class="inline-link-btn muted" href="{% url 'dashboard:ai_insights' %}">Open AI Insights</a>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section class="card home-workspace-shell">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">Workspaces</p>
+        <h2>Choose where you want to work today.</h2>
+        <p class="section-copy">Each workspace card explains what it is for, when to open it, and what kind of outcome you should expect from it.</p>
+      </div>
+    </div>
+
+    <div class="home-module-grid">
+      <a class="home-module-card" href="{% url 'dashboard:accounts' %}">
+        <div class="home-module-visual">
+          <img src="{% static 'dashboard/illustrations/connect.svg' %}" alt="Connected accounts workspace illustration">
+        </div>
+        <div class="home-module-content">
+          <div class="home-module-topline">
+            <p class="tile-kicker">Recommended first</p>
+            <span class="home-module-tag">Foundation</span>
+          </div>
+          <h3>Connected Accounts</h3>
+          <p>Connect Meta assets, confirm account IDs, and check which rows are healthy and safe to schedule against.</p>
+          <ul class="home-mini-list">
+            <li>Refresh connected rows</li>
+            <li>See stale sync warnings</li>
+          </ul>
+        </div>
+      </a>
+
+      <a class="home-module-card" href="{% url 'dashboard:scheduler' %}">
+        <div class="home-module-visual">
+          <img src="{% static 'dashboard/illustrations/schedule.svg' %}" alt="Scheduler workspace illustration">
+        </div>
+        <div class="home-module-content">
+          <div class="home-module-topline">
+            <p class="tile-kicker">Daily execution</p>
+            <span class="home-module-tag">Most used</span>
+          </div>
+          <h3>Scheduler</h3>
+          <p>Create Facebook, Instagram, or combined posts, then track queue movement from pending to published.</p>
+          <ul class="home-mini-list">
+            <li>Retry failed posts safely</li>
+            <li>Monitor queue pressure</li>
+          </ul>
+        </div>
+      </a>
+
+      <a class="home-module-card" href="{% url 'dashboard:planning' %}">
+        <div class="home-module-visual">
+          <img src="{% static 'dashboard/illustrations/schedule.svg' %}" alt="Planning workspace illustration">
+        </div>
+        <div class="home-module-content">
+          <div class="home-module-topline">
+            <p class="tile-kicker">Editorial control</p>
+            <span class="home-module-tag">Plan ahead</span>
+          </div>
+          <h3>Planning</h3>
+          <p>Organize monthly ideas, drag content across dates, and build a cleaner editorial flow before scheduling.</p>
+          <ul class="home-mini-list">
+            <li>Monthly calendar view</li>
+            <li>AI calendar support</li>
+          </ul>
+        </div>
+      </a>
+
+      <a class="home-module-card" href="{% url 'dashboard:insights' %}">
+        <div class="home-module-visual">
+          <img src="{% static 'dashboard/illustrations/insights.svg' %}" alt="Insights workspace illustration">
+        </div>
+        <div class="home-module-content">
+          <div class="home-module-topline">
+            <p class="tile-kicker">Performance review</p>
+            <span class="home-module-tag">Data first</span>
+          </div>
+          <h3>Insights</h3>
+          <p>Review totals, post-level performance, alerts, and Facebook vs Instagram comparisons from stored snapshots.</p>
+          <ul class="home-mini-list">
+            <li>Published post tables</li>
+            <li>Comparison and alert panels</li>
+          </ul>
+        </div>
+      </a>
+
+      <a class="home-module-card" href="{% url 'dashboard:ai_insights' %}">
+        <div class="home-module-visual">
+          <img src="{% static 'dashboard/illustrations/ai.svg' %}" alt="AI insights workspace illustration">
+        </div>
+        <div class="home-module-content">
+          <div class="home-module-topline">
+            <p class="tile-kicker">Decision support</p>
+            <span class="home-module-tag">Strategy</span>
+          </div>
+          <h3>AI Insights</h3>
+          <p>Generate plain-English recommendations, posting strategy, next-best-post ideas, and short action plans.</p>
+          <ul class="home-mini-list">
+            <li>Cadence recommendations</li>
+            <li>Next-step growth guidance</li>
+          </ul>
+        </div>
+      </a>
+
+      <a class="home-module-card" href="{% url 'dashboard:subscription' %}">
+        <div class="home-module-visual home-module-visual-brand">
+          <img src="{% static 'dashboard/brand/postzyo-mark.png' %}" alt="Postzyo subscription workspace illustration">
+        </div>
+        <div class="home-module-content">
+          <div class="home-module-topline">
+            <p class="tile-kicker">Account access</p>
+            <span class="home-module-tag">Billing</span>
+          </div>
+          <h3>Subscription</h3>
+          <p>Review plan status, expiry date, and payment access so the workspace stays unlocked for your team.</p>
+          <ul class="home-mini-list">
+            <li>Monthly and yearly plans</li>
+            <li>Clear expiry visibility</li>
+          </ul>
+        </div>
+      </a>
+    </div>
+  </section>
+
+  <section class="card home-confidence-shell">
+    <div class="home-confidence-copy">
+      <p class="eyebrow">Why It Feels Professional</p>
+      <h2>Built so operators can move confidently instead of guessing what happens next.</h2>
+      <p class="section-copy">Postzyo is strongest when one team needs connected account visibility, reliable scheduling, fast reporting, and AI-backed recommendations in the same place. The dashboard home now introduces that workflow more clearly and visually.</p>
+
+      <div class="home-confidence-list">
+        <div class="home-confidence-item">
+          <strong>Clear next step on every surface</strong>
+          <span>Cards explain what each workspace is for and when an operator should open it.</span>
+        </div>
+        <div class="home-confidence-item">
+          <strong>Stored data keeps reporting fast</strong>
+          <span>Daily heavy snapshots reduce repeated live pulls and make Insights and AI pages feel more dependable.</span>
+        </div>
+        <div class="home-confidence-item">
+          <strong>Protection against avoidable failures</strong>
+          <span>Queue safety, retry handling, token health, and stale-row checks support smoother day-to-day execution.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="home-confidence-visual">
+      <div class="home-confidence-image">
+        <img src="{% static 'dashboard/illustrations/insights.svg' %}" alt="Operational reporting illustration">
+      </div>
+      <div class="home-confidence-stat-grid">
+        <div class="home-confidence-stat">
+          <strong>Shared account context</strong>
+          <span>Accounts, Scheduler, Insights, and AI stay aligned around the same IDs.</span>
+        </div>
+        <div class="home-confidence-stat">
+          <strong>03:00 AM refresh pipeline</strong>
+          <span>Snapshots are collected daily to keep dashboards responsive.</span>
+        </div>
+        <div class="home-confidence-stat">
+          <strong>Retry-aware publishing</strong>
+          <span>Transient Meta issues do not immediately turn into hard operator dead ends.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
 {% endblock %}

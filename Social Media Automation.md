@@ -51,9 +51,11 @@ What it does:
 The Home page is now the workspace overview + navigation surface.
 
 What it shows:
-- redesigned control-center style hero + core outcomes cards mapped to actual project workflow
-- quick actions to Accounts, Scheduler, Planning, Insights, AI Insights, and Subscription
-- operational guarantees section that highlights queue safety, snapshot strategy, and token-safe execution model
+- redesigned dashboard hero with clearer first-time guidance, action buttons, trust pills, and platform logos
+- visual workflow board that uses product illustrations to preview Accounts, Scheduler, Insights, and AI Insights
+- guided `Start Here` section that explains the easiest operator sequence: connect profiles -> plan/schedule -> review/improve
+- illustration-backed workspace cards for Accounts, Scheduler, Planning, Insights, AI Insights, and Subscription
+- polished reliability section that explains queue safety, snapshot strategy, shared account context, and retry-aware execution in more user-friendly language
 
 ### Subscription
 The Subscription page is the billing workspace (`/dashboard/subscription/`).
