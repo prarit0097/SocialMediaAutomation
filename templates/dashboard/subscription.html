@@ -25,7 +25,12 @@
   </div>
 </section>
 
-<section class="card subscription-shell" id="subscriptionShell" data-razorpay-key="{{ subscription.razorpay_key_id|default:'' }}" data-currency="{{ subscription.currency|default:'INR' }}">
+<section class="card subscription-shell" id="subscriptionShell"
+  data-razorpay-key="{{ subscription.razorpay_key_id|default:'' }}"
+  data-currency="{{ subscription.currency|default:'INR' }}"
+  data-current-plan="{{ subscription.current_plan|default:'' }}"
+  data-current-status="{{ subscription.current_status|default:'' }}"
+  data-is-locked="{% if subscription.is_locked %}true{% else %}false{% endif %}">
   <div class="section-head">
     <div>
       <p class="eyebrow">Plans</p>

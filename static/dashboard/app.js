@@ -1543,7 +1543,39 @@
   if (subscriptionShell) {
     const razorpayKey = String(subscriptionShell.dataset.razorpayKey || "").trim();
     const currency = String(subscriptionShell.dataset.currency || "INR").trim().toUpperCase();
+    const initialPlan = String(subscriptionShell.dataset.currentPlan || "").trim().toLowerCase();
+    const initialStatus = String(subscriptionShell.dataset.currentStatus || "").trim().toLowerCase();
+    const isLocked = String(subscriptionShell.dataset.isLocked || "").trim().toLowerCase() === "true";
     const payButtons = Array.from(subscriptionShell.querySelectorAll(".subscription-pay-btn"));
+
+    const updateSubscriptionButtons = (plan, status) => {
+      const normalizedPlan = String(plan || "").trim().toLowerCase();
+      const normalizedStatus = String(status || "").trim().toLowerCase();
+      const isActive = normalizedStatus === "active";
+      payButtons.forEach((button) => {
+        const buttonPlan = String(button.dataset.plan || "").trim().toLowerCase();
+        if (!buttonPlan) return;
+
+        let shouldDisable = false;
+        if (isLocked) {
+          shouldDisable = false;
+        } else if (isActive && normalizedPlan === "monthly" && buttonPlan === "monthly") {
+          shouldDisable = true;
+        } else if (isActive && normalizedPlan === "yearly" && buttonPlan === "monthly") {
+          shouldDisable = true;
+        }
+
+        button.disabled = shouldDisable;
+        button.classList.toggle("is-disabled", shouldDisable);
+        if (shouldDisable) {
+          button.textContent = "Active Plan";
+        } else if (buttonPlan === "monthly") {
+          button.textContent = "Pay Monthly";
+        } else if (buttonPlan === "yearly") {
+          button.textContent = "Pay Yearly";
+        }
+      });
+    };
 
     const setSubscriptionMessage = (message, isError = false) => {
       if (!subscriptionResult) return;
@@ -1614,8 +1646,11 @@
               const msg = String(verify.message || "Payment successful and verified.");
               setSubscriptionMessage(msg, false);
               showAppToast(msg, "success");
+              if (verify.subscription) {
+                updateSubscriptionButtons(verify.subscription.subscription_plan, verify.subscription.subscription_status);
+              }
               window.setTimeout(() => {
-                window.location.href = "/dashboard/";
+                window.location.href = "/dashboard/subscription/";
               }, 900);
             } catch (err) {
               const msg = `Payment captured but verification failed: ${err.message}`;
@@ -1650,6 +1685,8 @@
         openRazorpayCheckout(plan, button);
       });
     });
+
+    updateSubscriptionButtons(initialPlan, initialStatus);
   }
 
   const fetchInsightsBtn = document.getElementById("fetchInsightsBtn");
