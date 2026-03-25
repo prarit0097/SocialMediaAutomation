@@ -242,6 +242,7 @@ What it shows:
 - total following
 - total post share
 - published posts table
+- Published Posts table hides internal post IDs from operators and shows only user-facing content/metrics columns
 - published posts message text trimmed to first 3 lines in-table for readable layout (full text available on hover)
 - FB vs IG comparison table
 - top-nav Meta token health indicator with green/red blinking status and reconnect guidance

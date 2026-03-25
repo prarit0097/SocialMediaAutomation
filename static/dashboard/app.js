@@ -1899,7 +1899,6 @@
     const hasSourceName = rows.some((row) => row.source_page_name);
     const head = `
       <tr>
-        <th>id</th>
         ${hasPlatform ? "<th>platform</th>" : ""}
         ${hasSourceName ? "<th>page</th>" : ""}
         <th>message</th>
@@ -1923,7 +1922,6 @@
       .map(
         (row) => `
           <tr>
-            <td>${escapeHtml(row.id)}</td>
             ${hasPlatform ? `<td>${platformBadge(row.platform)}</td>` : ""}
             ${hasSourceName ? `<td>${escapeHtml(row.source_page_name || "-")}</td>` : ""}
             <td class="insight-post-message-cell" title="${escapeHtml(row.message)}">
