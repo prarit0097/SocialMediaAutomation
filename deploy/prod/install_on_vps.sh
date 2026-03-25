@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_DIR="/opt/postzyo"
+APP_DIR="/opt/apps/postzyo"
 DOMAIN="${1:-postzyo.com}"
 APP_INTERNAL_PORT="${APP_INTERNAL_PORT:-18010}"
+COMPOSE_FILE="deploy/prod/docker-compose.prod.yml"
 
 if ! command -v docker >/dev/null 2>&1; then
   curl -fsSL https://get.docker.com | sh
@@ -67,11 +68,11 @@ rm -f /etc/nginx/sites-enabled/default
 nginx -t
 systemctl restart nginx
 
-APP_INTERNAL_PORT="${APP_INTERNAL_PORT}" docker compose -f deploy/prod/docker-compose.prod.yml up -d --build
+APP_INTERNAL_PORT="${APP_INTERNAL_PORT}" docker compose -f "${COMPOSE_FILE}" up -d --build
 
 sleep 5
-APP_INTERNAL_PORT="${APP_INTERNAL_PORT}" docker compose -f deploy/prod/docker-compose.prod.yml exec -T web python manage.py migrate
-APP_INTERNAL_PORT="${APP_INTERNAL_PORT}" docker compose -f deploy/prod/docker-compose.prod.yml exec -T web python manage.py collectstatic --noinput
+APP_INTERNAL_PORT="${APP_INTERNAL_PORT}" docker compose -f "${COMPOSE_FILE}" exec -T web python manage.py migrate
+APP_INTERNAL_PORT="${APP_INTERNAL_PORT}" docker compose -f "${COMPOSE_FILE}" exec -T web python manage.py collectstatic --noinput
 
 certbot --nginx -d "${DOMAIN}" -d "www.${DOMAIN}" --non-interactive --agree-tos -m admin@${DOMAIN} --redirect || true
 

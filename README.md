@@ -172,10 +172,13 @@ Use the production compose file that keeps app services internal and exposes onl
 docker compose -f deploy/prod/docker-compose.prod.yml up -d --build
 ```
 
+The production compose file now pins the project name to `postzyo`, so direct commands target the same live container set (`postzyo-web-1`, `postzyo-worker-1`, etc.).
+
 Quick one-time VPS bootstrap (Ubuntu, root):
 
 ```bash
-cd /opt
+mkdir -p /opt/apps
+cd /opt/apps
 git clone https://github.com/prarit0097/SocialMediaAutomation.git postzyo
 cd postzyo
 bash deploy/prod/install_on_vps.sh postzyo.com

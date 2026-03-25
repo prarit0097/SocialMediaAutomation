@@ -517,13 +517,15 @@ This project includes local MCP servers under `mcp_servers/` so Codex or future 
 
 ## Production Deployment Pack (KVM4 / multi-app friendly)
 - Added `deploy/prod/docker-compose.prod.yml` for VPS production runs:
+  - pins Compose project name to `postzyo` so direct Compose commands target the same live container set on VPS
+  - resolves build context, `.env`, and Nginx config paths back to repo root even though the compose file lives under `deploy/prod/`
   - keeps Postgres/Redis private inside Docker network
   - serves Django via Gunicorn + app Nginx
   - binds app Nginx on loopback (`127.0.0.1:${APP_INTERNAL_PORT}`) so host reverse proxy can route multiple apps safely on one VPS
   - includes persistent Docker volumes for DB, Redis AOF, static, and media
 - Added `deploy/prod/install_on_vps.sh`:
   - installs Docker, Nginx, Certbot, and Git on Ubuntu VPS
-  - clones/updates repo under `/opt/postzyo`
+  - clones/updates repo under `/opt/apps/postzyo`
   - writes host Nginx site for domain proxying
   - runs Docker production stack, migrations, collectstatic
   - attempts SSL certificate issuance with Certbot
@@ -636,6 +638,9 @@ When using Compose directly for the production stack, use:
 - `docker compose -f deploy/prod/docker-compose.prod.yml logs worker --tail=100`
 - `docker compose -f deploy/prod/docker-compose.prod.yml logs beat --tail=100`
 - `docker compose -f deploy/prod/docker-compose.prod.yml logs nginx --tail=100`
+
+Important runtime meaning:
+- because the compose file now declares `name: postzyo`, these direct commands target the live `postzyo-*` containers instead of accidentally creating a separate `prod-*` project
 
 If Compose output ever looks inconsistent, confirm the running containers with:
 - `docker inspect postzyo-web-1 --format '{{json .Config.Labels}}'`
