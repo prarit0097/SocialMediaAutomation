@@ -83,6 +83,7 @@ What it does:
 - redirects the user back into the app after successful payment verification
 - when Monthly plan is active, only the monthly button is disabled (yearly upgrade allowed)
 - when Yearly plan is active, both monthly + yearly buttons are disabled until expiry
+- Pay Yearly button now blinks by default to attract attention and stops blinking only when Yearly plan is active
 
 Important runtime meaning:
 - checkout requires `.env` keys: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`

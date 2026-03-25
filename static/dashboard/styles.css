@@ -3198,6 +3198,33 @@ pre {
   line-height: 1.65;
 }
 
+.subscription-pay-btn.is-yearly-highlight {
+  position: relative;
+  animation: yearlyPulse 1.8s ease-in-out infinite;
+  box-shadow: 0 0 0 rgba(191, 110, 62, 0.35);
+}
+
+.subscription-pay-btn.is-yearly-highlight.is-disabled,
+.subscription-pay-btn.is-yearly-highlight:disabled {
+  animation: none;
+  box-shadow: none;
+}
+
+@keyframes yearlyPulse {
+  0% {
+    transform: translateY(0);
+    box-shadow: 0 0 0 rgba(191, 110, 62, 0.35);
+  }
+  50% {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 18px rgba(191, 110, 62, 0.4);
+  }
+  100% {
+    transform: translateY(0);
+    box-shadow: 0 0 0 rgba(191, 110, 62, 0.35);
+  }
+}
+
 .subscription-features-shell {
   margin-top: 18px;
   border-top: 1px solid rgba(56, 78, 92, 0.14);

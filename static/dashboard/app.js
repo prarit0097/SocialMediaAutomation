@@ -1567,6 +1567,10 @@
 
         button.disabled = shouldDisable;
         button.classList.toggle("is-disabled", shouldDisable);
+        if (buttonPlan === "yearly") {
+          const yearlyActive = isActive && normalizedPlan === "yearly";
+          button.classList.toggle("is-yearly-highlight", !yearlyActive);
+        }
         if (shouldDisable) {
           button.textContent = "Active Plan";
         } else if (buttonPlan === "monthly") {
