@@ -51,7 +51,17 @@
       <h3>Monthly Growth</h3>
       <p class="subscription-plan-price">INR 6,000 <span>/ month</span></p>
       <p class="subscription-plan-copy">Best for operators who want agile month-wise execution and optimization.</p>
-      <button class="btn subscription-pay-btn" data-plan="monthly">Pay Monthly</button>
+      <button
+        class="btn subscription-pay-btn{% if subscription.is_monthly_active or subscription.is_yearly_active %} is-disabled{% endif %}"
+        data-plan="monthly"
+        {% if subscription.is_monthly_active or subscription.is_yearly_active %}disabled{% endif %}
+      >
+        {% if subscription.is_monthly_active or subscription.is_yearly_active %}
+          Active Plan
+        {% else %}
+          Pay Monthly
+        {% endif %}
+      </button>
     </article>
 
     <article class="subscription-plan-card featured">
@@ -59,7 +69,17 @@
       <h3>Yearly Scale</h3>
       <p class="subscription-plan-price">INR 70,000 <span>/ year</span></p>
       <p class="subscription-plan-copy">Perfect for consistent long-term campaigns with lower effective monthly cost.</p>
-      <button class="btn subscription-pay-btn" data-plan="yearly">Pay Yearly</button>
+      <button
+        class="btn subscription-pay-btn{% if not subscription.is_yearly_active %} is-yearly-highlight{% endif %}{% if subscription.is_yearly_active %} is-disabled{% endif %}"
+        data-plan="yearly"
+        {% if subscription.is_yearly_active %}disabled{% endif %}
+      >
+        {% if subscription.is_yearly_active %}
+          Active Plan
+        {% else %}
+          Pay Yearly
+        {% endif %}
+      </button>
     </article>
   </div>
 

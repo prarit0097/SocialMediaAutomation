@@ -164,6 +164,9 @@ def _profile_payload(user) -> dict:
 def _subscription_page_payload(user) -> dict:
     profile, _ = UserProfile.objects.get_or_create(user=user)
     profile.refresh_subscription_state()
+    normalized_plan = (profile.subscription_plan or "").strip().lower()
+    normalized_status = (profile.subscription_status or "").strip().lower()
+    is_active = normalized_status == "active"
     return {
         "razorpay_key_id": str(getattr(settings, "RAZORPAY_KEY_ID", "") or "").strip(),
         "currency": str(getattr(settings, "RAZORPAY_CURRENCY", "INR") or "INR").strip().upper(),
@@ -172,6 +175,8 @@ def _subscription_page_payload(user) -> dict:
         "current_status": profile.subscription_status,
         "current_expiry": profile.subscription_expires_on.isoformat() if profile.subscription_expires_on else None,
         "is_locked": not profile.is_subscription_active,
+        "is_monthly_active": is_active and normalized_plan == "monthly",
+        "is_yearly_active": is_active and normalized_plan == "yearly",
         "feature_groups": [
             {
                 "title": "Operations Core",
