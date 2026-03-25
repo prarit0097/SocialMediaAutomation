@@ -51,11 +51,14 @@ What it does:
 The Home page is now the workspace overview + navigation surface.
 
 What it shows:
-- redesigned dashboard hero with clearer first-time guidance, action buttons, trust pills, and platform logos
-- visual workflow board that uses product illustrations to preview Accounts, Scheduler, Insights, and AI Insights
-- guided `Start Here` section that explains the easiest operator sequence: connect profiles -> plan/schedule -> review/improve
-- illustration-backed workspace cards for Accounts, Scheduler, Planning, Insights, AI Insights, and Subscription
-- polished reliability section that explains queue safety, snapshot strategy, shared account context, and retry-aware execution in more user-friendly language
+- hero section rebuilt on the same shared dashboard layout system used by other app pages (`hero-card`, `hero-split`, shared buttons, shared stat rail), so live sizing and spacing stay consistent with already-stable production CSS
+- quick action row for the 3 most common jumps: `Accounts`, `Scheduler`, and `Insights`
+- trust/capability chips that summarize the operator promise: connected FB + IG workflow, queue-safe publishing, snapshot-backed reporting, and AI next-step guidance
+- hero-side visual preview with compact illustration frame plus 2 mini status cards (`03:00 AM` snapshot run and shared account model)
+- `Start Here` workflow section shown as a 4-step operator path: connect assets -> plan/schedule -> review results -> improve with AI
+- compact 6-card workspace grid for `Accounts`, `Scheduler`, `Planning`, `Insights`, `AI Insights`, and `Subscription`, each with a direct button and simpler plain-English purpose copy
+- final 2-panel guidance area: recommended daily rhythm on the left and operational reliability explanation on the right
+- Home no longer shows `Meta App Configuration` or `Setup Guide`; those setup-heavy sections were removed so the landing workspace stays focused on navigation and daily execution
 
 ### Subscription
 The Subscription page is the billing workspace (`/dashboard/subscription/`).

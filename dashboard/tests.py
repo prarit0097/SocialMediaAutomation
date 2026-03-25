@@ -65,6 +65,8 @@ class DashboardAuthTests(TestCase):
         self.assertNotContains(response, "Setup Guide")
         self.assertNotContains(response, 'id="metaAppConfigForm"', html=False)
         self.assertNotContains(response, 'id="metaSetupGuide"', html=False)
+        self.assertNotContains(response, "home-command-hero", html=False)
+        self.assertNotContains(response, "home-module-card", html=False)
 
     @patch("core.services.meta_client.MetaClient.debug_token")
     @patch("core.services.meta_client.MetaClient.get_managed_pages")
