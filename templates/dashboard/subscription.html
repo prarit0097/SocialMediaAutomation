@@ -64,11 +64,13 @@
       </button>
     </article>
 
-    <article class="subscription-plan-card featured">
+    <article class="subscription-plan-card featured featured-primary">
+      <span class="subscription-featured-badge">Recommended</span>
       <p class="subscription-plan-tag">Best value</p>
       <h3>Yearly Scale</h3>
       <p class="subscription-plan-price">INR 70,000 <span>/ year</span></p>
       <p class="subscription-plan-copy">Perfect for consistent long-term campaigns with lower effective monthly cost.</p>
+      <p class="subscription-plan-note">Save big across 12 months and reduce renewal overhead.</p>
       <button
         class="btn subscription-pay-btn{% if not subscription.is_yearly_active %} is-yearly-highlight{% endif %}{% if subscription.is_yearly_active %} is-disabled{% endif %}"
         data-plan="yearly"
