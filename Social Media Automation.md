@@ -9,7 +9,7 @@ Primary product branding is `Postzyo`, and production rollout is planned on `pos
 ## Core Outcomes
 - Connect and refresh Facebook Pages and linked Instagram accounts through Meta OAuth.
 - Store connected account metadata and encrypted page access tokens.
-- Configure `META_APP_ID`, `META_APP_SECRET`, and `META_REDIRECT_URI` from Dashboard Home and persist them in `.env` without code edits.
+- Read `META_APP_ID`, `META_APP_SECRET`, and `META_REDIRECT_URI` from environment/runtime configuration for Meta OAuth and page-connect flows.
 - Allow new operator signup via Google OAuth only (Gmail-based signup flow).
 - Provide a dedicated Profile page for each logged-in user with Google-synced identity data and editable non-email fields.
 - Provide a dedicated Subscription page with Razorpay checkout for monthly/yearly plan purchase flow.
@@ -48,19 +48,11 @@ What it does:
 - production container Nginx now re-resolves the Docker web service through Docker DNS, so web container restarts/redeploys do not leave stale upstream IPs that cause 502 errors
 
 ### Home
-The Home page is now the workspace setup + navigation surface.
+The Home page is now the workspace overview + navigation surface.
 
 What it shows:
-- Meta App Configuration form for `META_APP_ID`, `META_APP_SECRET`, and `META_REDIRECT_URI`
-- masked secret state so operators can confirm whether a secret is already configured
 - redesigned control-center style hero + core outcomes cards mapped to actual project workflow
-- expanded child-friendly setup guide section (collapsible) with copy/paste mapping, checkpoints, troubleshooting, required scopes, and connect/verify steps
-- Part 1, 2, 3 are now extra-detailed with click-by-click beginner instructions (login, create app, copy/paste mapping, save + verify flow)
-- Part 4 in setup guide now explains where to enable scopes and what each scope does in simple language
-- beginner-friendly setup checklist covering: use-case selection, customize use-case, API/Login setup, required scopes, and FB+IG asset linking
-- quick actions to Accounts, Scheduler, Insights, and AI Insights
-- quick actions to Accounts, Scheduler, Planning, Insights, AI Insights, and Profile
-- quick actions to Accounts, Scheduler, Planning, Insights, AI Insights, Profile, and Subscription
+- quick actions to Accounts, Scheduler, Planning, Insights, AI Insights, and Subscription
 - operational guarantees section that highlights queue safety, snapshot strategy, and token-safe execution model
 
 ### Subscription
@@ -108,11 +100,6 @@ What it does:
 - keeps email immutable from UI/API updates (email stays login identity)
 - auto-creates a per-user `UserProfile` row when missing
 - pre-fills profile data from Google signup callback (given name, family name, profile picture)
-
-What it does:
-- saves Meta app credentials directly into project `.env`
-- applies updated values to runtime settings immediately for next Meta OAuth/connect actions
-- warns if redirect URI pattern looks unusual (for example missing `/auth/meta/callback`)
 
 ### Accounts
 The Accounts page is the operator view for connected Meta assets.
@@ -500,6 +487,7 @@ This project includes local MCP servers under `mcp_servers/` so Codex or future 
 
 ## Operational Requirements
 - Meta app permissions must remain valid.
+- `META_APP_ID`, `META_APP_SECRET`, and `META_REDIRECT_URI` must be set in `.env` or the deployed environment for Meta connect flows to work.
 - Instagram publishing requires public HTTPS media URLs.
 - `PUBLIC_BASE_URL` must point to a reachable public HTTPS base.
 - Celery worker and Celery beat must be running for scheduled publishing and daily heavy insights automation.

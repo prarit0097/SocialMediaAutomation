@@ -425,13 +425,7 @@ def _token_health_payload(user):
 
 @login_required
 def home(request):
-    return render(
-        request,
-        "dashboard/home.html",
-        {
-            "meta_config": _meta_config_payload(),
-        },
-    )
+    return render(request, "dashboard/home.html")
 
 
 @login_required

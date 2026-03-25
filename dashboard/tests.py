@@ -52,6 +52,20 @@ class DashboardAuthTests(TestCase):
         response = self.client.get("/dashboard/planning/")
         self.assertEqual(response.status_code, 200)
 
+    def test_dashboard_home_omits_meta_configuration_and_setup_guide_sections(self):
+        user_model = get_user_model()
+        user_model.objects.create_user(username="homeadmin", password="pass12345")
+        self.client.login(username="homeadmin", password="pass12345")
+
+        response = self.client.get("/dashboard/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Open exactly the module you need.")
+        self.assertNotContains(response, "Meta App Configuration")
+        self.assertNotContains(response, "Setup Guide")
+        self.assertNotContains(response, 'id="metaAppConfigForm"', html=False)
+        self.assertNotContains(response, 'id="metaSetupGuide"', html=False)
+
     @patch("core.services.meta_client.MetaClient.debug_token")
     @patch("core.services.meta_client.MetaClient.get_managed_pages")
     @patch("core.services.meta_client.MetaClient.exchange_code_for_token")
