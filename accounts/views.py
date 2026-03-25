@@ -20,6 +20,11 @@ class AdminLoginView(LoginView):
         context["google_signup_ready"] = _google_signup_ready()
         return context
 
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        _set_persistent_session(self.request)
+        return response
+
 
 def landing_page(request):
     if request.user.is_authenticated:
@@ -198,6 +203,11 @@ def _build_unique_username_from_email(email: str) -> str:
     return candidate
 
 
+def _set_persistent_session(request) -> None:
+    request.session.set_expiry(int(getattr(settings, "SESSION_COOKIE_AGE", 1209600)))
+    request.session.modified = True
+
+
 def signup_view(request):
     if request.user.is_authenticated:
         return redirect("dashboard:home")
@@ -337,6 +347,7 @@ def google_signup_callback(request):
         user_profile.save()
 
     login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+    _set_persistent_session(request)
     return redirect("dashboard:home")
 
 

@@ -359,6 +359,11 @@ Operational meaning:
 - `/login/` shows both classic login form and Google button (`Continue with Google`) when OAuth env is configured.
 - login screen places Google CTA above username/password fields with a `Recommended` badge and helper hint, so operators naturally use OAuth first.
 - login screen still supports classic username/password form below a visual divider for fallback access.
+- both Google login callback and classic username/password login now force a persistent Django session expiry based on `SESSION_COOKIE_AGE`, so closing and reopening the browser should not require immediate re-login.
+- default session persistence is now env-configurable with:
+  - `SESSION_COOKIE_AGE=2592000` (`30` days)
+  - `SESSION_EXPIRE_AT_BROWSER_CLOSE=False`
+  - `SESSION_SAVE_EVERY_REQUEST=True` so active use keeps extending the cookie window
 
 ### User Profiles
 Model: `accounts.UserProfile`
@@ -667,6 +672,9 @@ This should show labels including:
   - `SECURE_SSL_REDIRECT`
   - `SESSION_COOKIE_SECURE`
   - `CSRF_COOKIE_SECURE`
+  - `SESSION_COOKIE_AGE`
+  - `SESSION_EXPIRE_AT_BROWSER_CLOSE`
+  - `SESSION_SAVE_EVERY_REQUEST`
   - `SECURE_HSTS_SECONDS`
   - `SECURE_HSTS_INCLUDE_SUBDOMAINS`
   - `SECURE_HSTS_PRELOAD`
