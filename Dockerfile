@@ -8,13 +8,17 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system appuser \
+    && useradd --system --gid appuser --create-home --home-dir /home/appuser appuser
 
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . /app/
+RUN chown -R appuser:appuser /app /home/appuser
 
 RUN python manage.py collectstatic --noinput
+USER appuser
 
 CMD ["gunicorn", "social_automation.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3"]

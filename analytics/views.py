@@ -13,6 +13,7 @@ from django.http import HttpRequest, JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
+from core.constants import FACEBOOK, INSTAGRAM
 from core.exceptions import MetaAPIError
 from integrations.models import ConnectedAccount
 from publishing.models import ScheduledPost
@@ -23,9 +24,16 @@ from .services import build_comparison_rows, build_insight_response, build_post_
 from .tasks import refresh_account_insights_snapshot
 
 logger = logging.getLogger("analytics")
+ENGAGEMENT_SCORE_WEIGHTS = {
+    "views": 0.03,
+    "likes": 1.0,
+    "comments": 1.4,
+    "shares": 1.8,
+    "saves": 1.6,
+}
 
 
-def _force_refresh_guard_payload() -> dict | None:
+def _force_refresh_guard_payload(user=None) -> dict | None:
     try:
         horizon_minutes = max(5, int(getattr(settings, "FORCE_REFRESH_IG_GUARD_MINUTES", 20)))
     except (TypeError, ValueError):
@@ -36,12 +44,17 @@ def _force_refresh_guard_payload() -> dict | None:
         due_limit = 1
 
     now = timezone.now()
-    ig_due_soon = ScheduledPost.objects.filter(
+    ig_due_qs = ScheduledPost.objects.filter(
         platform="instagram",
         status="pending",
         scheduled_for__lte=now + timedelta(minutes=horizon_minutes),
-    ).count()
-    ig_processing = ScheduledPost.objects.filter(platform="instagram", status="processing").count()
+    )
+    ig_processing_qs = ScheduledPost.objects.filter(platform="instagram", status="processing")
+    if user is not None:
+        ig_due_qs = ig_due_qs.filter(account__user=user)
+        ig_processing_qs = ig_processing_qs.filter(account__user=user)
+    ig_due_soon = ig_due_qs.count()
+    ig_processing = ig_processing_qs.count()
     if ig_due_soon < due_limit and ig_processing == 0:
         return None
     return {
@@ -375,11 +388,14 @@ def _load_single_account_insights(
     return data, None
 
 
-def _resolve_linked_account(account: ConnectedAccount):
+def _resolve_linked_account(account: ConnectedAccount, user=None):
+    extra = {}
+    if user is not None:
+        extra["user"] = user
     if account.platform == "facebook" and account.ig_user_id:
-        return ConnectedAccount.objects.filter(platform="instagram", page_id=account.ig_user_id).first()
+        return ConnectedAccount.objects.filter(platform="instagram", page_id=account.ig_user_id, **extra).first()
     if account.platform == "instagram":
-        return ConnectedAccount.objects.filter(platform="facebook", ig_user_id=account.page_id).order_by("-updated_at").first()
+        return ConnectedAccount.objects.filter(platform="facebook", ig_user_id=account.page_id, **extra).order_by("-updated_at").first()
     return None
 
 
@@ -464,7 +480,7 @@ def _load_account_or_combined_insights(request: HttpRequest, account: ConnectedA
     if error_response:
         return None, error_response
 
-    linked_account = _resolve_linked_account(account)
+    linked_account = _resolve_linked_account(account, user=request.user)
     if not linked_account or linked_account.id == account.id:
         return primary_data, None
 
@@ -581,7 +597,7 @@ def _top_posts_snapshot(posts: list[dict], limit: int = 5) -> list[dict]:
     scored = []
     for row in posts:
         score = 0.0
-        for key, weight in [("likes", 1.0), ("comments", 1.4), ("shares", 1.8), ("saves", 1.6), ("views", 0.03)]:
+        for key, weight in ENGAGEMENT_SCORE_WEIGHTS.items():
             value = row.get(key)
             if value is None:
                 continue
@@ -754,13 +770,7 @@ def _ai_context_payload(data: dict, focus: str):
 
 
 def _engagement_score(post: dict) -> float:
-    return (
-        float(post.get("views") or 0) * 0.02
-        + float(post.get("likes") or 0) * 1.0
-        + float(post.get("comments") or 0) * 1.4
-        + float(post.get("shares") or 0) * 1.8
-        + float(post.get("saves") or 0) * 1.6
-    )
+    return sum(float(post.get(metric) or 0) * weight for metric, weight in ENGAGEMENT_SCORE_WEIGHTS.items())
 
 
 def _median(values: list[float]) -> float | None:
@@ -977,7 +987,7 @@ def _build_early_engagement_monitor(posts: list[dict]) -> list[dict]:
 @require_GET
 @login_required
 def account_insights(request: HttpRequest, account_id: int) -> JsonResponse:
-    account = ConnectedAccount.objects.filter(id=account_id).first()
+    account = ConnectedAccount.objects.filter(id=account_id, user=request.user).first()
     if not account:
         return JsonResponse({"error": "Connected account not found"}, status=404)
 
@@ -995,7 +1005,7 @@ def account_insights(request: HttpRequest, account_id: int) -> JsonResponse:
 @require_GET
 @login_required
 def scheduler_assist(request: HttpRequest, account_id: int) -> JsonResponse:
-    account = ConnectedAccount.objects.filter(id=account_id).first()
+    account = ConnectedAccount.objects.filter(id=account_id, user=request.user).first()
     if not account:
         return JsonResponse({"error": "Connected account not found"}, status=404)
     payload, error_response = _load_account_or_combined_insights(request, account, force_refresh=False)
@@ -1007,7 +1017,7 @@ def scheduler_assist(request: HttpRequest, account_id: int) -> JsonResponse:
 @require_POST
 @login_required
 def ai_profile_insights(request: HttpRequest, account_id: int) -> JsonResponse:
-    account = ConnectedAccount.objects.filter(id=account_id).first()
+    account = ConnectedAccount.objects.filter(id=account_id, user=request.user).first()
     if not account:
         return JsonResponse({"error": "Connected account not found"}, status=404)
 
@@ -1066,7 +1076,7 @@ def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
         status=BulkInsightRefreshRun.STATUS_RUNNING,
     ).order_by("-started_at").first()
     active_run = _safe_reconcile_bulk_run_progress(active_run)
-    if active_run:
+    if active_run and active_run.status == BulkInsightRefreshRun.STATUS_RUNNING:
         payload = _serialize_bulk_run(active_run)
         payload.update(
             {
@@ -1076,11 +1086,11 @@ def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
         )
         return JsonResponse(payload, status=409)
 
-    guard_payload = _force_refresh_guard_payload()
+    guard_payload = _force_refresh_guard_payload(user=request.user)
     if guard_payload:
         return JsonResponse(guard_payload, status=409)
 
-    accounts = list(ConnectedAccount.objects.filter(is_active=True).order_by("id"))
+    accounts = list(ConnectedAccount.objects.filter(is_active=True, user=request.user).order_by("id"))
     total_accounts = len(accounts)
     queued = 0
     skipped_no_token = 0

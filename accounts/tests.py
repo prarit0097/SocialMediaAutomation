@@ -69,6 +69,9 @@ class AccountsLandingTests(TestCase):
     @patch("accounts.views.requests.post")
     def test_google_signup_callback_creates_user_and_logs_in(self, mock_post, mock_get):
         state = "teststate123"
+        session = self.client.session
+        session["google_oauth_state"] = state
+        session.save()
         cache.set(f"google_oauth_state:{state}", {"issued": True}, timeout=600)
 
         token_response = Mock(status_code=200)
@@ -103,6 +106,9 @@ class AccountsLandingTests(TestCase):
     @patch("accounts.views.requests.post")
     def test_google_signup_callback_sets_persistent_session_cookie(self, mock_post, mock_get):
         state = "persiststate123"
+        session = self.client.session
+        session["google_oauth_state"] = state
+        session.save()
         cache.set(f"google_oauth_state:{state}", {"issued": True}, timeout=600)
 
         token_response = Mock(status_code=200)

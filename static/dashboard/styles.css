@@ -341,6 +341,16 @@ textarea {
   box-shadow: 0 10px 20px rgba(157, 77, 39, 0.24);
 }
 
+.topnav .logout-form {
+  margin: 0;
+}
+
+.topnav .logout-button {
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
 .topnav .logout-link:hover {
   color: #fff;
   background: linear-gradient(135deg, #c97449 0%, #954720 100%);

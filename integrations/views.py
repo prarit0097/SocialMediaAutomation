@@ -91,7 +91,7 @@ def _latest_published_post_times(account_ids: list[int]) -> dict[int, datetime |
     return latest_by_account
 
 
-def _deactivate_disconnected_accounts(pages: list[dict]) -> None:
+def _deactivate_disconnected_accounts(user, pages: list[dict]) -> None:
     if not pages:
         return
 
@@ -102,13 +102,43 @@ def _deactivate_disconnected_accounts(pages: list[dict]) -> None:
         if (page.get("instagram_business_account") or {}).get("id")
     }
 
-    ConnectedAccount.objects.filter(is_active=True, platform=FACEBOOK).exclude(
+    ConnectedAccount.objects.filter(is_active=True, user=user, platform=FACEBOOK).exclude(
         page_id__in=active_fb_page_ids
     ).update(is_active=False, token_expires_at=None)
 
-    ConnectedAccount.objects.filter(is_active=True, platform=INSTAGRAM).exclude(
+    ConnectedAccount.objects.filter(is_active=True, user=user, platform=INSTAGRAM).exclude(
         page_id__in=active_ig_user_ids
     ).update(is_active=False, token_expires_at=None)
+
+
+def _lookup_catalog_target(client: MetaClient, target_id: str, access_token: str) -> tuple[str, dict]:
+    facebook_error = None
+    try:
+        facebook_data = client._get(
+            f"/{target_id}",
+            {
+                "access_token": access_token,
+                "fields": "id,name,access_token,picture,instagram_business_account",
+            },
+        )
+        if any(key in facebook_data for key in ("name", "access_token", "picture", "instagram_business_account")):
+            return FACEBOOK, facebook_data
+    except MetaAPIError as exc:
+        facebook_error = exc
+
+    try:
+        instagram_data = client._get(
+            f"/{target_id}",
+            {
+                "access_token": access_token,
+                "fields": "id,username,profile_picture_url",
+            },
+        )
+        if any(key in instagram_data for key in ("username", "profile_picture_url")):
+            return INSTAGRAM, instagram_data
+        raise MetaAPIError("Catalog target did not expose recognizable Facebook or Instagram fields.")
+    except MetaAPIError as exc:
+        raise exc from facebook_error
 
 
 def _resolve_user_access_token(request: HttpRequest, user_id: int | None) -> str:
@@ -148,6 +178,7 @@ def meta_start(request: HttpRequest) -> JsonResponse:
 
 
 @require_GET
+@login_required
 def meta_callback(request: HttpRequest) -> HttpResponse:
     oauth_error = request.GET.get("error")
     if oauth_error:
@@ -164,13 +195,15 @@ def meta_callback(request: HttpRequest) -> HttpResponse:
     redirect_uri = settings.META_REDIRECT_URI
     cache.delete(f"meta_oauth_state:{state}")
     user_id = state_data.get("user_id") if isinstance(state_data, dict) else None
+    if not user_id or int(user_id) != int(request.user.id):
+        return JsonResponse({"error": "OAuth callback does not match the current session"}, status=403)
 
     client = MetaClient()
     token_data = client.exchange_code_for_token(code, redirect_uri=redirect_uri)
     pages = client.get_managed_pages(token_data["access_token"])
-    upsert_connected_accounts(pages)
-    _deactivate_disconnected_accounts(pages)
-    cache.delete(TOKEN_HEALTH_CACHE_KEY)
+    upsert_connected_accounts(pages, request.user)
+    _deactivate_disconnected_accounts(request.user, pages)
+    cache.delete(f"{TOKEN_HEALTH_CACHE_KEY}:{request.user.id}")
 
     target_ids_count = None
     sync_warning = None
@@ -195,9 +228,9 @@ def meta_callback(request: HttpRequest) -> HttpResponse:
             SYNC_CACHE_KEY_TEMPLATE.format(user_id=user_id),
             {
                 "meta_pages_synced": len(pages),
-                "facebook_connected_total": ConnectedAccount.objects.filter(is_active=True, platform="facebook")
+                "facebook_connected_total": ConnectedAccount.objects.filter(user_id=user_id, is_active=True, platform="facebook")
                 .count(),
-                "instagram_connected_total": ConnectedAccount.objects.filter(is_active=True, platform="instagram")
+                "instagram_connected_total": ConnectedAccount.objects.filter(user_id=user_id, is_active=True, platform="instagram")
                 .count(),
                 "token_target_ids_count": target_ids_count,
                 "warning": sync_warning,
@@ -227,7 +260,7 @@ def list_accounts(request: HttpRequest) -> JsonResponse:
             return JsonResponse(cached, safe=False)
 
     account_rows = list(
-        ConnectedAccount.objects.filter(is_active=True).values(
+        ConnectedAccount.objects.filter(is_active=True, user=request.user).values(
             "id",
             "platform",
             "page_id",
@@ -270,9 +303,11 @@ def list_accounts(request: HttpRequest) -> JsonResponse:
 @login_required
 def accounts_sync_status(request: HttpRequest) -> JsonResponse:
     data = cache.get(f"meta_last_sync:{request.user.id}") or {}
-    fb_total = ConnectedAccount.objects.filter(is_active=True, platform="facebook").count()
-    ig_total = ConnectedAccount.objects.filter(is_active=True, platform="instagram").count()
-    latest_updated = ConnectedAccount.objects.filter(is_active=True).aggregate(latest=Max("updated_at")).get("latest")
+    fb_total = ConnectedAccount.objects.filter(is_active=True, user=request.user, platform="facebook").count()
+    ig_total = ConnectedAccount.objects.filter(is_active=True, user=request.user, platform="instagram").count()
+    latest_updated = (
+        ConnectedAccount.objects.filter(is_active=True, user=request.user).aggregate(latest=Max("updated_at")).get("latest")
+    )
     data = {
         "meta_pages_synced": data.get("meta_pages_synced") or fb_total,
         "facebook_connected_total": data.get("facebook_connected_total") or fb_total,
@@ -293,7 +328,7 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
     if cached:
         return JsonResponse(cached)
 
-    accounts = list(ConnectedAccount.objects.filter(is_active=True).order_by("-updated_at"))
+    accounts = list(ConnectedAccount.objects.filter(is_active=True, user=request.user).order_by("-updated_at"))
     if not accounts:
         payload = {"total_pages": 0, "connected_pages": 0, "rows": []}
         cache.set(cache_key, payload, timeout=300)
@@ -309,7 +344,7 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
     seen_ids: set[str] = set()
     fb_by_ig_id = {
         str(a.ig_user_id): a
-        for a in ConnectedAccount.objects.filter(platform="facebook", is_active=True)
+        for a in ConnectedAccount.objects.filter(platform="facebook", is_active=True, user=request.user)
         if a.ig_user_id and a.access_token
     }
 
@@ -343,9 +378,8 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
         for target_id in target_ids:
             if target_id in seen_ids:
                 continue
-            is_ig_candidate = target_id.startswith("1784")
             page_name = None
-            platform = "instagram" if is_ig_candidate else "facebook"
+            platform = INSTAGRAM if target_id in fb_by_ig_id else FACEBOOK
             reason = "Asset is visible in token target_ids but not returned by /me/accounts."
             connectability = "not_connectable"
             profile_picture_url = None
@@ -355,14 +389,8 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                     raise MetaAPIError(
                         "User access token is unavailable. Reconnect to refresh catalog detail access token."
                     )
-                if is_ig_candidate:
-                    page_data = client._get(
-                        f"/{target_id}",
-                        {
-                            "access_token": detail_token,
-                            "fields": "id,username,profile_picture_url",
-                        },
-                    )
+                platform, page_data = _lookup_catalog_target(client, target_id, detail_token)
+                if platform == INSTAGRAM:
                     username = page_data.get("username")
                     page_name = f"{username} (IG)" if username else None
                     profile_picture_url = page_data.get("profile_picture_url")
@@ -371,6 +399,7 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                         if linked_fb:
                             try:
                                 ConnectedAccount.objects.update_or_create(
+                                    user=request.user,
                                     platform="instagram",
                                     page_id=target_id,
                                     defaults={
@@ -395,13 +424,6 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                             )
                             connectability = "connectable"
                 else:
-                    page_data = client._get(
-                        f"/{target_id}",
-                        {
-                            "access_token": detail_token,
-                            "fields": "id,name,access_token,picture,instagram_business_account",
-                        },
-                    )
                     page_name = page_data.get("name")
                     picture_data = page_data.get("picture") or {}
                     profile_picture_url = (picture_data.get("data") or {}).get("url")
@@ -410,6 +432,7 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                         try:
                             ig_id = (page_data.get("instagram_business_account") or {}).get("id")
                             ConnectedAccount.objects.update_or_create(
+                                user=request.user,
                                 platform="facebook",
                                 page_id=target_id,
                                 defaults={
@@ -421,6 +444,7 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                             )
                             if ig_id:
                                 fb_by_ig_id[str(ig_id)] = ConnectedAccount(
+                                    user=request.user,
                                     platform="facebook",
                                     page_id=target_id,
                                     page_name=page_name or "(name unavailable)",
@@ -444,14 +468,8 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
             except MetaAPIError:
                 # Retry with app access token for best-effort name lookup on public assets.
                 try:
-                    if is_ig_candidate:
-                        page_data = client._get(
-                            f"/{target_id}",
-                            {
-                                "access_token": app_access_token,
-                                "fields": "id,username,profile_picture_url",
-                            },
-                        )
+                    platform, page_data = _lookup_catalog_target(client, target_id, app_access_token)
+                    if platform == INSTAGRAM:
                         username = page_data.get("username")
                         page_name = f"{username} (IG)" if username else page_name
                         profile_picture_url = page_data.get("profile_picture_url") or profile_picture_url
@@ -488,7 +506,7 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                     )
                     connectability = "not_connectable"
                 else:
-                    if is_ig_candidate:
+                    if platform == INSTAGRAM:
                         reason = (
                             "Unable to read Instagram profile details with current token. "
                             "Check IG business linking, app permissions, and Business Integration selection."

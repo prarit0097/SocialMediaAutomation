@@ -4,10 +4,11 @@ from core.constants import FACEBOOK, INSTAGRAM
 from .models import ConnectedAccount
 
 
-def upsert_connected_accounts(pages: list[dict]) -> None:
+def upsert_connected_accounts(pages: list[dict], user) -> None:
     with transaction.atomic():
         for page in pages:
             ConnectedAccount.objects.update_or_create(
+                user=user,
                 platform=FACEBOOK,
                 page_id=page["id"],
                 defaults={
@@ -22,6 +23,7 @@ def upsert_connected_accounts(pages: list[dict]) -> None:
             ig_id = ig_data.get("id")
             if ig_id:
                 ConnectedAccount.objects.update_or_create(
+                    user=user,
                     platform=INSTAGRAM,
                     page_id=ig_id,
                     defaults={

@@ -7,6 +7,7 @@ from django.contrib.auth import get_user_model, login, logout
 from django.contrib.auth.views import LoginView
 from django.core.cache import cache
 from django.shortcuts import redirect, render
+from django.views.decorators.http import require_POST
 
 from .models import UserProfile
 
@@ -231,7 +232,9 @@ def google_signup_start(request):
         return redirect("/signup/?error=Google+signup+is+not+configured")
 
     state = secrets.token_urlsafe(24)
-    cache.set(f"google_oauth_state:{state}", {"issued": True}, timeout=600)
+    request.session["google_oauth_state"] = state
+    request.session.modified = True
+    cache.set(f"google_oauth_state:{state}", {"issued": True, "session_key": request.session.session_key}, timeout=600)
     query = urlencode(
         {
             "client_id": cfg["client_id"],
@@ -258,7 +261,10 @@ def google_signup_callback(request):
     cache_key = f"google_oauth_state:{state}"
     cached_state = cache.get(cache_key)
     cache.delete(cache_key)
-    if not cached_state:
+    session_state = str(request.session.get("google_oauth_state") or "")
+    request.session.pop("google_oauth_state", None)
+    request.session.modified = True
+    if not cached_state or session_state != state:
         return redirect("/signup/?error=Google+signup+failed%3A+invalid+or+expired+state")
 
     cfg = _google_signup_config()
@@ -351,6 +357,7 @@ def google_signup_callback(request):
     return redirect("dashboard:home")
 
 
+@require_POST
 def logout_view(request):
     logout(request)
     return redirect("login")

@@ -33,6 +33,7 @@ class PublishingApiTests(TestCase):
         self.user = get_user_model().objects.create_user(username="admin", password="pass12345")
         self.client.login(username="admin", password="pass12345")
         self.account = ConnectedAccount.objects.create(
+            user=self.user,
             platform=FACEBOOK,
             page_id="123",
             page_name="FB Page",
@@ -40,6 +41,7 @@ class PublishingApiTests(TestCase):
             access_token="token",
         )
         self.ig_account = ConnectedAccount.objects.create(
+            user=self.user,
             platform=INSTAGRAM,
             page_id="17890001",
             page_name="IG Page",
@@ -670,30 +672,26 @@ class PublishingServiceTests(TestCase):
         self.assertEqual(stats["total_comments"], 3)
         self.assertEqual(stats["total_views"], 101)
 
-    @patch("publishing.media_utils.requests.get")
-    def test_media_fetchable_stream_timeout_is_transient(self, mock_get):
+    @patch("publishing.media_utils._resolved_public_ips", return_value=["93.184.216.34"])
+    @patch("publishing.media_utils._PinnedHTTPSConnection.request")
+    @patch("publishing.media_utils._PinnedHTTPSConnection.getresponse")
+    def test_media_fetchable_stream_timeout_is_transient(self, mock_getresponse, _mock_request, _mock_ips):
         mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.iter_content.side_effect = requests.exceptions.ConnectionError("Read timed out.")
-        mock_get.return_value = mock_response
+        mock_response.status = 200
+        mock_response.read.side_effect = OSError("Read timed out.")
+        mock_getresponse.return_value = mock_response
 
         with self.assertRaises(MetaTransientError):
             ensure_public_media_fetchable("https://example.com/a.jpg")
 
-    @patch("publishing.media_utils.requests.get")
-    def test_media_fetchable_rejects_private_ip_targets_before_request(self, mock_get):
+    def test_media_fetchable_rejects_private_ip_targets_before_request(self):
         with self.assertRaises(MetaPermanentError):
             ensure_public_media_fetchable("http://127.0.0.1/internal.jpg")
-        mock_get.assert_not_called()
 
-    @patch("publishing.media_utils.requests.get")
-    def test_media_fetchable_rejects_localhost_hostname_before_request(self, mock_get):
+    def test_media_fetchable_rejects_localhost_hostname_before_request(self):
         with self.assertRaises(MetaPermanentError):
             ensure_public_media_fetchable("http://localhost/internal.jpg")
-        mock_get.assert_not_called()
 
-    @patch("publishing.media_utils.requests.get")
-    def test_media_fetchable_rejects_non_http_scheme_before_request(self, mock_get):
+    def test_media_fetchable_rejects_non_http_scheme_before_request(self):
         with self.assertRaises(MetaPermanentError):
             ensure_public_media_fetchable("file:///etc/passwd")
-        mock_get.assert_not_called()

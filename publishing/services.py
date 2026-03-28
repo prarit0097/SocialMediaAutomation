@@ -13,12 +13,18 @@ from publishing.media_utils import (
 
 logger = logging.getLogger("publishing")
 
-TOKEN_INVALID_MARKERS = ("error validating access token", "code=190", "subcode=460")
+TOKEN_INVALID_MARKERS = (
+    "error validating access token",
+    "code=190",
+    "subcode=460",
+    "access token has expired",
+    "invalid oauth access token",
+)
 
 
 def is_invalid_token_error(value: str | Exception | None) -> bool:
     text = str(value or "").lower()
-    return all(marker in text for marker in TOKEN_INVALID_MARKERS)
+    return any(marker in text for marker in TOKEN_INVALID_MARKERS)
 
 
 def token_reconnect_message(account, original_error: str | Exception) -> str:

@@ -27,7 +27,12 @@ def get_recent_sync_time(user_id: int | None):
                     synced_at = timezone.make_aware(synced_at, timezone=timezone.utc)
                 return synced_at
 
-    latest_updated_at = ConnectedAccount.objects.filter(is_active=True).aggregate(value=Max("updated_at")).get("value")
+    if not user_id:
+        return None
+
+    latest_updated_at = (
+        ConnectedAccount.objects.filter(is_active=True, user_id=user_id).aggregate(value=Max("updated_at")).get("value")
+    )
     return latest_updated_at
 
 

@@ -2,6 +2,8 @@
 
 import environ
 from celery.schedules import crontab
+from django.core.exceptions import ImproperlyConfigured
+from django.core.management.utils import get_random_secret_key
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -14,6 +16,8 @@ env = environ.Env(
     DAILY_INSIGHTS_POST_LIMIT=(int, 100),
     DAILY_INSIGHTS_POST_STATS_LIMIT=(int, 40),
     OPENAI_MODEL=(str, "gpt-4o-mini"),
+    OPENAI_IMAGE_MODEL=(str, "gpt-image-1"),
+    OPENAI_IMAGE_TIMEOUT_SECONDS=(int, 90),
     OPENAI_TIMEOUT_SECONDS=(int, 45),
     GOOGLE_OAUTH_CLIENT_ID=(str, ""),
     GOOGLE_OAUTH_CLIENT_SECRET=(str, ""),
@@ -55,11 +59,19 @@ env = environ.Env(
     SECURE_REFERRER_POLICY=(str, "same-origin"),
     SECURE_CROSS_ORIGIN_OPENER_POLICY=(str, "same-origin"),
     SECURE_CROSS_ORIGIN_RESOURCE_POLICY=(str, "same-origin"),
+    TRUST_REVERSE_PROXY=(bool, False),
+    MAX_UPLOAD_FILE_BYTES=(int, 104857600),
 )
 environ.Env.read_env(BASE_DIR / ".env")
 
-SECRET_KEY = env("SECRET_KEY", default="django-insecure-change-me")
 DEBUG = env("DEBUG")
+SECRET_KEY = env("SECRET_KEY", default="")
+if not SECRET_KEY and DEBUG:
+    SECRET_KEY = get_random_secret_key()
+if not SECRET_KEY:
+    raise ImproperlyConfigured("SECRET_KEY must be configured.")
+if not DEBUG and SECRET_KEY in {"change-me", "django-insecure-change-me"}:
+    raise ImproperlyConfigured("SECRET_KEY must not use a known placeholder in production.")
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["127.0.0.1", "localhost"])
 CSRF_TRUSTED_ORIGINS = env.list(
     "CSRF_TRUSTED_ORIGINS",
@@ -155,6 +167,9 @@ META_REDIRECT_URI = env("META_REDIRECT_URI", default="http://localhost:8000/auth
 META_GRAPH_VERSION = env("META_GRAPH_VERSION", default="v21.0")
 
 FERNET_KEY = env("FERNET_KEY", default="")
+FERNET_KEYS = env.list("FERNET_KEYS", default=[])
+if not FERNET_KEY and not FERNET_KEYS and not DEBUG:
+    raise ImproperlyConfigured("Set FERNET_KEY or FERNET_KEYS before starting production.")
 
 REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
 CELERY_BROKER_URL = REDIS_URL
@@ -191,6 +206,8 @@ DAILY_INSIGHTS_POST_LIMIT = env("DAILY_INSIGHTS_POST_LIMIT")
 DAILY_INSIGHTS_POST_STATS_LIMIT = env("DAILY_INSIGHTS_POST_STATS_LIMIT")
 OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
 OPENAI_MODEL = env("OPENAI_MODEL")
+OPENAI_IMAGE_MODEL = env("OPENAI_IMAGE_MODEL")
+OPENAI_IMAGE_TIMEOUT_SECONDS = env("OPENAI_IMAGE_TIMEOUT_SECONDS")
 OPENAI_TIMEOUT_SECONDS = env("OPENAI_TIMEOUT_SECONDS")
 GOOGLE_OAUTH_CLIENT_ID = env("GOOGLE_OAUTH_CLIENT_ID")
 GOOGLE_OAUTH_CLIENT_SECRET = env("GOOGLE_OAUTH_CLIENT_SECRET")
@@ -208,6 +225,7 @@ META_IG_READY_POLL_INTERVAL = env("META_IG_READY_POLL_INTERVAL")
 IG_PUBLISH_LANE_TTL_SECONDS = env("IG_PUBLISH_LANE_TTL_SECONDS")
 IG_PUBLISH_LANE_RETRY_SECONDS = env("IG_PUBLISH_LANE_RETRY_SECONDS")
 BULK_REFRESH_STALE_MINUTES = env("BULK_REFRESH_STALE_MINUTES")
+MAX_UPLOAD_FILE_BYTES = env("MAX_UPLOAD_FILE_BYTES")
 CELERY_BEAT_SCHEDULE = {
     "process-due-posts-every-minute": {
         "task": "publishing.tasks.process_due_posts",
@@ -268,7 +286,15 @@ SECURE_HSTS_PRELOAD = env("SECURE_HSTS_PRELOAD")
 SECURE_REFERRER_POLICY = env("SECURE_REFERRER_POLICY")
 SECURE_CROSS_ORIGIN_OPENER_POLICY = env("SECURE_CROSS_ORIGIN_OPENER_POLICY")
 SECURE_CROSS_ORIGIN_RESOURCE_POLICY = env("SECURE_CROSS_ORIGIN_RESOURCE_POLICY")
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-USE_X_FORWARDED_HOST = True
+TRUST_REVERSE_PROXY = env("TRUST_REVERSE_PROXY")
+if TRUST_REVERSE_PROXY:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    USE_X_FORWARDED_HOST = True
+else:
+    USE_X_FORWARDED_HOST = False
+
+if not DEBUG and (not SESSION_COOKIE_SECURE or not CSRF_COOKIE_SECURE):
+    raise ImproperlyConfigured("SESSION_COOKIE_SECURE and CSRF_COOKIE_SECURE must be enabled in production.")
+
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"

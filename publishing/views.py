@@ -53,6 +53,10 @@ def _upload_file_to_media(request: HttpRequest):
     if not uploaded:
         return None, None
 
+    max_upload_bytes = int(getattr(settings, "MAX_UPLOAD_FILE_BYTES", 100 * 1024 * 1024) or 0)
+    if max_upload_bytes > 0 and int(getattr(uploaded, "size", 0) or 0) > max_upload_bytes:
+        return None, "Uploaded media exceeds the configured upload size limit."
+
     ext = os.path.splitext(uploaded.name or "")[1].lower()
     if ext not in ALLOWED_MEDIA_EXTENSIONS:
         return None, f"Unsupported media file type: {ext or 'unknown'}"
@@ -75,12 +79,24 @@ def _resolve_dual_accounts(base_account: ConnectedAccount):
     if base_account.platform == FACEBOOK:
         fb_account = base_account
         if base_account.ig_user_id:
-            ig_account = ConnectedAccount.objects.filter(platform=INSTAGRAM, ig_user_id=base_account.ig_user_id).first()
+            ig_account = ConnectedAccount.objects.filter(
+                platform=INSTAGRAM,
+                user=base_account.user,
+                ig_user_id=base_account.ig_user_id,
+            ).first()
             if not ig_account:
-                ig_account = ConnectedAccount.objects.filter(platform=INSTAGRAM, page_id=base_account.ig_user_id).first()
+                ig_account = ConnectedAccount.objects.filter(
+                    platform=INSTAGRAM,
+                    user=base_account.user,
+                    page_id=base_account.ig_user_id,
+                ).first()
     elif base_account.platform == INSTAGRAM:
         ig_account = base_account
-        fb_account = ConnectedAccount.objects.filter(platform=FACEBOOK, ig_user_id=base_account.page_id).first()
+        fb_account = ConnectedAccount.objects.filter(
+            platform=FACEBOOK,
+            user=base_account.user,
+            ig_user_id=base_account.page_id,
+        ).first()
 
     if not fb_account or not ig_account:
         return None, None, (
@@ -161,21 +177,30 @@ def _auto_dispatch_due_posts_guarded() -> None:
         logger.warning("auto dispatcher inline fallback failed error=%s", str(exc))
 
 
-def _recover_stale_processing_posts(stale_minutes: int = 5) -> int:
+def _recover_stale_processing_posts(user=None, stale_minutes: int = 5) -> int:
+    lock_key = f"publishing:recover_stale_processing_posts:{getattr(user, 'id', 'global')}"
+    if not cache.add(lock_key, timezone.now().isoformat(), timeout=30):
+        return 0
+
     cutoff = timezone.now() - timedelta(minutes=stale_minutes)
     stale_qs = ScheduledPost.objects.filter(
         status=POST_STATUS_PROCESSING,
         updated_at__lt=cutoff,
     )
+    if user is not None:
+        stale_qs = stale_qs.filter(account__user=user)
     stale_ids = list(stale_qs.values_list("id", flat=True))
-    if not stale_ids:
-        return 0
-    ScheduledPost.objects.filter(id__in=stale_ids).update(
-        status=POST_STATUS_PENDING,
-        error_message="Recovered from stale processing state; auto re-queued.",
-    )
-    logger.warning("recovered stale processing posts count=%s ids=%s", len(stale_ids), stale_ids[:20])
-    return len(stale_ids)
+    try:
+        if not stale_ids:
+            return 0
+        ScheduledPost.objects.filter(id__in=stale_ids).update(
+            status=POST_STATUS_PENDING,
+            error_message="Recovered from stale processing state; auto re-queued.",
+        )
+        logger.warning("recovered stale processing posts count=%s ids=%s", len(stale_ids), stale_ids[:20])
+        return len(stale_ids)
+    finally:
+        cache.delete(lock_key)
 
 
 @require_POST
@@ -211,7 +236,7 @@ def schedule_post(request: HttpRequest) -> JsonResponse:
     if platform not in valid_platforms and platform != "both":
         return _bad_request("platform must be facebook, instagram, or both")
 
-    account = ConnectedAccount.objects.filter(id=account_id).first()
+    account = ConnectedAccount.objects.filter(id=account_id, user=request.user).first()
     if not account:
         return JsonResponse({"error": "Connected account not found"}, status=404)
     if platform in valid_platforms and account.platform != platform:
@@ -312,11 +337,11 @@ def schedule_post(request: HttpRequest) -> JsonResponse:
 
 @require_GET
 @login_required
-def list_scheduled_posts(_request: HttpRequest) -> JsonResponse:
-    _recover_stale_processing_posts()
+def list_scheduled_posts(request: HttpRequest) -> JsonResponse:
+    _recover_stale_processing_posts(request.user)
     _auto_dispatch_due_posts_guarded()
     rows = list(
-        ScheduledPost.objects.select_related("account").values(
+        ScheduledPost.objects.select_related("account").filter(account__user=request.user).values(
             "id",
             "platform",
             "message",
@@ -336,10 +361,10 @@ def list_scheduled_posts(_request: HttpRequest) -> JsonResponse:
 
 @require_GET
 @login_required
-def publish_health_status(_request: HttpRequest) -> JsonResponse:
+def publish_health_status(request: HttpRequest) -> JsonResponse:
     now = timezone.now()
     rows = list(
-        ScheduledPost.objects.values(
+        ScheduledPost.objects.filter(account__user=request.user).values(
             "id",
             "status",
             "platform",
@@ -374,7 +399,7 @@ def publish_health_status(_request: HttpRequest) -> JsonResponse:
 @require_POST
 @login_required
 def retry_failed_post(request: HttpRequest, post_id: int) -> JsonResponse:
-    post = ScheduledPost.objects.filter(id=post_id).first()
+    post = ScheduledPost.objects.select_related("account").filter(id=post_id, account__user=request.user).first()
     if not post:
         return JsonResponse({"error": "Scheduled post not found"}, status=404)
 

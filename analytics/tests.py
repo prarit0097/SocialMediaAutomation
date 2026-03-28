@@ -29,6 +29,7 @@ class AnalyticsApiTests(TestCase):
         self.user = user_model.objects.create_user(username="admin", password="pass12345")
         self.client.login(username="admin", password="pass12345")
         self.account = ConnectedAccount.objects.create(
+            user=self.user,
             platform=FACEBOOK,
             page_id="111",
             page_name="Page",
@@ -40,7 +41,7 @@ class AnalyticsApiTests(TestCase):
     def test_fetch_insights(self, mock_fetch, mock_posts_count):
         mock_fetch.return_value = [{"name": "page_impressions", "values": []}]
         mock_posts_count.return_value = 0
-        response = self.client.get(f"/api/insights/{self.account.id}/")
+        response = self.client.get(f"/api/insights/{self.account.id}/?refresh=1")
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body["platform"], FACEBOOK)
@@ -123,7 +124,7 @@ class AnalyticsApiTests(TestCase):
     def test_fetch_insights_meta_error_returns_json(self, mock_fetch, mock_posts_count):
         mock_fetch.side_effect = MetaPermanentError("invalid metric", status_code=400, payload={"error": {}})
         mock_posts_count.return_value = 0
-        response = self.client.get(f"/api/insights/{self.account.id}/")
+        response = self.client.get(f"/api/insights/{self.account.id}/?refresh=1")
         self.assertEqual(response.status_code, 502)
         body = response.json()
         self.assertEqual(body["error"], "Failed to fetch insights from Meta")
@@ -131,6 +132,7 @@ class AnalyticsApiTests(TestCase):
     @patch("analytics.views.refresh_account_insights_snapshot.apply_async")
     def test_force_refresh_all_accounts_insights_queues_active_profiles(self, mock_apply_async):
         ConnectedAccount.objects.create(
+            user=self.user,
             platform=FACEBOOK,
             page_id="active-no-token",
             page_name="No Token",
@@ -138,6 +140,7 @@ class AnalyticsApiTests(TestCase):
             is_active=True,
         )
         ConnectedAccount.objects.create(
+            user=self.user,
             platform=FACEBOOK,
             page_id="inactive-token",
             page_name="Inactive Token",
@@ -203,6 +206,7 @@ class AnalyticsApiTests(TestCase):
     @patch("analytics.views.refresh_account_insights_snapshot.apply_async")
     def test_force_refresh_all_accounts_blocks_when_instagram_due_posts_are_near(self, mock_apply_async):
         ig_account = ConnectedAccount.objects.create(
+            user=self.user,
             platform=INSTAGRAM,
             page_id="17890009",
             page_name="IG Block",
@@ -390,6 +394,7 @@ class AnalyticsApiTests(TestCase):
         self.account.ig_user_id = "178400001"
         self.account.save(update_fields=["ig_user_id"])
         ig_account = ConnectedAccount.objects.create(
+            user=self.user,
             platform=INSTAGRAM,
             page_id="178400001",
             page_name="Page (IG)",
@@ -405,7 +410,7 @@ class AnalyticsApiTests(TestCase):
             [{"id": "ig_post_1", "message": "ig", "media_url": None, "published_at": None, "scheduled_for": None}],
         ]
 
-        response = self.client.get(f"/api/insights/{self.account.id}/")
+        response = self.client.get(f"/api/insights/{self.account.id}/?refresh=1")
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertTrue(body.get("combined"))
@@ -431,6 +436,7 @@ class AnalyticsApiTests(TestCase):
         self.account.ig_user_id = "178400001"
         self.account.save(update_fields=["ig_user_id"])
         ConnectedAccount.objects.create(
+            user=self.user,
             platform=INSTAGRAM,
             page_id="178400001",
             page_name="Page (IG)",
@@ -446,7 +452,7 @@ class AnalyticsApiTests(TestCase):
         mock_posts_count.return_value = 5
         mock_published_posts.side_effect = [[], []]
 
-        response = self.client.get(f"/api/insights/{self.account.id}/")
+        response = self.client.get(f"/api/insights/{self.account.id}/?refresh=1")
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body["summary"]["instagram"]["total_followers"], 321)
@@ -609,7 +615,7 @@ class AnalyticsApiTests(TestCase):
             [
                 {
                     "platform": "facebook",
-                    "published_at": "2026-03-12T10:53:26+00:00",
+                    "published_at": (timezone.now() - timedelta(days=1)).isoformat(),
                     "total_likes": 9,
                     "total_comments": 4,
                     "total_shares": 5,
@@ -765,13 +771,16 @@ class MetaClientTests(TestCase):
 class AnalyticsAutomationTaskTests(TestCase):
     def setUp(self):
         cache.clear()
+        self.user = get_user_model().objects.create_user(username="analytics-auto", password="pass12345")
         self.account = ConnectedAccount.objects.create(
+            user=self.user,
             platform=FACEBOOK,
             page_id="auto-1",
             page_name="Auto Page",
             access_token="token",
         )
         self.blank_token_account = ConnectedAccount.objects.create(
+            user=self.user,
             platform=INSTAGRAM,
             page_id="auto-2",
             page_name="Blank Token",

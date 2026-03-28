@@ -1,24 +1,26 @@
 import json
+import hashlib
+import hmac
 import os
 import re
-import hmac
-import hashlib
 import uuid
 from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
 from django.conf import settings
-from django.core.cache import cache
 from django.contrib.auth.decorators import login_required
+from django.core.cache import cache
+from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
+from accounts.models import UserProfile
 from core.exceptions import MetaAPIError
 from core.services.meta_client import MetaClient
-from accounts.models import UserProfile
+from dashboard.models import SubscriptionOrder
 from integrations.models import ConnectedAccount
 from integrations.sync_state import SYNC_FRESHNESS_WINDOW, get_recent_sync_time
 
@@ -174,7 +176,7 @@ def _subscription_page_payload(user) -> dict:
         "current_plan": profile.subscription_plan,
         "current_status": profile.subscription_status,
         "current_expiry": profile.subscription_expires_on.isoformat() if profile.subscription_expires_on else None,
-        "is_locked": not profile.is_subscription_active,
+        "is_locked": profile.subscription_status != UserProfile.SUBSCRIPTION_STATUS_ACTIVE,
         "is_monthly_active": is_active and normalized_plan == "monthly",
         "is_yearly_active": is_active and normalized_plan == "yearly",
         "feature_groups": [
@@ -208,6 +210,29 @@ def _subscription_page_payload(user) -> dict:
 
 def _subscription_order_cache_key(order_id: str) -> str:
     return f"subscription_order:{order_id}"
+
+
+def _subscription_order_defaults(plan: dict, user) -> dict:
+    return {
+        "user": user,
+        "plan_key": plan["plan_key"],
+        "billing_cycle": plan["billing_cycle"],
+        "price_label": plan["price_label"],
+        "title": plan["title"],
+    }
+
+
+def _clear_meta_runtime_caches(user_id: int | None) -> None:
+    if not user_id:
+        return
+    cache.delete_many(
+        [
+            f"meta_pages_catalog:{user_id}",
+            f"accounts_list_v1:{user_id}",
+            f"meta_last_sync:{user_id}",
+            f"{TOKEN_HEALTH_CACHE_KEY_PREFIX}:{user_id}",
+        ]
+    )
 
 
 def _is_razorpay_configured() -> bool:
@@ -273,10 +298,12 @@ def _sync_scoped_accounts(user) -> tuple[list[ConnectedAccount], str]:
     recent_sync_time = get_recent_sync_time(getattr(user, "id", None))
     if recent_sync_time:
         window_start = recent_sync_time - SYNC_FRESHNESS_WINDOW
-        scoped = list(ConnectedAccount.objects.filter(is_active=True, updated_at__gte=window_start).order_by("id"))
+        scoped = list(
+            ConnectedAccount.objects.filter(is_active=True, user=user, updated_at__gte=window_start).order_by("id")
+        )
         if scoped:
             return scoped, "recent_sync"
-    return list(ConnectedAccount.objects.filter(is_active=True).order_by("id")), "all_connected"
+    return list(ConnectedAccount.objects.filter(is_active=True, user=user).order_by("id")), "all_connected"
 
 
 def _stale_connected_accounts(accounts: list[ConnectedAccount], user) -> list[ConnectedAccount]:
@@ -535,7 +562,7 @@ def meta_app_config(request):
         return JsonResponse({"error": "Unable to update .env", "details": str(exc)}, status=500)
 
     _apply_meta_runtime_settings(updates)
-    cache.clear()
+    _clear_meta_runtime_caches(getattr(request.user, "id", None))
 
     response = _meta_config_payload()
     response["ok"] = True
@@ -647,6 +674,10 @@ def subscription_create_order(request):
     order = response.json()
     order_id = str(order.get("id") or "").strip()
     if order_id:
+        SubscriptionOrder.objects.update_or_create(
+            order_id=order_id,
+            defaults=_subscription_order_defaults(plan, request.user),
+        )
         cache.set(
             _subscription_order_cache_key(order_id),
             {
@@ -704,19 +735,58 @@ def subscription_verify_payment(request):
     if not hmac.compare_digest(expected_signature, signature):
         return JsonResponse({"error": "Payment signature verification failed."}, status=400)
 
-    cached_order = cache.get(_subscription_order_cache_key(order_id)) or {}
-    if int(cached_order.get("user_id") or 0) != int(request.user.id):
-        return JsonResponse({"error": "Payment verification context expired. Please start checkout again."}, status=400)
+    with transaction.atomic():
+        order = (
+            SubscriptionOrder.objects.select_for_update()
+            .filter(order_id=order_id, user=request.user)
+            .first()
+        )
+        if not order:
+            cached_order = cache.get(_subscription_order_cache_key(order_id)) or {}
+            if int(cached_order.get("user_id") or 0) != int(request.user.id):
+                return JsonResponse({"error": "Payment verification context expired. Please start checkout again."}, status=400)
 
-    billing_cycle = str(cached_order.get("billing_cycle") or "").strip().lower()
-    if billing_cycle not in SUBSCRIPTION_PLAN_CONFIG:
-        return JsonResponse({"error": "Payment verification context is incomplete. Please retry checkout."}, status=400)
+            billing_cycle = str(cached_order.get("billing_cycle") or "").strip().lower()
+            if billing_cycle not in SUBSCRIPTION_PLAN_CONFIG:
+                return JsonResponse({"error": "Payment verification context is incomplete. Please retry checkout."}, status=400)
 
-    profile, _ = UserProfile.objects.get_or_create(user=request.user)
-    try:
-        profile.activate_paid_plan(billing_cycle)
-    except ValueError:
-        return JsonResponse({"error": "Unsupported billing cycle returned by payment verification."}, status=400)
+            order = SubscriptionOrder.objects.create(
+                order_id=order_id,
+                user=request.user,
+                plan_key=str(cached_order.get("plan_key") or billing_cycle),
+                billing_cycle=billing_cycle,
+                price_label=str(cached_order.get("price_label") or ""),
+                title=str(cached_order.get("title") or ""),
+            )
+
+        if order.consumed_at:
+            already_processed = bool(order.razorpay_payment_id and order.razorpay_payment_id == payment_id)
+            return JsonResponse(
+                {
+                    "ok": already_processed,
+                    "already_processed": already_processed,
+                    "message": "Payment was already verified for this order.",
+                    "payment_id": order.razorpay_payment_id or payment_id,
+                    "order_id": order_id,
+                    "subscription": _profile_payload(request.user),
+                },
+                status=200 if already_processed else 409,
+            )
+
+        billing_cycle = str(order.billing_cycle or "").strip().lower()
+        if billing_cycle not in SUBSCRIPTION_PLAN_CONFIG:
+            return JsonResponse({"error": "Payment verification context is incomplete. Please retry checkout."}, status=400)
+
+        profile, _ = UserProfile.objects.select_for_update().get_or_create(user=request.user)
+        try:
+            profile.activate_paid_plan(billing_cycle)
+        except ValueError:
+            return JsonResponse({"error": "Unsupported billing cycle returned by payment verification."}, status=400)
+
+        order.razorpay_payment_id = payment_id
+        order.status = SubscriptionOrder.STATUS_VERIFIED
+        order.consumed_at = timezone.now()
+        order.save(update_fields=["razorpay_payment_id", "status", "consumed_at", "updated_at"])
 
     cache.delete(_subscription_order_cache_key(order_id))
 

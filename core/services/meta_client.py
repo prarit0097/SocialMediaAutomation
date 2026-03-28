@@ -12,6 +12,7 @@ from core.exceptions import MetaAPIError, MetaPermanentError, MetaTransientError
 
 TRANSIENT_GRAPH_ERROR_CODES = {4, 17, 32, 613}
 TRANSIENT_GRAPH_ERROR_SUBCODES = {2207003, 2207027}
+MAX_PAGING_REQUESTS = 100
 
 
 class MetaClient:
@@ -118,11 +119,13 @@ class MetaClient:
         )
         count = len(response.get("data", []))
         next_url = (response.get("paging") or {}).get("next")
+        pages_seen = 1
 
-        while next_url:
+        while next_url and pages_seen < MAX_PAGING_REQUESTS:
             response = self._get_by_url(next_url)
             count += len(response.get("data", []))
             next_url = (response.get("paging") or {}).get("next")
+            pages_seen += 1
 
         return count
 

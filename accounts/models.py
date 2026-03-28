@@ -70,12 +70,7 @@ class UserProfile(models.Model):
         max_day = calendar.monthrange(base_date.year + years, month)[1]
         return base_date.replace(year=base_date.year + years, day=min(day, max_day))
 
-    @property
-    def is_subscription_active(self) -> bool:
-        self.refresh_subscription_state(commit=False)
-        return self.subscription_status == self.SUBSCRIPTION_STATUS_ACTIVE
-
-    def refresh_subscription_state(self, commit: bool = True) -> bool:
+    def _normalized_subscription_state(self):
         today = timezone.now().date()
         normalized_plan = (self.subscription_plan or "").strip() or self.SUBSCRIPTION_PLAN_TRIAL
         if normalized_plan.lower() == "starter":
@@ -83,6 +78,14 @@ class UserProfile(models.Model):
 
         expires_on = self.subscription_expires_on or today
         status = self.SUBSCRIPTION_STATUS_ACTIVE if expires_on >= today else self.SUBSCRIPTION_STATUS_EXPIRED
+        return normalized_plan, status, expires_on
+
+    @property
+    def is_subscription_active(self) -> bool:
+        return self._normalized_subscription_state()[1] == self.SUBSCRIPTION_STATUS_ACTIVE
+
+    def refresh_subscription_state(self, commit: bool = True) -> bool:
+        normalized_plan, status, expires_on = self._normalized_subscription_state()
 
         changed = False
         if self.subscription_plan != normalized_plan:
@@ -109,7 +112,10 @@ class UserProfile(models.Model):
     def activate_paid_plan(self, billing_cycle: str, commit: bool = True):
         cycle = str(billing_cycle or "").strip().lower()
         today = timezone.now().date()
-        base_date = max(today, self.subscription_expires_on or today)
+        normalized_plan, _, expires_on = self._normalized_subscription_state()
+        base_date = today
+        if normalized_plan.lower() == cycle and expires_on >= today:
+            base_date = expires_on
 
         if cycle == "monthly":
             self.subscription_plan = self.SUBSCRIPTION_PLAN_MONTHLY

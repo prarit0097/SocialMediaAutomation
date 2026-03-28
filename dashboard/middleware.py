@@ -18,7 +18,8 @@ class SubscriptionAccessMiddleware:
 
         profile, _ = UserProfile.objects.get_or_create(user=request.user)
         profile.refresh_subscription_state()
-        if profile.is_subscription_active:
+        request.subscription_profile = profile
+        if profile.subscription_status == UserProfile.SUBSCRIPTION_STATUS_ACTIVE:
             return self.get_response(request)
 
         allowed_paths = {
@@ -31,25 +32,14 @@ class SubscriptionAccessMiddleware:
         if request.path in allowed_paths:
             return self.get_response(request)
 
-        if request.path.startswith("/dashboard/"):
-            if request.method == "GET":
-                return redirect("dashboard:subscription_expired")
-            return JsonResponse(
-                {
-                    "error": "Your app access has expired. Complete payment to continue.",
-                    "code": "subscription_expired",
-                    "redirect_url": reverse("dashboard:subscription"),
-                },
-                status=402,
-            )
+        if request.path.startswith("/dashboard/") and request.method == "GET":
+            return redirect("dashboard:subscription_expired")
 
-        if request.path.startswith("/api/") or request.path.startswith("/auth/"):
-            return JsonResponse(
-                {
-                    "error": "Your app access has expired. Complete payment to continue.",
-                    "code": "subscription_expired",
-                    "redirect_url": reverse("dashboard:subscription"),
-                },
-                status=402,
-            )
-        return self.get_response(request)
+        return JsonResponse(
+            {
+                "error": "Your app access has expired. Complete payment to continue.",
+                "code": "subscription_expired",
+                "redirect_url": reverse("dashboard:subscription"),
+            },
+            status=402,
+        )

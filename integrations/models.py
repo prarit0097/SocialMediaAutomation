@@ -8,6 +8,7 @@ from core.fields import EncryptedTextField
 class ConnectedAccount(models.Model):
     platform = models.CharField(max_length=20, choices=PLATFORM_CHOICES)
     page_id = models.CharField(max_length=100)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True, blank=True, related_name='connected_accounts')
     page_name = models.CharField(max_length=255)
     ig_user_id = models.CharField(max_length=100, blank=True, null=True)
     access_token = EncryptedTextField()
@@ -18,7 +19,7 @@ class ConnectedAccount(models.Model):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=["platform", "page_id"], name="uniq_platform_page"),
+            models.UniqueConstraint(fields=["user", "platform", "page_id"], name="uniq_user_platform_page"),
         ]
         ordering = ["-created_at"]
 

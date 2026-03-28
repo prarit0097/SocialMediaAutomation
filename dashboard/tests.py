@@ -122,15 +122,17 @@ class DashboardAuthTests(TestCase):
     @patch("dashboard.views.MetaClient.debug_token")
     def test_token_health_status_reports_green_when_tokens_valid(self, mock_debug_token):
         user_model = get_user_model()
-        user_model.objects.create_user(username="admin", password="pass12345")
+        user = user_model.objects.create_user(username="admin", password="pass12345")
         self.client.login(username="admin", password="pass12345")
         ConnectedAccount.objects.create(
+            user=user,
             platform="facebook",
             page_id="fb-1",
             page_name="Valid FB",
             access_token="token-shared",
         )
         ConnectedAccount.objects.create(
+            user=user,
             platform="instagram",
             page_id="ig-1",
             page_name="Valid IG",
@@ -175,6 +177,7 @@ class DashboardAuthTests(TestCase):
         self.client.logout()
 
         ConnectedAccount.objects.create(
+            user=user_two,
             platform="facebook",
             page_id="fb-cache",
             page_name="Cache FB",
@@ -191,9 +194,10 @@ class DashboardAuthTests(TestCase):
     @patch("dashboard.views.MetaClient.debug_token")
     def test_token_health_status_reports_red_when_token_invalid(self, mock_debug_token):
         user_model = get_user_model()
-        user_model.objects.create_user(username="admin", password="pass12345")
+        user = user_model.objects.create_user(username="admin", password="pass12345")
         self.client.login(username="admin", password="pass12345")
         ConnectedAccount.objects.create(
+            user=user,
             platform="facebook",
             page_id="fb-1",
             page_name="Broken FB",
@@ -216,6 +220,7 @@ class DashboardAuthTests(TestCase):
         user = user_model.objects.create_user(username="admin", password="pass12345")
         self.client.login(username="admin", password="pass12345")
         ConnectedAccount.objects.create(
+            user=user,
             platform="facebook",
             page_id="fb-1",
             page_name="Recent FB",
@@ -245,12 +250,14 @@ class DashboardAuthTests(TestCase):
         user = user_model.objects.create_user(username="staleadmin", password="pass12345")
         self.client.login(username="staleadmin", password="pass12345")
         fresh = ConnectedAccount.objects.create(
+            user=user,
             platform="facebook",
             page_id="fb-fresh",
             page_name="Fresh FB",
             access_token="fresh-token",
         )
         stale = ConnectedAccount.objects.create(
+            user=user,
             platform="facebook",
             page_id="fb-stale",
             page_name="Stale FB",

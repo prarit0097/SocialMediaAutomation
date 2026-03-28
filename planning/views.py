@@ -87,7 +87,7 @@ def _serialize_item(item: CalendarContentItem) -> dict:
 def _planner_account_context(_user, account_id: int | None) -> tuple[dict, dict]:
     if not account_id:
         return {}, {}
-    account = ConnectedAccount.objects.filter(id=account_id, is_active=True).first()
+    account = ConnectedAccount.objects.filter(id=account_id, user=_user, is_active=True).first()
     if not account:
         return {}, {}
     snapshot = InsightSnapshot.objects.filter(account=account).order_by("-fetched_at", "-id").first()
@@ -114,6 +114,12 @@ def _planner_account_context(_user, account_id: int | None) -> tuple[dict, dict]
         },
         _next_post_recommendation(normalized_posts, {"platform": account.platform}) if normalized_posts else {},
     )
+
+
+def _resolve_owned_connected_account(user, account_id) -> ConnectedAccount | None:
+    if not account_id:
+        return None
+    return ConnectedAccount.objects.filter(id=account_id, user=user, is_active=True).first()
 
 
 @require_GET
@@ -187,6 +193,11 @@ def create_calendar_item(request: HttpRequest) -> JsonResponse:
     if status not in {choice[0] for choice in CalendarContentItem.STATUS_CHOICES}:
         return _bad_request("status is invalid")
 
+    connected_account_id = payload.get("connected_account_id")
+    connected_account = _resolve_owned_connected_account(request.user, connected_account_id)
+    if connected_account_id and not connected_account:
+        return _bad_request("connected_account_id is invalid for this user")
+
     item = CalendarContentItem.objects.create(
         owner=request.user,
         title=title,
@@ -195,7 +206,7 @@ def create_calendar_item(request: HttpRequest) -> JsonResponse:
         platform=platform,
         status=status,
         notes=str(payload.get("notes") or ""),
-        connected_account_id=payload.get("connected_account_id") or None,
+        connected_account=connected_account,
     )
 
     tag_ids = payload.get("tag_ids") or []
@@ -230,7 +241,11 @@ def update_calendar_item(request: HttpRequest, item_id: int) -> JsonResponse:
         item.start_at = start_at
 
     if "connected_account_id" in payload:
-        item.connected_account_id = payload.get("connected_account_id") or None
+        connected_account_id = payload.get("connected_account_id")
+        connected_account = _resolve_owned_connected_account(request.user, connected_account_id)
+        if connected_account_id and not connected_account:
+            return _bad_request("connected_account_id is invalid for this user")
+        item.connected_account = connected_account
 
     if item.platform not in {choice[0] for choice in CalendarContentItem.PLATFORM_CHOICES}:
         return _bad_request("platform must be facebook, instagram, or both")

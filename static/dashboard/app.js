@@ -533,7 +533,7 @@
     const pageId = String(row.page_id || "");
     const matched = (connectedRows || []).find((item) => String(item.page_id || "") === pageId);
     if (matched && matched.platform) return String(matched.platform).toLowerCase();
-    if (pageId.startsWith("1784")) return "instagram";
+    if (row && row.platform) return String(row.platform).toLowerCase();
     return "facebook";
   }
 
@@ -2325,7 +2325,6 @@
   }
 
   if (insightAccountId) {
-    loadPublicUrlStatus();
     const insightParams = new URLSearchParams(window.location.search);
     const prefillInsightAccountId = insightParams.get("account_id");
     if (prefillInsightAccountId && !insightAccountId.value) {

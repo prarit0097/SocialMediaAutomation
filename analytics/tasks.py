@@ -68,16 +68,12 @@ def _local_day_window(reference_time=None):
 
 def _has_daily_heavy_snapshot(account: ConnectedAccount, reference_time=None) -> bool:
     _, start_utc, end_utc = _local_day_window(reference_time)
-    snapshots = InsightSnapshot.objects.filter(
+    return InsightSnapshot.objects.filter(
         account=account,
         fetched_at__gte=start_utc,
         fetched_at__lt=end_utc,
-    ).only("payload")
-    for snapshot in snapshots:
-        metadata = ((snapshot.payload or {}).get("metadata") or {})
-        if metadata.get("collection_mode") == DAILY_HEAVY_COLLECTION_MODE:
-            return True
-    return False
+        payload__metadata__collection_mode=DAILY_HEAVY_COLLECTION_MODE,
+    ).exists()
 
 
 def _daily_snapshot_metadata() -> dict:
@@ -94,7 +90,7 @@ def _daily_snapshot_metadata() -> dict:
 
 @shared_task(name="analytics.tasks.queue_daily_heavy_insight_refresh")
 def queue_daily_heavy_insight_refresh(force: bool = False):
-    accounts = list(ConnectedAccount.objects.order_by("id"))
+    accounts = list(ConnectedAccount.objects.filter(user__isnull=False).order_by("id"))
     queued = 0
     skipped = 0
 
@@ -135,6 +131,7 @@ def refresh_account_insights_snapshot(self, account_id: int, force: bool = False
         return {"status": "skipped_locked", "account_id": account_id}
 
     outcome = None
+    account = None
     try:
         account = ConnectedAccount.objects.filter(id=account_id).first()
         if not account:
@@ -166,6 +163,14 @@ def refresh_account_insights_snapshot(self, account_id: int, force: bool = False
             "snapshot_id": data.get("snapshot_id"),
         }
     except MetaTransientError as exc:
+        if account is None:
+            logger.warning(
+                "daily heavy insights transient error account_id=%s retry=%s error=%s",
+                account_id,
+                self.request.retries + 1,
+                str(exc),
+            )
+            raise self.retry(exc=exc)
         logger.warning(
             "daily heavy insights transient error account_id=%s retry=%s error=%s",
             account.id,
@@ -174,13 +179,13 @@ def refresh_account_insights_snapshot(self, account_id: int, force: bool = False
         )
         raise self.retry(exc=exc)
     except MetaAPIError as exc:
-        logger.warning("daily heavy insights failed account_id=%s error=%s", account.id, str(exc))
+        logger.warning("daily heavy insights failed account_id=%s error=%s", account.id if account else account_id, str(exc))
         outcome = "failed"
-        return {"status": "failed", "account_id": account.id, "error": str(exc)}
+        return {"status": "failed", "account_id": account.id if account else account_id, "error": str(exc)}
     except Exception as exc:  # noqa: BLE001
-        logger.exception("daily heavy insights unexpected failure account_id=%s", account.id)
+        logger.exception("daily heavy insights unexpected failure account_id=%s", account.id if account else account_id)
         outcome = "failed"
-        return {"status": "failed", "account_id": account.id, "error": str(exc)}
+        return {"status": "failed", "account_id": account.id if account else account_id, "error": str(exc)}
     finally:
         _record_bulk_run_outcome(bulk_run_id, outcome or "")
         cache.delete(lock_key)

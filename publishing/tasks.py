@@ -81,24 +81,36 @@ def _get_due_posts(batch_size: int = 20) -> list[ScheduledPost]:
     return due_posts
 
 
+def _claim_due_posts_without_skip_locked(batch_size: int = 20) -> list[ScheduledPost]:
+    now = timezone.now()
+    fallback_qs = ScheduledPost.objects.select_related("account").filter(
+        status=POST_STATUS_PENDING,
+        scheduled_for__lte=now,
+    )
+    if _is_ig_globally_throttled():
+        fallback_qs = fallback_qs.exclude(platform=INSTAGRAM)
+    candidate_posts = _limit_instagram_batch(list(fallback_qs.order_by("scheduled_for")[:batch_size]))
+    claimed_ids: list[int] = []
+    for post in candidate_posts:
+        updated = ScheduledPost.objects.filter(id=post.id, status=POST_STATUS_PENDING).update(
+            status=POST_STATUS_PROCESSING,
+            error_message="",
+            updated_at=timezone.now(),
+        )
+        if updated:
+            claimed_ids.append(post.id)
+    if not claimed_ids:
+        return []
+    return list(ScheduledPost.objects.select_related("account").filter(id__in=claimed_ids).order_by("scheduled_for"))
+
+
 @shared_task(name="publishing.tasks.process_due_posts")
 def process_due_posts(run_inline: bool = False):
     try:
         due_posts = _get_due_posts()
     except DatabaseError:
         # Fallback for DBs that do not support skip_locked.
-        now = timezone.now()
-        fallback_qs = ScheduledPost.objects.filter(
-            status=POST_STATUS_PENDING,
-            scheduled_for__lte=now,
-        )
-        if _is_ig_globally_throttled():
-            fallback_qs = fallback_qs.exclude(platform=INSTAGRAM)
-        due_posts = _limit_instagram_batch(list(fallback_qs.order_by("scheduled_for")[:20]))
-        for post in due_posts:
-            post.status = POST_STATUS_PROCESSING
-            post.error_message = ""
-            post.save(update_fields=["status", "error_message", "updated_at"])
+        due_posts = _claim_due_posts_without_skip_locked()
 
     for post in due_posts:
         if run_inline:
@@ -117,6 +129,7 @@ def publish_post_task(self, post_id: int):
         return {"status": "locked", "post_id": post_id}
 
     ig_lane_locked = False
+    post = None
     try:
         post = ScheduledPost.objects.select_related("account").filter(id=post_id).first()
         if not post:
@@ -154,6 +167,9 @@ def publish_post_task(self, post_id: int):
         _clear_publish_attempts(post.id)
         logger.info("post published id=%s external_post_id=%s", post.id, external_post_id)
     except MetaTransientError as exc:
+        if post is None:
+            logger.exception("transient publish failure before post load post_id=%s", post_id)
+            raise
         attempts = _bump_publish_attempts(post.id)
         now = timezone.now()
         if attempts > self.max_retries:
@@ -186,12 +202,18 @@ def publish_post_task(self, post_id: int):
         logger.warning("transient error post id=%s retry_in=%s", post.id, countdown)
         return {"status": "requeued_transient", "post_id": post.id, "retry_in": countdown}
     except MetaPermanentError as exc:
+        if post is None:
+            logger.exception("permanent publish failure before post load post_id=%s", post_id)
+            return {"status": "failed_before_load", "post_id": post_id, "error": str(exc)}
         post.status = POST_STATUS_FAILED
         post.error_message = token_reconnect_message(post.account, exc) if is_invalid_token_error(exc) else str(exc)
         post.save(update_fields=["status", "error_message", "updated_at"])
         _clear_publish_attempts(post.id)
         logger.exception("permanent error post id=%s", post.id)
     except Exception as exc:  # noqa: BLE001
+        if post is None:
+            logger.exception("unexpected publish failure before post load post_id=%s", post_id)
+            return {"status": "failed_before_load", "post_id": post_id, "error": str(exc)}
         post.status = POST_STATUS_FAILED
         post.error_message = str(exc)
         post.save(update_fields=["status", "error_message", "updated_at"])

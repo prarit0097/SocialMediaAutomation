@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import io
+import ipaddress
 import os
 import socket
-import ipaddress
+import ssl
+from http.client import HTTPConnection, HTTPSConnection
 from urllib.parse import urljoin, urlparse
 
-import requests
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
@@ -134,6 +135,25 @@ def _is_public_ip_address(value: str) -> bool:
         return False
 
 
+def _resolved_public_ips(parsed) -> list[str]:
+    try:
+        resolved = [
+            item[4][0]
+            for item in socket.getaddrinfo(parsed.hostname, parsed.port or None, type=socket.SOCK_STREAM)
+            if item and item[4]
+        ]
+    except socket.gaierror as exc:
+        raise MetaTransientError(
+            "Public media host could not be resolved before publish. Check PUBLIC_BASE_URL/DNS and retry."
+        ) from exc
+
+    if not resolved:
+        raise MetaTransientError("Public media host could not be resolved before publish.")
+    if any(not _is_public_ip_address(address) for address in resolved):
+        raise MetaPermanentError("Media URL must resolve only to public IP addresses.")
+    return resolved
+
+
 def _validate_public_media_url(media_url: str) -> None:
     parsed = urlparse(str(media_url or "").strip())
     scheme = str(parsed.scheme or "").lower()
@@ -156,55 +176,72 @@ def _validate_public_media_url(media_url: str) -> None:
     else:
         raise MetaPermanentError("Media URL must not target private or reserved IP addresses.")
 
-    try:
-        resolved = {
-            item[4][0]
-            for item in socket.getaddrinfo(hostname, parsed.port or None, type=socket.SOCK_STREAM)
-            if item and item[4]
-        }
-    except socket.gaierror as exc:
-        raise MetaTransientError(
-            "Public media host could not be resolved before publish. Check PUBLIC_BASE_URL/DNS and retry."
-        ) from exc
+    _resolved_public_ips(parsed)
 
-    if not resolved:
-        raise MetaTransientError("Public media host could not be resolved before publish.")
-    if any(not _is_public_ip_address(address) for address in resolved):
-        raise MetaPermanentError("Media URL must resolve only to public IP addresses.")
+
+class _PinnedHTTPConnection(HTTPConnection):
+    def __init__(self, resolved_ip: str, host: str, port: int, timeout: int):
+        super().__init__(host=host, port=port, timeout=timeout)
+        self._resolved_ip = resolved_ip
+
+    def connect(self):
+        self.sock = socket.create_connection((self._resolved_ip, self.port), self.timeout, self.source_address)
+
+
+class _PinnedHTTPSConnection(HTTPSConnection):
+    def __init__(self, resolved_ip: str, host: str, port: int, timeout: int):
+        super().__init__(host=host, port=port, timeout=timeout, context=ssl.create_default_context())
+        self._resolved_ip = resolved_ip
+
+    def connect(self):
+        raw_sock = socket.create_connection((self._resolved_ip, self.port), self.timeout, self.source_address)
+        self.sock = self._context.wrap_socket(raw_sock, server_hostname=self.host)
 
 
 def ensure_public_media_fetchable(media_url: str) -> None:
     _validate_public_media_url(media_url)
+    parsed = urlparse(str(media_url or "").strip())
+    resolved_ip = _resolved_public_ips(parsed)[0]
+    path = parsed.path or "/"
+    if parsed.query:
+        path = f"{path}?{parsed.query}"
+    port = parsed.port or (443 if parsed.scheme.lower() == "https" else 80)
+    connection_cls = _PinnedHTTPSConnection if parsed.scheme.lower() == "https" else _PinnedHTTPConnection
+    connection = connection_cls(resolved_ip, parsed.hostname or "", port, MEDIA_FETCH_TIMEOUT_SECONDS)
     try:
-        response = requests.get(
-            media_url,
-            timeout=MEDIA_FETCH_TIMEOUT_SECONDS,
-            stream=True,
-            headers={"User-Agent": "SocialMediaAutomationMediaCheck/1.0"},
+        connection.request(
+            "GET",
+            path,
+            headers={
+                "Host": parsed.hostname or "",
+                "User-Agent": "SocialMediaAutomationMediaCheck/1.0",
+                "Connection": "close",
+            },
         )
-    except requests.RequestException as exc:
+        response = connection.getresponse()
+    except OSError as exc:
         raise MetaTransientError(
             "Public media URL could not be reached before publish. "
             "Check PUBLIC_BASE_URL/ngrok and retry."
         ) from exc
 
     try:
-        if response.status_code >= 500:
+        if response.status >= 500:
             raise MetaTransientError(
-                f"Public media URL returned {response.status_code}. "
+                f"Public media URL returned {response.status}. "
                 "The tunnel or media server is temporarily unavailable."
             )
-        if response.status_code >= 400:
+        if response.status >= 400:
             raise MetaPermanentError(
-                f"Public media URL returned {response.status_code}. "
+                f"Public media URL returned {response.status}. "
                 "Reconnect the tunnel or upload the media again."
             )
         try:
-            next(response.iter_content(65536), b"")
-        except requests.RequestException as exc:
+            response.read(65536)
+        except OSError as exc:
             raise MetaTransientError(
                 "Public media URL stream timed out while validating media. "
                 "Auto-retry should recover if tunnel/network stabilizes."
             ) from exc
     finally:
-        response.close()
+        connection.close()

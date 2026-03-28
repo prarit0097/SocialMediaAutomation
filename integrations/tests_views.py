@@ -32,6 +32,7 @@ class IntegrationsViewTests(TestCase):
 
     def test_accounts_sync_status_default_payload(self):
         ConnectedAccount.objects.create(
+            user=self.user,
             platform="facebook",
             page_id="1",
             page_name="Page 1",
@@ -66,6 +67,7 @@ class IntegrationsViewTests(TestCase):
 
     def test_list_accounts_includes_latest_post_time_from_snapshot(self):
         account = ConnectedAccount.objects.create(
+            user=self.user,
             platform="facebook",
             page_id="1",
             page_name="Page 1",
@@ -93,6 +95,7 @@ class IntegrationsViewTests(TestCase):
 
     def test_list_accounts_falls_back_to_latest_published_scheduled_post(self):
         account = ConnectedAccount.objects.create(
+            user=self.user,
             platform="facebook",
             page_id="1",
             page_name="Page 1",
@@ -117,6 +120,7 @@ class IntegrationsViewTests(TestCase):
 
     def test_list_accounts_marks_account_stale_when_not_in_latest_sync_window(self):
         account = ConnectedAccount.objects.create(
+            user=self.user,
             platform="facebook",
             page_id="1",
             page_name="Page 1",
@@ -143,6 +147,7 @@ class IntegrationsViewTests(TestCase):
     @patch("integrations.views.MetaClient.debug_token")
     def test_meta_pages_catalog_includes_catalog_only_rows(self, mock_debug_token, mock_get):
         ConnectedAccount.objects.create(
+            user=self.user,
             platform="facebook",
             page_id="10",
             page_name="Connected Page",
@@ -177,6 +182,7 @@ class IntegrationsViewTests(TestCase):
     @patch("integrations.views.MetaClient.debug_token")
     def test_meta_pages_catalog_auto_syncs_connectable_facebook_page(self, mock_debug_token, mock_get):
         ConnectedAccount.objects.create(
+            user=self.user,
             platform="facebook",
             page_id="10",
             page_name="Connected Page",
@@ -212,6 +218,7 @@ class IntegrationsViewTests(TestCase):
     @patch("integrations.views.MetaClient.debug_token")
     def test_meta_pages_catalog_auto_syncs_connectable_instagram_profile(self, mock_debug_token, mock_get):
         ConnectedAccount.objects.create(
+            user=self.user,
             platform="facebook",
             page_id="10",
             page_name="BodyByte",
@@ -247,6 +254,7 @@ class IntegrationsViewTests(TestCase):
     @patch("integrations.views.MetaClient.debug_token")
     def test_meta_pages_catalog_handles_sqlite_lock_gracefully(self, mock_debug_token, mock_get):
         ConnectedAccount.objects.create(
+            user=self.user,
             platform="facebook",
             page_id="10",
             page_name="Connected Page",
@@ -281,6 +289,7 @@ class IntegrationsViewTests(TestCase):
     @patch("integrations.views.MetaClient.debug_token")
     def test_meta_pages_catalog_does_not_use_global_user_token_fallback(self, mock_debug_token, mock_get):
         ConnectedAccount.objects.create(
+            user=self.user,
             platform="facebook",
             page_id="10",
             page_name="Connected Page",
@@ -315,6 +324,7 @@ class IntegrationsViewTests(TestCase):
     @patch("integrations.views.MetaClient.debug_token")
     def test_meta_pages_catalog_uses_session_user_token_fallback(self, mock_debug_token, mock_get):
         ConnectedAccount.objects.create(
+            user=self.user,
             platform="facebook",
             page_id="10",
             page_name="Connected Page",
@@ -350,6 +360,7 @@ class IntegrationsViewTests(TestCase):
     @patch("integrations.views.MetaClient.debug_token")
     def test_meta_pages_catalog_uses_db_user_token_fallback(self, mock_debug_token, mock_get):
         ConnectedAccount.objects.create(
+            user=self.user,
             platform="facebook",
             page_id="10",
             page_name="Connected Page",
@@ -382,6 +393,7 @@ class IntegrationsViewTests(TestCase):
     @patch("integrations.views.MetaClient.debug_token")
     def test_meta_pages_catalog_shows_reconnect_hint_when_user_token_missing(self, mock_debug_token, mock_get):
         ConnectedAccount.objects.create(
+            user=self.user,
             platform="facebook",
             page_id="10",
             page_name="Connected Page",
@@ -414,12 +426,14 @@ class IntegrationsViewTests(TestCase):
         mock_debug_token,
     ):
         old_fb = ConnectedAccount.objects.create(
+            user=self.user,
             platform="facebook",
             page_id="old-fb",
             page_name="Old FB",
             access_token="old-token",
         )
         old_ig = ConnectedAccount.objects.create(
+            user=self.user,
             platform="instagram",
             page_id="old-ig",
             page_name="Old IG",

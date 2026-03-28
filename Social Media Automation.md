@@ -14,6 +14,7 @@ Primary product branding is `Postzyo`, and production rollout is planned on `pos
 - Provide a dedicated Profile page for each logged-in user with Google-synced identity data and editable non-email fields.
 - Provide a dedicated Subscription page with Razorpay checkout for monthly/yearly plan purchase flow.
 - Give every new user a 1-day trial and lock the app after expiry until payment is completed.
+- Isolate connected accounts, tokens, schedules, planning context, and analytics to the logged-in user who owns them.
 - Schedule Facebook, Instagram, or combined FB + IG posts.
 - Publish due posts automatically through Celery workers.
 - Store cached insights snapshots for operator review and future analytics.
@@ -77,6 +78,7 @@ What it does:
 - opens Razorpay checkout popup from UI (`checkout.js`)
 - verifies payment signature via backend `POST /dashboard/subscription/verify-payment/`
 - activates paid entitlement after successful verification
+- keeps a DB-backed `SubscriptionOrder` record for each checkout so verification is replay-safe and does not rely only on cache
 - monthly payment switches the user to `Monthly` and extends access by one calendar month
 - yearly payment switches the user to `Yearly` and extends access by one calendar year
 - returns clear UI success/error messages for order creation and verification steps
@@ -90,7 +92,7 @@ What it does:
 Important runtime meaning:
 - checkout requires `.env` keys: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`
 - currency is controlled by `RAZORPAY_CURRENCY` (default `INR`)
-- order metadata is cached server-side before checkout so verified payments can be mapped back to the correct logged-in user and selected billing cycle
+- order metadata is persisted in both cache and the `dashboard.SubscriptionOrder` table, so verified payments can still be mapped after cache loss and duplicate verification posts do not stack extra time
 - expired users are redirected to a dedicated locked page and can only access subscription/payment routes until payment reactivates the app
 
 ### Profile
@@ -131,6 +133,7 @@ What it shows:
 
 What it does:
 - starts the Meta connect flow
+- only allows the logged-in operator to complete the Meta callback; OAuth state is tied to both cache and the current session/user
 - refreshes the connected account list
 - `Refresh List` now forces fresh reads for both connected accounts list and Meta catalog (`?refresh=1`), so operators see latest reconnect state immediately
 - shows current sync status and Meta page catalog data
@@ -151,6 +154,7 @@ What it does:
 - scheduler queue now shortens transient Meta throttle text into a compact retry note in the table while preserving the full raw detail in the cell tooltip
 - uses user-token fallback for catalog detail checks in this order only: session token -> per-user cache -> encrypted per-user DB token
 - does not reuse another user's cached Meta user-access token for catalog lookups
+- scopes account listing, sync status, catalog rows, force-refresh runs, and downstream scheduler/insights actions to the current user only
 - keeps only latest reconnect profiles active in scheduling/health
 - blocks scheduling from stale or inactive account rows until the profile is refreshed in a new reconnect
 - shows Meta catalog in merged FB_IG rows when linked, and separate rows when unlinked
@@ -173,8 +177,11 @@ What happens:
 - user enters account, platform, content, media, and schedule time
 - scheduler form now auto-resolves and shows `Page Name` from entered `Account ID`; for linked profiles it uses merged format (`FB page + IG profile`) same as Accounts page
 - app validates account freshness and rejects stale account rows
+- scheduler list, retry, stale-processing recovery, and publish-health checks only operate on the logged-in user's rows
 - local Instagram image uploads are auto-optimized to a lighter JPG variant for more reliable Meta download
 - app preflights public media URLs before Instagram publish attempts
+- public media fetch now pins the outbound connection to the already-validated public IP to reduce DNS-rebinding SSRF risk
+- Django rejects uploads larger than `MAX_UPLOAD_FILE_BYTES`
 - Instagram/FB+IG scheduling stores optimized IG-safe media URLs at schedule time (not only at publish time)
 - post is stored in UTC internally
 - Celery beat checks every minute for due posts
@@ -333,6 +340,7 @@ This matters because future AI analysis can use stored snapshots instead of depe
 Model: `integrations.ConnectedAccount`
 
 Stores:
+- owning Django user
 - platform
 - page ID
 - page name
@@ -342,10 +350,27 @@ Stores:
 - created and updated timestamps
 
 Operational meaning:
+- every connected account row belongs to exactly one logged-in user
+- uniqueness is enforced per `(user, platform, page_id)`
 - `updated_at` reflects when the stored connected account row was last refreshed
 - this is used to determine whether a row belongs to the latest reconnect window
 - `is_active` tracks whether a stored row is part of the latest usable reconnect set
 - encrypted token text itself is not used for DB filtering decisions; active/inactive state is managed with `is_active`
+
+### Subscription Orders
+Model: `dashboard.SubscriptionOrder`
+
+Stores:
+- owning Django user
+- Razorpay order ID
+- plan key and billing cycle
+- payment ID once verified
+- verification status and consume timestamp
+- created and updated timestamps
+
+Operational meaning:
+- checkout verification is durable even if cache is cleared or restarted
+- a verified payment POST body can be processed idempotently without extending the same subscription twice
 
 ### Meta User OAuth Token
 Model: `integrations.MetaUserToken`
@@ -363,6 +388,7 @@ Operational meaning:
 - `/signup/` is Google-only onboarding UI.
 - Google OAuth callback creates user with unusable password and logs in via Django session.
 - Google OAuth callback also upserts `UserProfile` seed data (first name, last name, profile picture URL) and initializes a 1-day `Trial` subscription.
+- Google OAuth state is bound to the browser session, so a cached state token alone is not enough to complete login
 - Existing users can continue to use login flow; new account creation happens only through Google OAuth.
 - `/login/` shows both classic login form and Google button (`Continue with Google`) when OAuth env is configured.
 - login screen places Google CTA above username/password fields with a `Recommended` badge and helper hint, so operators naturally use OAuth first.
@@ -372,6 +398,7 @@ Operational meaning:
   - `SESSION_COOKIE_AGE=2592000` (`30` days)
   - `SESSION_EXPIRE_AT_BROWSER_CLOSE=False`
   - `SESSION_SAVE_EVERY_REQUEST=True` so active use keeps extending the cookie window
+- logout is POST-only and rendered as a CSRF-protected form instead of a GET link
 - runtime Meta app config endpoint still exists for controlled recovery/admin use, but it is blocked for normal logged-in users and only available in debug or for staff/admin accounts
 
 ### User Profiles
@@ -387,7 +414,7 @@ Stores:
 - created and updated timestamps
 
 Behavior:
-- every authenticated request refreshes subscription state from expiry date
+- middleware resolves subscription state once per request path where access decisions matter and avoids mutating the profile through a property read
 - legacy `Starter` profile values are normalized to `Trial` during migration/runtime refresh so old placeholder plan names do not remain visible in Profile
 - expired users are blocked from dashboard pages and app APIs except subscription/payment routes
 - locked users are redirected to `/dashboard/subscription/expired/`, which only shows the expiry message and continue button
@@ -524,7 +551,7 @@ This project includes local MCP servers under `mcp_servers/` so Codex or future 
 - SQLite can still hit transient write locks under high parallel activity; PostgreSQL is strongly recommended for production workloads.
 
 ## Test Reliability Notes
-- full Django test suite currently runs with 100 tests (plus optional skips depending on environment).
+- full Django test suite currently runs with 137 tests (plus optional skips depending on environment).
 - MCP helper tests are optional and auto-skip when the external `mcp` Python package is not installed.
 - Instagram local image optimization tests are auto-skip when Pillow (`PIL`) is not installed.
 - publishing task tests clear cache in setup to avoid stale lock-key side effects between tests.
@@ -677,6 +704,8 @@ This should show labels including:
 - if website returns `200 OK` but Compose commands appear empty, check pasted command integrity and direct container status before troubleshooting deployment
 
 ## Live-Readiness Hardening (Django settings)
+- production startup now requires an explicit `SECRET_KEY`; debug-only local runs can generate an ephemeral key, but placeholder production secrets are rejected
+- production startup now also requires `FERNET_KEY` or `FERNET_KEYS`, and encrypted fields support key rotation through multi-key decryption
 - Added explicit production security env toggles in settings:
   - `SECURE_SSL_REDIRECT`
   - `SESSION_COOKIE_SECURE`
@@ -694,7 +723,7 @@ This should show labels including:
   - `SECURE_CROSS_ORIGIN_OPENER_POLICY`
   - `SECURE_CROSS_ORIGIN_RESOURCE_POLICY`
 - Added proxy-aware defaults for VPS reverse-proxy deployment:
-  - `SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")`
+  - `SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")` only when `TRUST_REVERSE_PROXY=True`
   - `USE_X_FORWARDED_HOST = True`
 - Enabled baseline hardening headers:
   - `SECURE_CONTENT_TYPE_NOSNIFF = True`
@@ -704,6 +733,8 @@ This should show labels including:
   - `Cross-Origin-Opener-Policy: same-origin`
   - `Permissions-Policy: camera=(), microphone=(), geolocation=()`
   - `server_tokens off`
+- `/static/` and `/media/` locations now keep the same security headers as the parent server block instead of dropping them
+- app containers run as a non-root user inside Docker
 - Instagram/public-media fetch preflight now validates that media URLs use public http/https hosts only and rejects localhost/private-IP targets before any server-side request is made
 - dashboard JS now escapes dynamic table, AI-insight, scheduler-assist, and planning content before using `innerHTML`, reducing XSS exposure from API/user/AI text
 - `.env.example` now includes these security flags so production env setup is predictable for Postgres + Nginx deployments.
@@ -772,7 +803,7 @@ Step 8:
 - Compliance + Security
   - production secret manager support (instead of raw `.env`)
   - audit logs for configuration and critical operations
-  - role/ownership scoping so connected accounts, schedules, and analytics are isolated per customer/workspace
+  - workspace/team RBAC above the current per-user ownership isolation
   - backup/restore + retention lifecycle for snapshots/media
 
 Step 9:
