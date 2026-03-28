@@ -584,6 +584,7 @@ This project includes local MCP servers under `mcp_servers/` so Codex or future 
 - Added `deploy/prod/install_on_vps.sh`:
   - installs Docker, Nginx, Certbot, and Git on Ubuntu VPS
   - clones/updates repo under `/opt/apps/postzyo`
+  - creates `.env` from `.env.example` when missing, so real production secrets should be filled in immediately on first setup
   - writes host Nginx site for domain proxying
   - runs Docker production stack, migrations, collectstatic
   - attempts SSL certificate issuance with Certbot
@@ -642,7 +643,7 @@ Run these when you want a fast production sanity check.
 - Redis health:
   - `docker exec postzyo-redis-1 redis-cli ping`
 - PostgreSQL health:
-  - `docker exec postzyo-db-1 pg_isready -U postgres`
+  - `docker exec postzyo-db-1 pg_isready -U social_admin`
 - Celery worker health:
   - `docker exec postzyo-worker-1 celery -A social_automation inspect ping`
 - container Nginx config health:
