@@ -99,7 +99,7 @@ def _optimize_local_image_for_instagram(media_url: str) -> str:
                 output.seek(0)
                 output.truncate(0)
                 image.save(output, format="JPEG", quality=quality, optimize=True, progressive=True)
-                if output.tell() <= INSTAGRAM_IMAGE_TARGET_BYTES or quality <= 68:
+                if output.tell() <= INSTAGRAM_IMAGE_TARGET_BYTES or quality <= 75:
                     break
                 quality -= 7
 

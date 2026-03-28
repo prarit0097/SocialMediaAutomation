@@ -1,7 +1,9 @@
 import logging
+import re
 from datetime import timedelta
 
 from celery import shared_task
+from celery.exceptions import SoftTimeLimitExceeded
 from django.conf import settings
 from django.db import DatabaseError, transaction
 from django.core.cache import cache
@@ -113,11 +115,16 @@ def process_due_posts(run_inline: bool = False):
         due_posts = _claim_due_posts_without_skip_locked()
 
     for post in due_posts:
-        if run_inline:
-            publish_post_task(post.id)
-            continue
-        # Keep due publishing jobs ahead of heavy background analytics work.
-        publish_post_task.apply_async(args=[post.id], priority=9)
+        try:
+            if run_inline:
+                publish_post_task(post.id)
+                continue
+            # Keep due publishing jobs ahead of heavy background analytics work.
+            publish_post_task.apply_async(args=[post.id], priority=9)
+        except Exception as exc:  # noqa: BLE001
+            logger.error(
+                "failed to dispatch post id=%s error=%s", post.id, exc,
+            )
 
     return {"queued": len(due_posts)}
 
@@ -125,7 +132,8 @@ def process_due_posts(run_inline: bool = False):
 @shared_task(bind=True, max_retries=6, default_retry_delay=60, name="publishing.tasks.publish_post_task")
 def publish_post_task(self, post_id: int):
     lock_key = f"publish_task_lock:{post_id}"
-    if not cache.add(lock_key, timezone.now().isoformat(), timeout=600):
+    lock_timeout = max(120, int(getattr(settings, "CELERY_TASK_TIME_LIMIT", 480)))
+    if not cache.add(lock_key, timezone.now().isoformat(), timeout=lock_timeout):
         return {"status": "locked", "post_id": post_id}
 
     ig_lane_locked = False
@@ -180,17 +188,18 @@ def publish_post_task(self, post_id: int):
             logger.exception("post failed after retries id=%s", post.id)
             return {"status": "failed_after_retries", "post_id": post.id}
         message = str(exc).lower()
-        if "code=4" in message or "code=17" in message or "code=32" in message or "code=613" in message:
-            # Graph app/page rate-limit needs longer cool-down.
-            countdown = min(1800, 2 ** attempts * 90)
+        if re.search(r'code=(?:2|4|17|32|613)(?:\D|$)', message):
+            # Graph app/page rate-limit: moderate backoff, not exponential explosion.
+            countdown = min(300, 60 + attempts * 45)
+            global_cooldown = min(90, 30 + attempts * 15)
             if post.platform == INSTAGRAM:
-                cache.set(IG_GLOBAL_COOLDOWN_KEY, timezone.now().isoformat(), timeout=countdown)
+                cache.set(IG_GLOBAL_COOLDOWN_KEY, timezone.now().isoformat(), timeout=global_cooldown)
             user_message = (
-                f"Meta is temporarily pacing requests. Auto-retry in {countdown}s. "
+                f"Meta is pacing requests. Auto-retry in {countdown}s. "
                 f"Last Meta response: {exc}"
             )
         else:
-            countdown = min(900, 2 ** attempts * 30)
+            countdown = min(300, 45 + attempts * 30)
             user_message = (
                 f"Temporary Meta delay. Auto-retry in {countdown}s. "
                 f"Last Meta response: {exc}"
@@ -210,6 +219,21 @@ def publish_post_task(self, post_id: int):
         post.save(update_fields=["status", "error_message", "updated_at"])
         _clear_publish_attempts(post.id)
         logger.exception("permanent error post id=%s", post.id)
+    except SoftTimeLimitExceeded:
+        # Celery killed the task for exceeding the soft time limit.  This
+        # typically happens during IG media processing (wait-for-ready).
+        # Requeue instead of failing so the next attempt can finish.
+        if post is not None:
+            retry_delay = 90
+            post.status = POST_STATUS_PENDING
+            post.scheduled_for = timezone.now() + timedelta(seconds=retry_delay)
+            post.error_message = (
+                f"Publishing timed out (Celery soft limit). Auto-retry in {retry_delay}s."
+            )
+            post.save(update_fields=["status", "scheduled_for", "error_message", "updated_at"])
+            logger.warning("soft time limit exceeded post id=%s, requeued", post.id)
+            return {"status": "requeued_timeout", "post_id": post.id, "retry_in": retry_delay}
+        logger.exception("soft time limit exceeded before post load post_id=%s", post_id)
     except Exception as exc:  # noqa: BLE001
         if post is None:
             logger.exception("unexpected publish failure before post load post_id=%s", post_id)

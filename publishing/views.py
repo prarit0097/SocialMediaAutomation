@@ -28,7 +28,7 @@ from .services import is_invalid_token_error, token_reconnect_message
 from .tasks import process_due_posts
 
 logger = logging.getLogger("publishing")
-ALLOWED_MEDIA_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".mov", ".webm", ".m4v"}
+ALLOWED_MEDIA_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".mp4", ".mov", ".webm", ".m4v", ".avi"}
 
 
 def _bad_request(message: str, details: dict | None = None) -> JsonResponse:
@@ -157,8 +157,9 @@ def _prepare_media_for_instagram_schedule(media_url: str | None) -> tuple[str | 
 def _auto_dispatch_due_posts_guarded() -> None:
     """
     Self-healing fallback:
-    If beat misses a cycle and due pending posts exist, kick dispatcher from API path
-    with a short cache lock to avoid repeated duplicate dispatch.
+    If beat misses a cycle and due pending posts exist, kick dispatcher via
+    Celery.  Only falls back to inline execution (single post) when Celery
+    itself is unreachable, to avoid blocking the HTTP request for minutes.
     """
     now = timezone.now()
     has_due_pending = ScheduledPost.objects.filter(status=POST_STATUS_PENDING, scheduled_for__lte=now).exists()
@@ -170,14 +171,20 @@ def _auto_dispatch_due_posts_guarded() -> None:
         return
 
     try:
-        # Fallback path runs inline from API thread so scheduler still progresses
-        # even when celery beat/worker is unavailable.
-        process_due_posts(run_inline=True)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("auto dispatcher inline fallback failed error=%s", str(exc))
+        # Preferred: dispatch via Celery so the HTTP request returns fast.
+        process_due_posts.apply_async(priority=9)
+    except Exception:  # noqa: BLE001
+        # Celery/Redis unreachable — last-resort inline for at most 1 FB post
+        # (never IG inline since IG publishing can block for several minutes).
+        try:
+            process_due_posts(run_inline=True)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("auto dispatcher inline fallback failed error=%s", str(exc))
 
 
-def _recover_stale_processing_posts(user=None, stale_minutes: int = 5) -> int:
+def _recover_stale_processing_posts(user=None, stale_minutes: int = 12) -> int:
+    # stale_minutes must exceed the Celery hard time limit (default 480s = 8 min)
+    # so we never reset a post that a worker is still actively processing.
     lock_key = f"publishing:recover_stale_processing_posts:{getattr(user, 'id', 'global')}"
     if not cache.add(lock_key, timezone.now().isoformat(), timeout=30):
         return 0
@@ -196,6 +203,7 @@ def _recover_stale_processing_posts(user=None, stale_minutes: int = 5) -> int:
         ScheduledPost.objects.filter(id__in=stale_ids).update(
             status=POST_STATUS_PENDING,
             error_message="Recovered from stale processing state; auto re-queued.",
+            updated_at=timezone.now(),
         )
         logger.warning("recovered stale processing posts count=%s ids=%s", len(stale_ids), stale_ids[:20])
         return len(stale_ids)
@@ -271,21 +279,24 @@ def schedule_post(request: HttpRequest) -> JsonResponse:
             if invalid_token_response:
                 return invalid_token_response
 
+        # Stagger IG post 30s after FB to avoid simultaneous Meta API
+        # pressure that triggers rate-limiting on the Instagram side.
+        ig_offset = timedelta(seconds=30)
         targets = [
-            (fb_account, FACEBOOK),
-            (ig_account, INSTAGRAM),
+            (fb_account, FACEBOOK, dt),
+            (ig_account, INSTAGRAM, dt + ig_offset),
         ]
 
         created_posts = []
         try:
             with transaction.atomic():
-                for target_account, target_platform in targets:
+                for target_account, target_platform, target_dt in targets:
                     post = ScheduledPost(
                         account=target_account,
                         platform=target_platform,
                         message=message,
                         media_url=media_url,
-                        scheduled_for=dt,
+                        scheduled_for=target_dt,
                     )
                     post.save()
                     created_posts.append(post)

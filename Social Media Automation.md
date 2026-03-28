@@ -181,6 +181,7 @@ What happens:
 - app validates account freshness and rejects stale account rows
 - scheduler list, retry, stale-processing recovery, and publish-health checks only operate on the logged-in user's rows
 - local Instagram image uploads are auto-optimized to a lighter JPG variant for more reliable Meta download
+- local Instagram image optimization now keeps a slightly higher floor quality so large images compress enough for Meta reliability without degrading too aggressively
 - app preflights public media URLs before Instagram publish attempts
 - public media fetch now pins the outbound connection to the already-validated public IP to reduce DNS-rebinding SSRF risk
 - Django rejects uploads larger than `MAX_UPLOAD_FILE_BYTES`
@@ -199,16 +200,21 @@ What happens:
 - Instagram video / reel publishing waits for container processing to finish before final publish
 - Meta media download timeouts are treated as transient and automatically retried
 - Instagram "media not ready to publish" responses (`code=9007`, `subcode=2207027`) are treated as transient and retried automatically
-- Meta Graph application/page rate-limit responses (`code=4`, plus common transient throttle codes) are treated as transient instead of permanent failures
+- Meta Graph application/page rate-limit responses (`code=2`, `code=4`, plus common transient throttle codes/subcodes) are treated as transient instead of permanent failures
 - transient publish errors no longer stay stuck as long `processing`; row is moved back to `pending` with visible auto-retry message/countdown context
 - transient publish retries now also move `scheduled_for` forward by the retry cooldown, preventing immediate re-pick loops each minute
 - Instagram publish now uses a global lane lock to reduce parallel IG bursts; if lane is busy, post is re-queued with short delay instead of hammering Meta and hitting app-level throttles
 - when Instagram gets app-level throttle (`code=4`), scheduler now sets a temporary global IG cooldown window so due IG jobs are held briefly instead of being picked repeatedly into processing loops
 - Instagram media-ready polling now uses configurable slower defaults (`META_IG_READY_TIMEOUT`, `META_IG_READY_POLL_INTERVAL`) to reduce Graph status-check pressure
 - Instagram media-ready polling now tolerates transient API failures/rate limits with backoff and continues polling instead of immediate hard-fail
+- Instagram publish now fails fast with a clear permanent error if media URL or IG user ID is missing, instead of entering a vague downstream failure path
+- Instagram video publishing explicitly requests `share_to_feed=true` so Reels also surface in the main feed grid
+- combined FB + IG scheduling now offsets the Instagram leg by 30 seconds so both posts do not hit Meta at the same instant
 - media preflight stream read timeouts (while validating public URL) are now classified as transient, so scheduler auto-retry path handles temporary ngrok/network instability instead of immediate hard-fail
 - publishing retries now use longer cooldown for Graph rate-limit errors to reduce repeated burst failures during multi-profile scheduling
 - failed Instagram retries also re-apply IG media optimization before requeueing
+- if Celery/Redis dispatch is temporarily unavailable, scheduler fallback still tries to progress due posts but prefers queue dispatch over long inline request blocking
+- stale `processing` rows are only auto-recovered after a longer safety window that exceeds the Celery task hard limit, so live IG publishes are not reset too early
 - after a successful schedule action, UI shows an immediate toast notification with the scheduled local date-time
 - after successful scheduling, Create Scheduled Post form auto-clears so operators can start the next post without old field confusion
 - Scheduled Queue table trims long `message` text to 4 lines for clean layout while keeping full content accessible via hover tooltip
@@ -322,6 +328,7 @@ Important runtime meaning:
 - frequency: every minute
 - purpose: move due scheduled posts into publish tasks
 - priority behavior: publishing tasks run at higher queue priority than heavy analytics refresh tasks
+- dispatcher errors are logged per-post so one failed enqueue does not abort the whole due batch
 
 ### Daily Heavy Insights Automation
 - task: `analytics.tasks.queue_daily_heavy_insight_refresh`
@@ -474,6 +481,9 @@ Stores:
   - `CELERY_WORKER_MAX_TASKS_PER_CHILD`
   - `CELERY_TASK_SOFT_TIME_LIMIT`, `CELERY_TASK_TIME_LIMIT`
   - `BULK_REFRESH_STALE_MINUTES`
+- current publishing defaults are tuned for slower Instagram processing windows:
+  - `CELERY_TASK_SOFT_TIME_LIMIT=420`
+  - `CELERY_TASK_TIME_LIMIT=480`
 - Restart web + worker processes after config changes so new concurrency controls apply.
 
 ### One-command Celery Startup (Windows)

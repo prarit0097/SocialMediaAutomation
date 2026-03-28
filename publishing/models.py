@@ -45,7 +45,13 @@ class ScheduledPost(models.Model):
             raise ValidationError({"media_url": "Instagram posts require media_url."})
 
     def save(self, *args, **kwargs):
-        self.full_clean()
+        # Skip full validation on partial updates (status transitions, error
+        # messages, etc.) — running full_clean() here would reject the save
+        # if any *unrelated* field fails validation, leaving the post stuck
+        # in a stale state.  Full validation still runs for new rows and
+        # full saves (no update_fields).
+        if not kwargs.get("update_fields"):
+            self.full_clean()
         super().save(*args, **kwargs)
 
     def __str__(self) -> str:

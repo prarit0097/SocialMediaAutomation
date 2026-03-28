@@ -10,8 +10,8 @@ from django.utils import timezone
 from core.constants import META_SCOPES
 from core.exceptions import MetaAPIError, MetaPermanentError, MetaTransientError
 
-TRANSIENT_GRAPH_ERROR_CODES = {4, 17, 32, 613}
-TRANSIENT_GRAPH_ERROR_SUBCODES = {2207003, 2207027}
+TRANSIENT_GRAPH_ERROR_CODES = {2, 4, 17, 32, 613}
+TRANSIENT_GRAPH_ERROR_SUBCODES = {2207003, 2207027, 2207051}
 MAX_PAGING_REQUESTS = 100
 
 
@@ -151,7 +151,10 @@ class MetaClient:
             "published": "true",
         }
         if caption:
-            payload["caption"] = caption
+            # Graph API /{page}/photos uses "message" for the feed story text,
+            # NOT "caption".  Using the wrong key causes the post text / hashtags
+            # to be silently dropped, destroying reach and engagement.
+            payload["message"] = caption
 
         return self._post(
             f"/{page_id}/photos",
@@ -194,6 +197,10 @@ class MetaClient:
             # IG Graph now requires REELS for feed video publishing.
             payload["media_type"] = "REELS"
             payload["video_url"] = media_url
+            # Explicitly share Reel to the profile feed grid for maximum
+            # visibility.  Without this, some API versions only show the
+            # Reel in the Reels tab, hurting reach significantly.
+            payload["share_to_feed"] = "true"
         else:
             payload["image_url"] = media_url
         return self._post(f"/{ig_user_id}/media", payload)
@@ -660,7 +667,7 @@ class MetaClient:
             except requests.RequestException as exc:
                 last_error = exc
                 if attempt < attempts:
-                    time.sleep(0.35 * attempt)
+                    time.sleep(1.0 + attempt * 0.5)
                     continue
                 raise MetaTransientError(
                     f"Meta API network error after {attempts} attempts: {exc}"
@@ -683,7 +690,7 @@ class MetaClient:
                 return self._get(path, params, timeout=timeout)
             except MetaTransientError:
                 if attempt < attempts:
-                    time.sleep(0.45 * attempt)
+                    time.sleep(1.0 + attempt * 0.5)
                     continue
                 raise
 
@@ -711,7 +718,13 @@ class MetaClient:
 
     def _handle_response(self, response: requests.Response) -> dict:
         if response.status_code < 400:
-            return response.json()
+            try:
+                return response.json()
+            except (ValueError, requests.exceptions.JSONDecodeError):
+                raise MetaTransientError(
+                    f"Meta returned HTTP {response.status_code} with non-JSON body",
+                    status_code=response.status_code,
+                )
 
         payload = {}
         try:
@@ -736,13 +749,17 @@ class MetaClient:
             details.append(f"user_msg={user_msg}")
         if details:
             message = f"{message} ({', '.join(details)})"
+        lower_msg = (message or "").lower()
+        lower_user_msg = (user_msg or "").lower()
         if (
             code == -2
             or code in TRANSIENT_GRAPH_ERROR_CODES
             or subcode in TRANSIENT_GRAPH_ERROR_SUBCODES
             or (user_title or "").lower() == "timeout"
             or code == 9007
-            or "media is not ready" in (user_msg or "").lower()
+            or "media is not ready" in lower_user_msg
+            or "media is not ready" in lower_msg
+            or "try again later" in lower_msg
         ):
             raise MetaTransientError(message, status_code=response.status_code, payload=payload)
         if response.status_code >= 500 or response.status_code == 429:

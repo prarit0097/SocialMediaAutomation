@@ -87,32 +87,51 @@ def publish_scheduled_post(post):
         logger.info("facebook text publish response post id=%s response=%s", post.id, result)
         return result.get("id")
 
-    prepared_media_url = prepare_instagram_media_url(post.media_url or "")
+    if not (post.media_url or "").strip():
+        raise MetaPermanentError(
+            "Instagram posts require a media URL (image or video). "
+            "Add media before scheduling an Instagram post."
+        )
+
+    ig_user_id = account.ig_user_id or account.page_id
+    if not (ig_user_id or "").strip():
+        raise MetaPermanentError(
+            "Connected account is missing an Instagram User ID. "
+            "Reconnect the profile from Accounts -> Connect Facebook + Instagram."
+        )
+
+    prepared_media_url = prepare_instagram_media_url(post.media_url)
     if prepared_media_url != post.media_url:
         post.media_url = prepared_media_url
         post.save(update_fields=["media_url", "updated_at"])
 
-    ensure_public_media_fetchable(post.media_url or "")
+    ensure_public_media_fetchable(post.media_url)
 
-    ext = media_extension(post.media_url or "")
+    ext = media_extension(post.media_url)
     media_kind = "video" if ext in VIDEO_EXTENSIONS else "image"
     if ext and media_kind == "image" and ext not in IMAGE_EXTENSIONS:
         raise MetaPermanentError(f"Unsupported Instagram media type: {ext}")
 
     creation = client.create_instagram_media(
-        ig_user_id=account.ig_user_id or account.page_id,
+        ig_user_id=ig_user_id,
         page_access_token=account.access_token,
         media_url=post.media_url,
         caption=post.message or "",
         media_kind=media_kind,
     )
+    creation_id = creation.get("id")
+    if not creation_id:
+        raise MetaPermanentError(
+            f"Instagram media container creation returned no ID. Response: {creation}"
+        )
+
     client.wait_for_instagram_media_ready(
-        creation_id=creation.get("id"),
+        creation_id=creation_id,
         page_access_token=account.access_token,
     )
     publish_result = client.publish_instagram_media(
-        ig_user_id=account.ig_user_id or account.page_id,
+        ig_user_id=ig_user_id,
         page_access_token=account.access_token,
-        creation_id=creation.get("id"),
+        creation_id=creation_id,
     )
     return publish_result.get("id")
