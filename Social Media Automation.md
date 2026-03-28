@@ -590,6 +590,7 @@ This project includes local MCP servers under `mcp_servers/` so Codex or future 
   - attempts SSL certificate issuance with Certbot
 - Added `deploy/prod/update_on_vps.sh`:
   - pulls latest code and performs rolling update (`up -d --build`, migrate, collectstatic)
+- Docker image build no longer runs `collectstatic`; static collection happens during deploy/update after the app containers start with real runtime env vars
 - Upgraded app Nginx config (`deploy/nginx/nginx.conf`) to:
   - support larger upload limits
   - directly serve `/static/` and `/media/`

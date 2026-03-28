@@ -18,7 +18,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . /app/
 RUN chown -R appuser:appuser /app /home/appuser
 
-RUN python manage.py collectstatic --noinput
 USER appuser
 
 CMD ["gunicorn", "social_automation.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3"]
