@@ -81,6 +81,7 @@ What it does:
 - keeps a DB-backed `SubscriptionOrder` record for each checkout so verification is replay-safe and does not rely only on cache
 - monthly payment switches the user to `Monthly` and extends access by one calendar month
 - yearly payment switches the user to `Yearly` and extends access by one calendar year
+- same-cycle renewals extend from the current paid expiry, while switching between monthly/yearly restarts extension from today so plan label and duration stay aligned
 - returns clear UI success/error messages for order creation and verification steps
 - redirects the user back into the app after successful payment verification
 - when Monthly plan is active, only the monthly button is disabled (yearly upgrade allowed)
@@ -141,6 +142,7 @@ What it does:
 - force-refresh-all now uses persistent per-user run tracking with live progress (%) and completion state, so the button stays disabled until that user's run finishes (even after page reload or re-login)
 - force-refresh-all now asks for operator confirmation before starting, because full refresh can take significant time based on connected FB/IG profile count
 - force-refresh run status is now auto-reconciled: if snapshot storage succeeds but callback bookkeeping misses, counters self-heal and stale `running` states are auto-finalized
+- a reconciled/completed force-refresh run no longer blocks the next refresh request for that same user
 - force-refresh status endpoint is lock-safe for SQLite contention (`database is locked`): temporary DB locks no longer break UI polling with 500 responses
 - Accounts UI shows a one-time toast when a previously stuck force-refresh run is auto-recovered/finalized
 - accounts list refresh now preserves the last good table if an upstream request is interrupted or returns an unreadable HTML error page, so operators see a retry notice instead of a blank/broken table
@@ -240,6 +242,7 @@ What it supports:
 - item updates (including drag/drop date movement)
 - OpenAI-backed content planner endpoint at `POST /api/planning/ai-calendar/`
 - optional profile-aware planning when account ID is provided and latest snapshot/post history exists
+- connected-account context is accepted only when that account belongs to the logged-in user
 
 Important runtime meaning:
 - planning items are editorial plans, separate from `ScheduledPost` publish queue
@@ -269,6 +272,7 @@ What it supports:
 - combined FB + IG view for linked assets
 - newest-first published post sorting by `published_at`
 - full-width published posts section with comparison table below it
+- if no stored snapshot exists yet, the API returns a placeholder payload immediately and queues a background refresh instead of crashing or waiting on a slow live pull
 - resilient Facebook published-post fetch: if rich fields are rejected for a page, API auto-falls back to minimal field set so FB rows still appear in Published Posts
 - API assist endpoint for scheduler guidance: `GET /api/insights/scheduler-assist/<account_id>/`
 - scheduler assist now combines best posting window, strongest recent format, and next likely topic direction per platform
@@ -308,6 +312,7 @@ What it supports:
 
 Important runtime meaning:
 - AI advice is generated from available snapshot/post data; missing metrics are marked as unavailable
+- operator focus text is treated as untrusted preference input and sanitized/truncated before prompt assembly
 - OpenAI key must be configured in `.env` (`OPENAI_API_KEY`) for AI insights generation
 
 ## Background Automation
@@ -356,6 +361,7 @@ Operational meaning:
 - this is used to determine whether a row belongs to the latest reconnect window
 - `is_active` tracks whether a stored row is part of the latest usable reconnect set
 - encrypted token text itself is not used for DB filtering decisions; active/inactive state is managed with `is_active`
+- encrypted token values now survive Django model/form/admin round-trips without accidental double-encryption
 
 ### Subscription Orders
 Model: `dashboard.SubscriptionOrder`
@@ -534,8 +540,12 @@ This project includes local MCP servers under `mcp_servers/` so Codex or future 
 ## Operational Requirements
 - Meta app permissions must remain valid.
 - `META_APP_ID`, `META_APP_SECRET`, and `META_REDIRECT_URI` must be set in `.env` or the deployed environment for Meta connect flows to work.
+- production must set an explicit `SECRET_KEY`; placeholder secrets are rejected outside debug mode
+- production must set `FERNET_KEY` or `FERNET_KEYS` so encrypted Meta tokens remain decryptable across restarts and rotations
 - Instagram publishing requires public HTTPS media URLs.
 - `PUBLIC_BASE_URL` must point to a reachable public HTTPS base.
+- `TRUST_REVERSE_PROXY=True` should only be enabled when the deployment is actually behind a trusted proxy that sets `X-Forwarded-Proto`
+- `MAX_UPLOAD_FILE_BYTES` controls the maximum accepted media upload size in Django
 - Celery worker and Celery beat must be running for scheduled publishing and daily heavy insights automation.
 - Celery workers must be restarted after Celery config changes so new prefetch/priority behavior is applied.
 - OpenAI credentials (`OPENAI_API_KEY`) must be set for AI Insights report generation.
@@ -547,6 +557,7 @@ This project includes local MCP servers under `mcp_servers/` so Codex or future 
   - `RAZORPAY_KEY_ID`
   - `RAZORPAY_KEY_SECRET`
   - optional `RAZORPAY_CURRENCY` (default `INR`)
+- local Docker Compose now expects env-driven Postgres and Redis credentials; Redis uses password auth and host port bindings stay on loopback
 - reconnecting a subset of pages does not automatically refresh every older stored account row.
 - SQLite can still hit transient write locks under high parallel activity; PostgreSQL is strongly recommended for production workloads.
 
@@ -569,6 +580,7 @@ This project includes local MCP servers under `mcp_servers/` so Codex or future 
   - serves Django via Gunicorn + app Nginx
   - binds app Nginx on loopback (`127.0.0.1:${APP_INTERNAL_PORT}`) so host reverse proxy can route multiple apps safely on one VPS
   - includes persistent Docker volumes for DB, Redis AOF, static, and media
+- local/dev `docker-compose.yml` also mounts shared media storage into web, worker, and nginx so uploaded media remains reachable across services
 - Added `deploy/prod/install_on_vps.sh`:
   - installs Docker, Nginx, Certbot, and Git on Ubuntu VPS
   - clones/updates repo under `/opt/apps/postzyo`
