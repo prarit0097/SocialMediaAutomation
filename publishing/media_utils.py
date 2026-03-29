@@ -24,7 +24,10 @@ except ImportError:  # pragma: no cover
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".m4v", ".avi"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
 INSTAGRAM_IMAGE_MAX_SIZE = (1080, 1350)
-INSTAGRAM_IMAGE_TARGET_BYTES = 1_500_000
+INSTAGRAM_IMAGE_MIN_WIDTH = 320
+INSTAGRAM_ASPECT_RATIO_MIN = 0.8    # 4:5 portrait (most portrait allowed)
+INSTAGRAM_ASPECT_RATIO_MAX = 1.91   # 1.91:1 landscape (most landscape allowed)
+INSTAGRAM_IMAGE_TARGET_BYTES = 4_000_000  # IG allows 8MB; 4MB balances quality vs URL-fetch speed
 INSTAGRAM_VIDEO_MAX_BYTES = 100 * 1024 * 1024
 MEDIA_FETCH_TIMEOUT_SECONDS = 12
 ALLOWED_PUBLIC_MEDIA_SCHEMES = {"http", "https"}
@@ -77,31 +80,71 @@ def _optimize_local_image_for_instagram(media_url: str) -> str:
         with Image.open(io.BytesIO(source_bytes)) as image:
             if getattr(image, "is_animated", False):
                 return media_url
+
+            modified = False
             image = ImageOps.exif_transpose(image)
+
+            # --- Mode conversion (IG requires RGB JPEG) ---
             if image.mode in {"RGBA", "LA", "P"}:
                 base = Image.new("RGB", image.size, (255, 255, 255))
                 alpha = image.convert("RGBA")
                 base.paste(alpha, mask=alpha.getchannel("A"))
                 image = base
-            else:
+                modified = True
+            elif image.mode != "RGB":
                 image = image.convert("RGB")
+                modified = True
 
+            # --- Aspect ratio enforcement (Meta: 4:5 to 1.91:1) ---
+            # Images outside this range get cropped badly by Instagram or
+            # rejected entirely.  Center-crop to nearest valid ratio.
+            w, h = image.size
+            if h > 0:
+                ratio = w / h
+                if ratio < INSTAGRAM_ASPECT_RATIO_MIN:
+                    # Too tall → crop top/bottom to 4:5
+                    new_h = int(w / INSTAGRAM_ASPECT_RATIO_MIN)
+                    top = (h - new_h) // 2
+                    image = image.crop((0, top, w, top + new_h))
+                    modified = True
+                elif ratio > INSTAGRAM_ASPECT_RATIO_MAX:
+                    # Too wide → crop sides to 1.91:1
+                    new_w = int(h * INSTAGRAM_ASPECT_RATIO_MAX)
+                    left = (w - new_w) // 2
+                    image = image.crop((left, 0, left + new_w, h))
+                    modified = True
+
+            # --- Minimum dimension (Meta: 320px width minimum) ---
+            if image.width < INSTAGRAM_IMAGE_MIN_WIDTH:
+                scale = INSTAGRAM_IMAGE_MIN_WIDTH / image.width
+                image = image.resize(
+                    (INSTAGRAM_IMAGE_MIN_WIDTH, int(image.height * scale)),
+                    Image.Resampling.LANCZOS,
+                )
+                modified = True
+
+            # --- Maximum dimension (1080×1350) ---
             if image.width > INSTAGRAM_IMAGE_MAX_SIZE[0] or image.height > INSTAGRAM_IMAGE_MAX_SIZE[1]:
                 image.thumbnail(INSTAGRAM_IMAGE_MAX_SIZE, Image.Resampling.LANCZOS)
+                modified = True
 
+            # Early return only if nothing was modified AND file is already
+            # a small-enough JPEG.  Previously this returned the original
+            # URL even after in-memory crop/resize, losing those changes.
             original_size = len(source_bytes)
-            if ext in {".jpg", ".jpeg"} and original_size <= INSTAGRAM_IMAGE_TARGET_BYTES:
+            if not modified and ext in {".jpg", ".jpeg"} and original_size <= INSTAGRAM_IMAGE_TARGET_BYTES:
                 return media_url
 
+            # --- JPEG compression — start high quality, step down gently ---
             output = io.BytesIO()
-            quality = 85
+            quality = 90
             while True:
                 output.seek(0)
                 output.truncate(0)
                 image.save(output, format="JPEG", quality=quality, optimize=True, progressive=True)
-                if output.tell() <= INSTAGRAM_IMAGE_TARGET_BYTES or quality <= 75:
+                if output.tell() <= INSTAGRAM_IMAGE_TARGET_BYTES or quality <= 78:
                     break
-                quality -= 7
+                quality -= 4
 
             derived_path = f"{os.path.splitext(storage_path)[0]}_ig.jpg"
             return _save_public_media_file(derived_path, output.getvalue())

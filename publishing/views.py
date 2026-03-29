@@ -265,7 +265,10 @@ def schedule_post(request: HttpRequest) -> JsonResponse:
     if platform == "both":
         if not media_url:
             return _bad_request("media_url or media_file is required when platform is both")
-        media_url, media_error = _prepare_media_for_instagram_schedule(media_url)
+        # Keep the original URL for Facebook (full quality, direct upload)
+        # and prepare a separate optimized URL for Instagram.
+        fb_media_url = media_url
+        ig_media_url, media_error = _prepare_media_for_instagram_schedule(media_url)
         if media_error:
             return media_error
         fb_account, ig_account, resolve_error = _resolve_dual_accounts(account)
@@ -283,19 +286,19 @@ def schedule_post(request: HttpRequest) -> JsonResponse:
         # pressure that triggers rate-limiting on the Instagram side.
         ig_offset = timedelta(seconds=30)
         targets = [
-            (fb_account, FACEBOOK, dt),
-            (ig_account, INSTAGRAM, dt + ig_offset),
+            (fb_account, FACEBOOK, dt, fb_media_url),
+            (ig_account, INSTAGRAM, dt + ig_offset, ig_media_url),
         ]
 
         created_posts = []
         try:
             with transaction.atomic():
-                for target_account, target_platform, target_dt in targets:
+                for target_account, target_platform, target_dt, target_media in targets:
                     post = ScheduledPost(
                         account=target_account,
                         platform=target_platform,
                         message=message,
-                        media_url=media_url,
+                        media_url=target_media,
                         scheduled_for=target_dt,
                     )
                     post.save()

@@ -1,4 +1,7 @@
 import logging
+import os
+
+from django.core.files.storage import default_storage
 
 from core.constants import FACEBOOK
 from core.exceptions import MetaPermanentError
@@ -9,6 +12,7 @@ from publishing.media_utils import (
     ensure_public_media_fetchable,
     media_extension,
     prepare_instagram_media_url,
+    resolve_local_media_storage_path,
 )
 
 logger = logging.getLogger("publishing")
@@ -35,6 +39,28 @@ def token_reconnect_message(account, original_error: str | Exception) -> str:
     )
 
 
+def _read_local_media(media_url: str) -> tuple[bytes | None, str | None]:
+    """Read file bytes from local storage for direct multipart upload to Meta."""
+    storage_path = resolve_local_media_storage_path(media_url)
+    if not storage_path or not default_storage.exists(storage_path):
+        return None, None
+    try:
+        with default_storage.open(storage_path, "rb") as fh:
+            return fh.read(), os.path.basename(storage_path)
+    except OSError:
+        return None, None
+
+
+def _extract_video_title(caption: str | None) -> str | None:
+    """Use first line of caption (max 100 chars) as FB video title."""
+    if not caption:
+        return None
+    first_line = caption.split("\n", 1)[0].strip()
+    if not first_line:
+        return None
+    return first_line[:100]
+
+
 def publish_scheduled_post(post):
     client = MetaClient()
     account = post.account
@@ -44,18 +70,31 @@ def publish_scheduled_post(post):
             ext = media_extension(post.media_url)
             caption = (post.message or "").strip() or None
 
+            # Try to read the local file for direct multipart upload.
+            # Direct upload gives Meta the original file at full quality
+            # instead of making their CDN re-fetch from our server, which
+            # is how the native FB/IG apps work and results in higher
+            # engagement because Meta processes direct uploads with full
+            # fidelity (no re-compression, no fetch timeouts, no CDN cache
+            # of a lower-quality proxy version).
+            source_bytes, source_filename = _read_local_media(post.media_url)
+
             if ext in VIDEO_EXTENSIONS:
+                title = _extract_video_title(caption)
                 logger.info(
-                    "publishing facebook video post id=%s page_id=%s media_url=%s",
+                    "publishing facebook video post id=%s page_id=%s upload=%s",
                     post.id,
                     account.page_id,
-                    post.media_url,
+                    "direct" if source_bytes else "url",
                 )
                 result = client.publish_facebook_video(
                     page_id=account.page_id,
                     page_access_token=account.access_token,
                     video_url=post.media_url,
                     description=caption,
+                    title=title,
+                    source_bytes=source_bytes,
+                    source_filename=source_filename,
                 )
                 logger.info("facebook video publish response post id=%s response=%s", post.id, result)
                 return result.get("post_id") or result.get("id")
@@ -64,16 +103,18 @@ def publish_scheduled_post(post):
                 raise MetaPermanentError(f"Unsupported Facebook media type: {ext}")
 
             logger.info(
-                "publishing facebook photo post id=%s page_id=%s media_url=%s",
+                "publishing facebook photo post id=%s page_id=%s upload=%s",
                 post.id,
                 account.page_id,
-                post.media_url,
+                "direct" if source_bytes else "url",
             )
             result = client.publish_facebook_photo(
                 page_id=account.page_id,
                 page_access_token=account.access_token,
                 image_url=post.media_url,
                 caption=caption,
+                source_bytes=source_bytes,
+                source_filename=source_filename,
             )
             logger.info("facebook photo publish response post id=%s response=%s", post.id, result)
             return result.get("post_id") or result.get("id")

@@ -1,7 +1,7 @@
-﻿from urllib.parse import urlencode
-
+﻿import os
 from datetime import timedelta
 import time
+from urllib.parse import urlencode
 
 import requests
 from django.conf import settings
@@ -13,6 +13,18 @@ from core.exceptions import MetaAPIError, MetaPermanentError, MetaTransientError
 TRANSIENT_GRAPH_ERROR_CODES = {2, 4, 17, 32, 613}
 TRANSIENT_GRAPH_ERROR_SUBCODES = {2207003, 2207027, 2207051}
 MAX_PAGING_REQUESTS = 100
+
+_MIME_TYPES = {
+    ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
+    ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp",
+    ".mp4": "video/mp4", ".mov": "video/quicktime", ".webm": "video/webm",
+    ".m4v": "video/x-m4v", ".avi": "video/x-msvideo",
+}
+
+
+def _mime_type_for_extension(filename: str) -> str:
+    ext = os.path.splitext(filename or "")[1].lower()
+    return _MIME_TYPES.get(ext, "application/octet-stream")
 
 
 class MetaClient:
@@ -142,12 +154,13 @@ class MetaClient:
         self,
         page_id: str,
         page_access_token: str,
-        image_url: str,
+        image_url: str | None = None,
         caption: str | None = None,
+        source_bytes: bytes | None = None,
+        source_filename: str | None = None,
     ) -> dict:
         payload = {
             "access_token": page_access_token,
-            "url": image_url,
             "published": "true",
         }
         if caption:
@@ -156,29 +169,52 @@ class MetaClient:
             # to be silently dropped, destroying reach and engagement.
             payload["message"] = caption
 
+        files = None
+        if source_bytes:
+            # Direct multipart upload — same as native FB app.  Gives Meta the
+            # original file at full quality instead of making their CDN re-fetch
+            # from our server (which adds latency and can degrade quality).
+            fname = source_filename or "photo.jpg"
+            ct = _mime_type_for_extension(fname)
+            files = {"source": (fname, source_bytes, ct)}
+        elif image_url:
+            payload["url"] = image_url
+
         return self._post(
             f"/{page_id}/photos",
             payload,
+            files=files,
         )
 
     def publish_facebook_video(
         self,
         page_id: str,
         page_access_token: str,
-        video_url: str,
+        video_url: str | None = None,
         description: str | None = None,
+        title: str | None = None,
+        source_bytes: bytes | None = None,
+        source_filename: str | None = None,
     ) -> dict:
-        payload = {
-            "access_token": page_access_token,
-            "file_url": video_url,
-        }
+        payload = {"access_token": page_access_token}
         if description:
             payload["description"] = description
+        if title:
+            payload["title"] = title
+
+        files = None
+        if source_bytes:
+            fname = source_filename or "video.mp4"
+            ct = _mime_type_for_extension(fname)
+            files = {"source": (fname, source_bytes, ct)}
+        elif video_url:
+            payload["file_url"] = video_url
 
         return self._post(
             f"/{page_id}/videos",
             payload,
             timeout=120,
+            files=files,
         )
 
     def create_instagram_media(
@@ -656,14 +692,14 @@ class MetaClient:
             configured = 2
         return 1 if configured < 1 else configured
 
-    def _request_with_retry(self, method: str, url: str, *, timeout: int, params: dict | None = None, data: dict | None = None):
+    def _request_with_retry(self, method: str, url: str, *, timeout: int, params: dict | None = None, data: dict | None = None, files: dict | None = None):
         attempts = self._retry_attempts()
         last_error: Exception | None = None
         for attempt in range(1, attempts + 1):
             try:
                 if method == "GET":
                     return requests.get(url, params=params, timeout=timeout)
-                return requests.post(url, data=data, timeout=timeout)
+                return requests.post(url, data=data, files=files, timeout=timeout)
             except requests.RequestException as exc:
                 last_error = exc
                 if attempt < attempts:
@@ -707,12 +743,13 @@ class MetaClient:
         response = self._request_with_retry("GET", url, timeout=timeout)
         return self._handle_response(response)
 
-    def _post(self, path: str, data: dict, timeout: int = 60) -> dict:
+    def _post(self, path: str, data: dict, timeout: int = 60, files: dict | None = None) -> dict:
         response = self._request_with_retry(
             "POST",
             f"{self.base_url}{path}",
             data=data,
             timeout=timeout,
+            files=files,
         )
         return self._handle_response(response)
 

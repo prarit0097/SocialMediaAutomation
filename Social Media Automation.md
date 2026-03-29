@@ -186,6 +186,8 @@ What happens:
 - public media fetch now pins the outbound connection to the already-validated public IP to reduce DNS-rebinding SSRF risk
 - Django rejects uploads larger than `MAX_UPLOAD_FILE_BYTES`
 - Instagram/FB+IG scheduling stores optimized IG-safe media URLs at schedule time (not only at publish time)
+- Facebook publishing now prefers direct multipart upload from local stored media when available, so Meta receives the original file bytes instead of re-fetching a public URL
+- combined FB + IG scheduling now preserves the original media for Facebook while storing the optimized derivative only for the Instagram leg
 - post is stored in UTC internally
 - Celery beat checks every minute for due posts
 - Celery worker publishes due jobs to Meta Graph
