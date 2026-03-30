@@ -153,19 +153,6 @@ def publish_post_task(self, post_id: int):
             return {"status": "skipped_state", "post_id": post.id, "state": post.status}
 
         if post.platform == INSTAGRAM:
-            # Task-level cooldown check: another IG post may have just
-            # published or been rate-limited, setting the global cooldown
-            # AFTER this task was already dispatched to the Celery queue.
-            # Re-queue silently so the user never sees a rate-limit error.
-            if _is_ig_globally_throttled():
-                requeue_delay = 65
-                post.status = POST_STATUS_PENDING
-                post.scheduled_for = timezone.now() + timedelta(seconds=requeue_delay)
-                post.error_message = ""
-                post.save(update_fields=["status", "scheduled_for", "error_message", "updated_at"])
-                logger.info("ig cooldown active at task level post id=%s retry_in=%s", post.id, requeue_delay)
-                return {"status": "requeued_cooldown", "post_id": post.id, "retry_in": requeue_delay}
-
             lane_ttl = max(120, int(getattr(settings, "IG_PUBLISH_LANE_TTL_SECONDS", 420)))
             lane_retry = max(30, int(getattr(settings, "IG_PUBLISH_LANE_RETRY_SECONDS", 60)))
             ig_lane_locked = cache.add(IG_PUBLISH_LANE_LOCK_KEY, f"{post.id}:{timezone.now().isoformat()}", timeout=lane_ttl)
@@ -184,13 +171,6 @@ def publish_post_task(self, post_id: int):
         post.published_at = timezone.now()
         post.save(update_fields=["status", "external_post_id", "error_message", "published_at", "updated_at"])
         _clear_publish_attempts(post.id)
-        if post.platform == INSTAGRAM:
-            # Proactive cooldown: IG media-ready polling burns ~12 API calls
-            # per publish on the shared Meta App rate-limit bucket.  Without a
-            # gap the next IG post (any account) would fire immediately and
-            # hit the still-hot burst window → rate-limit error.  60s lets
-            # Meta's per-app counter reset before the next IG publish starts.
-            cache.set(IG_GLOBAL_COOLDOWN_KEY, timezone.now().isoformat(), timeout=60)
         logger.info("post published id=%s external_post_id=%s", post.id, external_post_id)
     except MetaTransientError as exc:
         if post is None:

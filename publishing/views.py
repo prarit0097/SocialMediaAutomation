@@ -16,7 +16,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.http import require_GET, require_POST
 
-from core.constants import FACEBOOK, INSTAGRAM, PLATFORM_CHOICES, POST_STATUS_FAILED, POST_STATUS_PENDING, POST_STATUS_PROCESSING
+from core.constants import FACEBOOK, INSTAGRAM, PLATFORM_CHOICES, POST_STATUS_FAILED, POST_STATUS_PENDING, POST_STATUS_PROCESSING, POST_STATUS_PUBLISHED
 from core.exceptions import MetaAPIError
 from core.services.meta_client import MetaClient
 from integrations.models import ConnectedAccount
@@ -46,6 +46,38 @@ def _build_public_media_url(request: HttpRequest, relative_url: str) -> str:
     if settings.PUBLIC_BASE_URL:
         return urljoin(settings.PUBLIC_BASE_URL.rstrip("/") + "/", relative_url.lstrip("/"))
     return request.build_absolute_uri(relative_url)
+
+
+# Minimum gap between any two IG publishes so they don't share the same
+# Meta per-app rate-limit burst window.  Two minutes is enough for a full
+# IG create → poll → publish cycle (~90s) plus margin.
+IG_STAGGER_SECONDS = 120
+
+
+def _next_available_ig_slot(desired_dt: datetime) -> datetime:
+    """Return *desired_dt* or later so it doesn't overlap another IG post.
+
+    Looks at all non-terminal IG posts within a window around the desired
+    time and pushes the slot forward in IG_STAGGER_SECONDS increments until
+    there is no conflict.
+    """
+    window_start = desired_dt - timedelta(seconds=IG_STAGGER_SECONDS)
+    window_end = desired_dt + timedelta(seconds=IG_STAGGER_SECONDS * 10)
+    nearby = set(
+        ScheduledPost.objects.filter(
+            platform=INSTAGRAM,
+            scheduled_for__range=(window_start, window_end),
+        )
+        .exclude(status__in=[POST_STATUS_FAILED, POST_STATUS_PUBLISHED])
+        .values_list("scheduled_for", flat=True)
+    )
+    slot = desired_dt
+    while slot in nearby or any(
+        abs((slot - existing).total_seconds()) < IG_STAGGER_SECONDS
+        for existing in nearby
+    ):
+        slot += timedelta(seconds=IG_STAGGER_SECONDS)
+    return slot
 
 
 def _upload_file_to_media(request: HttpRequest):
@@ -282,13 +314,12 @@ def schedule_post(request: HttpRequest) -> JsonResponse:
             if invalid_token_response:
                 return invalid_token_response
 
-        # Small stagger so FB and IG tasks don't collide on the exact
-        # same second; the real rate-limit protection is the slower IG
-        # media-ready poll interval (fewer API calls per minute).
-        ig_offset = timedelta(seconds=5)
+        # FB posts immediately; IG gets auto-staggered to the next free
+        # slot so it never collides with another IG publish.
+        ig_dt = _next_available_ig_slot(dt + timedelta(seconds=5))
         targets = [
             (fb_account, FACEBOOK, dt, fb_media_url),
-            (ig_account, INSTAGRAM, dt + ig_offset, ig_media_url),
+            (ig_account, INSTAGRAM, ig_dt, ig_media_url),
         ]
 
         created_posts = []
@@ -327,6 +358,9 @@ def schedule_post(request: HttpRequest) -> JsonResponse:
             },
             status=201,
         )
+
+    if platform == INSTAGRAM:
+        dt = _next_available_ig_slot(dt)
 
     post = ScheduledPost(account=account, platform=platform, message=message, media_url=media_url, scheduled_for=dt)
     if platform == INSTAGRAM:
