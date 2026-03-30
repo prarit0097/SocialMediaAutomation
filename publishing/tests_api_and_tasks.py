@@ -15,7 +15,7 @@ from django.urls import reverse
 from django.utils import timezone
 from requests import Response
 
-from core.constants import FACEBOOK, INSTAGRAM, POST_STATUS_FAILED, POST_STATUS_PENDING, POST_STATUS_PUBLISHED
+from core.constants import FACEBOOK, INSTAGRAM, POST_STATUS_FAILED, POST_STATUS_PENDING, POST_STATUS_PROCESSING, POST_STATUS_PUBLISHED
 from core.exceptions import MetaPermanentError, MetaTransientError
 from core.services.meta_client import MetaClient
 from integrations.models import ConnectedAccount
@@ -454,7 +454,37 @@ class PublishingTaskTests(TestCase):
         mock_publish.assert_not_called()
         ig_post.refresh_from_db()
         self.assertEqual(ig_post.status, POST_STATUS_PENDING)
-        self.assertIn("Instagram publish lane is busy", ig_post.error_message)
+        self.assertEqual(ig_post.error_message, "")
+
+    @patch("publishing.tasks.publish_scheduled_post")
+    def test_publish_post_task_requeues_when_global_cooldown_is_active_at_task_start(self, mock_publish):
+        ig_account = ConnectedAccount.objects.create(
+            platform=INSTAGRAM,
+            page_id="17890005",
+            page_name="IG Page 5",
+            ig_user_id="17890005",
+            access_token="token",
+        )
+        ig_post = ScheduledPost.objects.create(
+            account=ig_account,
+            platform=INSTAGRAM,
+            message="Hello cooldown",
+            media_url="https://example.com/a.jpg",
+            scheduled_for=timezone.now(),
+            status=POST_STATUS_PROCESSING,
+        )
+        before_retry = timezone.now()
+        cache.set("publishing:ig_global_cooldown", "throttled", timeout=60)
+
+        result = publish_post_task(ig_post.id)
+
+        self.assertEqual(result.get("status"), "requeued_cooldown")
+        self.assertEqual(result.get("retry_in"), 65)
+        mock_publish.assert_not_called()
+        ig_post.refresh_from_db()
+        self.assertEqual(ig_post.status, POST_STATUS_PENDING)
+        self.assertEqual(ig_post.error_message, "")
+        self.assertGreaterEqual(ig_post.scheduled_for, before_retry + timedelta(seconds=65))
 
     def test_get_due_posts_skips_instagram_when_global_cooldown_set(self):
         ig_account = ConnectedAccount.objects.create(

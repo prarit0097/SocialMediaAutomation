@@ -153,15 +153,26 @@ def publish_post_task(self, post_id: int):
             return {"status": "skipped_state", "post_id": post.id, "state": post.status}
 
         if post.platform == INSTAGRAM:
+            # Task-level cooldown check: another IG post may have just
+            # published or been rate-limited, setting the global cooldown
+            # AFTER this task was already dispatched to the Celery queue.
+            # Re-queue silently so the user never sees a rate-limit error.
+            if _is_ig_globally_throttled():
+                requeue_delay = 65
+                post.status = POST_STATUS_PENDING
+                post.scheduled_for = timezone.now() + timedelta(seconds=requeue_delay)
+                post.error_message = ""
+                post.save(update_fields=["status", "scheduled_for", "error_message", "updated_at"])
+                logger.info("ig cooldown active at task level post id=%s retry_in=%s", post.id, requeue_delay)
+                return {"status": "requeued_cooldown", "post_id": post.id, "retry_in": requeue_delay}
+
             lane_ttl = max(120, int(getattr(settings, "IG_PUBLISH_LANE_TTL_SECONDS", 420)))
             lane_retry = max(30, int(getattr(settings, "IG_PUBLISH_LANE_RETRY_SECONDS", 60)))
             ig_lane_locked = cache.add(IG_PUBLISH_LANE_LOCK_KEY, f"{post.id}:{timezone.now().isoformat()}", timeout=lane_ttl)
             if not ig_lane_locked:
                 post.status = POST_STATUS_PENDING
                 post.scheduled_for = timezone.now() + timedelta(seconds=lane_retry)
-                post.error_message = (
-                    f"Instagram publish lane is busy. Auto-retry in {lane_retry}s to reduce Meta throttle risk."
-                )
+                post.error_message = ""
                 post.save(update_fields=["status", "scheduled_for", "error_message", "updated_at"])
                 logger.info("instagram lane busy post id=%s retry_in=%s", post.id, lane_retry)
                 return {"status": "requeued_lane_busy", "post_id": post.id, "retry_in": lane_retry}
