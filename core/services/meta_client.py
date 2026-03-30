@@ -261,11 +261,14 @@ class MetaClient:
         poll_interval = (
             poll_interval
             if isinstance(poll_interval, int) and poll_interval > 0
-            else max(5, int(getattr(settings, "META_IG_READY_POLL_INTERVAL", 12)))
+            else max(5, int(getattr(settings, "META_IG_READY_POLL_INTERVAL", 20)))
         )
         started = time.monotonic()
         latest_payload = {}
         latest_transient_error: MetaTransientError | None = None
+        # IG media containers are never ready in the first ~15-20s, so skip
+        # the very first poll to avoid wasting an API call on the burst window.
+        time.sleep(min(poll_interval, timeout // 2))
         while time.monotonic() - started < timeout:
             try:
                 latest_payload = self._get(

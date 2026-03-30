@@ -137,6 +137,11 @@ class PublishingApiTests(TestCase):
         self.assertEqual(ScheduledPost.objects.count(), 2)
         created_platforms = set(ScheduledPost.objects.values_list("platform", flat=True))
         self.assertEqual(created_platforms, {FACEBOOK, INSTAGRAM})
+        posts_by_platform = {post.platform: post for post in ScheduledPost.objects.all()}
+        self.assertEqual(
+            posts_by_platform[INSTAGRAM].scheduled_for - posts_by_platform[FACEBOOK].scheduled_for,
+            timedelta(seconds=5),
+        )
 
     def test_schedule_post_rejects_stale_account_not_in_recent_sync(self):
         from django.core.cache import cache
@@ -362,14 +367,14 @@ class PublishingTaskTests(TestCase):
         self.assertIn("Reconnect the profile from Accounts", self.post.error_message)
 
     @patch("publishing.tasks.publish_scheduled_post")
-    def test_publish_post_task_uses_longer_backoff_for_graph_rate_limit(self, mock_publish):
+    def test_publish_post_task_uses_moderate_backoff_for_graph_rate_limit(self, mock_publish):
         before_schedule = self.post.scheduled_for
         mock_publish.side_effect = MetaTransientError("(#4) Application request limit reached (code=4)")
 
         result = publish_post_task(self.post.id)
 
         self.assertEqual(result["status"], "requeued_transient")
-        self.assertGreaterEqual(result["retry_in"], 90)
+        self.assertEqual(result["retry_in"], 75)
         self.post.refresh_from_db()
         self.assertEqual(self.post.status, POST_STATUS_PENDING)
         self.assertIn("Auto-retry in", self.post.error_message)
@@ -397,6 +402,30 @@ class PublishingTaskTests(TestCase):
         result = publish_post_task(ig_post.id)
 
         self.assertEqual(result["status"], "requeued_transient")
+        self.assertTrue(bool(cache.get("publishing:ig_global_cooldown")))
+
+    @patch("publishing.tasks.publish_scheduled_post", return_value="ig-post-id")
+    def test_publish_post_task_sets_global_ig_cooldown_after_successful_publish(self, _mock_publish):
+        ig_account = ConnectedAccount.objects.create(
+            platform=INSTAGRAM,
+            page_id="17890004",
+            page_name="IG Page 4",
+            ig_user_id="17890004",
+            access_token="token",
+        )
+        ig_post = ScheduledPost.objects.create(
+            account=ig_account,
+            platform=INSTAGRAM,
+            message="IG hello",
+            media_url="https://example.com/a.jpg",
+            scheduled_for=timezone.now(),
+            status=POST_STATUS_PENDING,
+        )
+
+        publish_post_task(ig_post.id)
+
+        ig_post.refresh_from_db()
+        self.assertEqual(ig_post.status, POST_STATUS_PUBLISHED)
         self.assertTrue(bool(cache.get("publishing:ig_global_cooldown")))
 
     @override_settings(IG_PUBLISH_LANE_RETRY_SECONDS=45)
@@ -671,6 +700,20 @@ class PublishingServiceTests(TestCase):
         self.assertEqual(stats["total_likes"], 11)
         self.assertEqual(stats["total_comments"], 3)
         self.assertEqual(stats["total_views"], 101)
+
+    @patch("core.services.meta_client.time.sleep")
+    @patch("core.services.meta_client.MetaClient._get", return_value={"status_code": "FINISHED"})
+    def test_wait_for_instagram_media_ready_skips_initial_burst_poll(self, mock_get, mock_sleep):
+        payload = MetaClient().wait_for_instagram_media_ready(
+            "creation-id",
+            "token",
+            timeout=60,
+            poll_interval=20,
+        )
+
+        self.assertEqual(payload["status_code"], "FINISHED")
+        mock_sleep.assert_called_once_with(20)
+        mock_get.assert_called_once()
 
     @patch("publishing.media_utils._resolved_public_ips", return_value=["93.184.216.34"])
     @patch("publishing.media_utils._PinnedHTTPSConnection.request")

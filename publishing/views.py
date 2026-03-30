@@ -282,9 +282,10 @@ def schedule_post(request: HttpRequest) -> JsonResponse:
             if invalid_token_response:
                 return invalid_token_response
 
-        # Stagger IG post 30s after FB to avoid simultaneous Meta API
-        # pressure that triggers rate-limiting on the Instagram side.
-        ig_offset = timedelta(seconds=30)
+        # Small stagger so FB and IG tasks don't collide on the exact
+        # same second; the real rate-limit protection is the slower IG
+        # media-ready poll interval (fewer API calls per minute).
+        ig_offset = timedelta(seconds=5)
         targets = [
             (fb_account, FACEBOOK, dt, fb_media_url),
             (ig_account, INSTAGRAM, dt + ig_offset, ig_media_url),

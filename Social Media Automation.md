@@ -207,11 +207,12 @@ What happens:
 - transient publish retries now also move `scheduled_for` forward by the retry cooldown, preventing immediate re-pick loops each minute
 - Instagram publish now uses a global lane lock to reduce parallel IG bursts; if lane is busy, post is re-queued with short delay instead of hammering Meta and hitting app-level throttles
 - when Instagram gets app-level throttle (`code=4`), scheduler now sets a temporary global IG cooldown window so due IG jobs are held briefly instead of being picked repeatedly into processing loops
-- Instagram media-ready polling now uses configurable slower defaults (`META_IG_READY_TIMEOUT`, `META_IG_READY_POLL_INTERVAL`) to reduce Graph status-check pressure
+- Instagram media-ready polling now uses configurable slower defaults (`META_IG_READY_TIMEOUT`, `META_IG_READY_POLL_INTERVAL`), with the current poll default set to `20s` to reduce Graph status-check pressure
 - Instagram media-ready polling now tolerates transient API failures/rate limits with backoff and continues polling instead of immediate hard-fail
 - Instagram publish now fails fast with a clear permanent error if media URL or IG user ID is missing, instead of entering a vague downstream failure path
 - Instagram video publishing explicitly requests `share_to_feed=true` so Reels also surface in the main feed grid
-- combined FB + IG scheduling now offsets the Instagram leg by 30 seconds so both posts do not hit Meta at the same instant
+- combined FB + IG scheduling now offsets the Instagram leg by 5 seconds so both posts do not land on the exact same second while the slower IG polling/cooldown controls handle the real throttle protection
+- successful Instagram publishes now start a short global cooldown window before the next IG publish attempt so the shared Meta app bucket can cool down after media-ready polling
 - media preflight stream read timeouts (while validating public URL) are now classified as transient, so scheduler auto-retry path handles temporary ngrok/network instability instead of immediate hard-fail
 - publishing retries now use longer cooldown for Graph rate-limit errors to reduce repeated burst failures during multi-profile scheduling
 - failed Instagram retries also re-apply IG media optimization before requeueing

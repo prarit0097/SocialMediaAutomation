@@ -173,6 +173,13 @@ def publish_post_task(self, post_id: int):
         post.published_at = timezone.now()
         post.save(update_fields=["status", "external_post_id", "error_message", "published_at", "updated_at"])
         _clear_publish_attempts(post.id)
+        if post.platform == INSTAGRAM:
+            # Proactive cooldown: IG media-ready polling burns ~12 API calls
+            # per publish on the shared Meta App rate-limit bucket.  Without a
+            # gap the next IG post (any account) would fire immediately and
+            # hit the still-hot burst window → rate-limit error.  60s lets
+            # Meta's per-app counter reset before the next IG publish starts.
+            cache.set(IG_GLOBAL_COOLDOWN_KEY, timezone.now().isoformat(), timeout=60)
         logger.info("post published id=%s external_post_id=%s", post.id, external_post_id)
     except MetaTransientError as exc:
         if post is None:
@@ -190,8 +197,8 @@ def publish_post_task(self, post_id: int):
         message = str(exc).lower()
         if re.search(r'code=(?:2|4|17|32|613)(?:\D|$)', message):
             # Graph app/page rate-limit: moderate backoff, not exponential explosion.
-            countdown = min(300, 60 + attempts * 45)
-            global_cooldown = min(90, 30 + attempts * 15)
+            countdown = min(300, 40 + attempts * 35)
+            global_cooldown = min(90, 20 + attempts * 15)
             if post.platform == INSTAGRAM:
                 cache.set(IG_GLOBAL_COOLDOWN_KEY, timezone.now().isoformat(), timeout=global_cooldown)
             user_message = (
