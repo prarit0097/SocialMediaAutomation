@@ -22,21 +22,18 @@ from .models import ScheduledPost
 from .services import is_invalid_token_error, publish_scheduled_post, token_reconnect_message
 
 logger = logging.getLogger("publishing")
-IG_PUBLISH_LANE_LOCK_PREFIX = "publishing:ig_publish_lane"
-IG_COOLDOWN_PREFIX = "publishing:ig_cooldown"
+IG_PUBLISH_LANE_LOCK_PREFIX = "publishing:ig_lane"
+IG_COOLDOWN_PREFIX = "publishing:ig_cd"
 PUBLISH_TRANSIENT_ATTEMPT_KEY_PREFIX = "publishing:transient_attempts"
 
 
-def _ig_lane_key(user_id) -> str:
-    return f"{IG_PUBLISH_LANE_LOCK_PREFIX}:{user_id}"
+def _ig_lane_key(account_id) -> str:
+    """Per-account lane lock: each IG account publishes independently."""
+    return f"{IG_PUBLISH_LANE_LOCK_PREFIX}:{account_id}"
 
 
-def _ig_cooldown_key(user_id) -> str:
-    return f"{IG_COOLDOWN_PREFIX}:{user_id}"
-
-
-def _is_ig_throttled_for_user(user_id) -> bool:
-    return bool(cache.get(_ig_cooldown_key(user_id)))
+def _ig_cooldown_key(account_id) -> str:
+    return f"{IG_COOLDOWN_PREFIX}:{account_id}"
 
 
 def _publish_attempt_cache_key(post_id: int) -> str:
@@ -60,32 +57,14 @@ def _clear_publish_attempts(post_id: int) -> None:
     cache.delete(_publish_attempt_cache_key(post_id))
 
 
-def _limit_instagram_per_user(posts: list[ScheduledPost]) -> list[ScheduledPost]:
-    """Allow at most one IG post per user per dispatch batch.
-
-    Different users can publish IG simultaneously (separate Meta rate-limit
-    buckets).  Same user's IG posts are serialized by the per-user lane lock.
-    """
-    limited: list[ScheduledPost] = []
-    ig_taken_users: set[int] = set()
-    for post in posts:
-        if post.platform == INSTAGRAM:
-            uid = post.account_id  # cheap FK; user_id needs select_related
-            if uid in ig_taken_users:
-                continue
-            ig_taken_users.add(uid)
-        limited.append(post)
-    return limited
-
-
-def _get_due_posts(batch_size: int = 20) -> list[ScheduledPost]:
+def _get_due_posts(batch_size: int = 50) -> list[ScheduledPost]:
     now = timezone.now()
     with transaction.atomic():
         base_qs = ScheduledPost.objects.select_for_update(skip_locked=True).filter(
             status=POST_STATUS_PENDING,
             scheduled_for__lte=now,
         )
-        due_posts = _limit_instagram_per_user(list(base_qs.order_by("scheduled_for")[:batch_size]))
+        due_posts = list(base_qs.order_by("scheduled_for")[:batch_size])
 
         for post in due_posts:
             post.status = POST_STATUS_PROCESSING
@@ -95,13 +74,13 @@ def _get_due_posts(batch_size: int = 20) -> list[ScheduledPost]:
     return due_posts
 
 
-def _claim_due_posts_without_skip_locked(batch_size: int = 20) -> list[ScheduledPost]:
+def _claim_due_posts_without_skip_locked(batch_size: int = 50) -> list[ScheduledPost]:
     now = timezone.now()
     fallback_qs = ScheduledPost.objects.select_related("account").filter(
         status=POST_STATUS_PENDING,
         scheduled_for__lte=now,
     )
-    candidate_posts = _limit_instagram_per_user(list(fallback_qs.order_by("scheduled_for")[:batch_size]))
+    candidate_posts = list(fallback_qs.order_by("scheduled_for")[:batch_size])
     claimed_ids: list[int] = []
     for post in candidate_posts:
         updated = ScheduledPost.objects.filter(id=post.id, status=POST_STATUS_PENDING).update(
@@ -164,8 +143,9 @@ def publish_post_task(self, post_id: int):
             return {"status": "skipped_state", "post_id": post.id, "state": post.status}
 
         if post.platform == INSTAGRAM:
-            user_id = post.account.user_id
-            ig_lane_key = _ig_lane_key(user_id)
+            # Per-account lock: different IG accounts publish in parallel.
+            # Only guards against duplicate publishes for the same account.
+            ig_lane_key = _ig_lane_key(post.account_id)
             lane_ttl = max(120, int(getattr(settings, "IG_PUBLISH_LANE_TTL_SECONDS", 420)))
             lane_retry = max(30, int(getattr(settings, "IG_PUBLISH_LANE_RETRY_SECONDS", 60)))
             ig_lane_locked = cache.add(ig_lane_key, f"{post.id}:{timezone.now().isoformat()}", timeout=lane_ttl)
@@ -174,7 +154,7 @@ def publish_post_task(self, post_id: int):
                 post.scheduled_for = timezone.now() + timedelta(seconds=lane_retry)
                 post.error_message = ""
                 post.save(update_fields=["status", "scheduled_for", "error_message", "updated_at"])
-                logger.info("instagram lane busy user=%s post id=%s retry_in=%s", user_id, post.id, lane_retry)
+                logger.info("ig lane busy account=%s post id=%s retry_in=%s", post.account_id, post.id, lane_retry)
                 return {"status": "requeued_lane_busy", "post_id": post.id, "retry_in": lane_retry}
 
         external_post_id = publish_scheduled_post(post)
@@ -204,8 +184,7 @@ def publish_post_task(self, post_id: int):
             countdown = min(300, 40 + attempts * 35)
             cooldown_duration = min(90, 20 + attempts * 15)
             if post.platform == INSTAGRAM:
-                user_id = post.account.user_id
-                cache.set(_ig_cooldown_key(user_id), timezone.now().isoformat(), timeout=cooldown_duration)
+                cache.set(_ig_cooldown_key(post.account_id), timezone.now().isoformat(), timeout=cooldown_duration)
             user_message = (
                 f"Meta is pacing requests. Auto-retry in {countdown}s. "
                 f"Last Meta response: {exc}"
