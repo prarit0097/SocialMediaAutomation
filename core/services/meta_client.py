@@ -224,6 +224,8 @@ class MetaClient:
         media_url: str,
         caption: str,
         media_kind: str = "image",
+        source_bytes: bytes | None = None,
+        source_filename: str | None = None,
     ) -> dict:
         payload = {
             "access_token": page_access_token,
@@ -232,14 +234,69 @@ class MetaClient:
         if media_kind == "video":
             # IG Graph now requires REELS for feed video publishing.
             payload["media_type"] = "REELS"
-            payload["video_url"] = media_url
-            # Explicitly share Reel to the profile feed grid for maximum
-            # visibility.  Without this, some API versions only show the
-            # Reel in the Reels tab, hurting reach significantly.
             payload["share_to_feed"] = "true"
+
+            if source_bytes:
+                # Resumable upload: Meta downloads from its own infra instead
+                # of fetching from our server — avoids Content-Type / SSL /
+                # redirect failures that cause status_code=ERROR.
+                payload["upload_type"] = "resumable"
+                container = self._post(f"/{ig_user_id}/media", payload)
+                upload_uri = container.get("uri")
+                if not upload_uri:
+                    raise MetaPermanentError(
+                        f"IG resumable container missing upload URI. Response: {container}"
+                    )
+                self._upload_ig_resumable_video(
+                    upload_uri, page_access_token, source_bytes, source_filename,
+                )
+                return container
+            else:
+                payload["video_url"] = media_url
         else:
             payload["image_url"] = media_url
         return self._post(f"/{ig_user_id}/media", payload)
+
+    def _upload_ig_resumable_video(
+        self,
+        upload_uri: str,
+        access_token: str,
+        source_bytes: bytes,
+        source_filename: str | None = None,
+    ) -> None:
+        """Upload raw video bytes to an IG resumable-upload URI."""
+        fname = source_filename or "video.mp4"
+        content_type = _mime_type_for_extension(fname)
+        headers = {
+            "Authorization": f"OAuth {access_token}",
+            "offset": "0",
+            "file_size": str(len(source_bytes)),
+            "Content-Type": content_type,
+        }
+        attempts = self._retry_attempts()
+        last_error: Exception | None = None
+        for attempt in range(1, attempts + 1):
+            try:
+                resp = requests.post(
+                    upload_uri,
+                    data=source_bytes,
+                    headers=headers,
+                    timeout=300,
+                )
+                if resp.status_code >= 400:
+                    body = resp.text[:500]
+                    raise MetaTransientError(
+                        f"IG resumable upload HTTP {resp.status_code}: {body}"
+                    )
+                return
+            except requests.RequestException as exc:
+                last_error = exc
+                if attempt < attempts:
+                    time.sleep(2.0 * attempt)
+                    continue
+        raise MetaTransientError(
+            f"IG resumable upload failed after {attempts} attempts: {last_error}"
+        )
 
     def publish_instagram_media(self, ig_user_id: str, page_access_token: str, creation_id: str) -> dict:
         return self._post(

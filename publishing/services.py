@@ -146,12 +146,21 @@ def publish_scheduled_post(post):
         post.media_url = prepared_media_url
         post.save(update_fields=["media_url", "updated_at"])
 
-    ensure_public_media_fetchable(post.media_url)
-
     ext = media_extension(post.media_url)
     media_kind = "video" if ext in VIDEO_EXTENSIONS else "image"
     if ext and media_kind == "image" and ext not in IMAGE_EXTENSIONS:
         raise MetaPermanentError(f"Unsupported Instagram media type: {ext}")
+
+    # For videos, prefer direct upload (resumable) so Meta doesn't need to
+    # fetch from our server — avoids Content-Type / SSL / redirect issues.
+    # For images, IG API still requires image_url (no resumable support).
+    source_bytes, source_filename = None, None
+    if media_kind == "video":
+        source_bytes, source_filename = _read_local_media(post.media_url)
+
+    if not source_bytes:
+        # Fallback to URL-based: verify the URL is reachable by Meta.
+        ensure_public_media_fetchable(post.media_url)
 
     creation = client.create_instagram_media(
         ig_user_id=ig_user_id,
@@ -159,6 +168,8 @@ def publish_scheduled_post(post):
         media_url=post.media_url,
         caption=post.message or "",
         media_kind=media_kind,
+        source_bytes=source_bytes,
+        source_filename=source_filename,
     )
     creation_id = creation.get("id")
     if not creation_id:
