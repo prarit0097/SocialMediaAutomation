@@ -5,6 +5,7 @@ Postzyo is a Django-based Meta growth operations app. It connects Facebook Pages
 
 This file is the high-level source of truth for what the project does, how the main workflows behave, and what operational rules currently apply.
 Primary product branding is `Postzyo`, and production rollout is planned on `postzyo.com`.
+Primary Git repository: `https://github.com/prarit0097/SocialMediaAutomation`
 
 ## Core Outcomes
 - Connect and refresh Facebook Pages and linked Instagram accounts through Meta OAuth.
