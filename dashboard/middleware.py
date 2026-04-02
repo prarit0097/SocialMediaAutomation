@@ -1,8 +1,13 @@
+from django.core.cache import cache
 from django.http import JsonResponse
 from django.shortcuts import redirect
 from django.urls import reverse
 
 from accounts.models import UserProfile
+
+# Cache subscription state per user — avoids two DB queries on every request.
+_SUB_CACHE_PREFIX = "sub_profile"
+_SUB_CACHE_TTL = 300  # 5 minutes
 
 
 class SubscriptionAccessMiddleware:
@@ -16,9 +21,17 @@ class SubscriptionAccessMiddleware:
         if request.path.startswith("/static/") or request.path.startswith("/media/"):
             return self.get_response(request)
 
-        profile, _ = UserProfile.objects.get_or_create(user=request.user)
-        profile.refresh_subscription_state()
+        user_id = request.user.pk
+        cache_key = f"{_SUB_CACHE_PREFIX}:{user_id}"
+        profile = cache.get(cache_key)
+
+        if profile is None:
+            profile, _ = UserProfile.objects.get_or_create(user=request.user)
+            profile.refresh_subscription_state()
+            cache.set(cache_key, profile, _SUB_CACHE_TTL)
+
         request.subscription_profile = profile
+
         if profile.subscription_status == UserProfile.SUBSCRIPTION_STATUS_ACTIVE:
             return self.get_response(request)
 

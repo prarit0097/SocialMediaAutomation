@@ -49,7 +49,7 @@ env = environ.Env(
     CSRF_COOKIE_SECURE=(bool, False),
     SESSION_COOKIE_AGE=(int, 2592000),
     SESSION_EXPIRE_AT_BROWSER_CLOSE=(bool, False),
-    SESSION_SAVE_EVERY_REQUEST=(bool, True),
+    SESSION_SAVE_EVERY_REQUEST=(bool, False),
     SESSION_COOKIE_HTTPONLY=(bool, True),
     SESSION_COOKIE_SAMESITE=(str, "Lax"),
     CSRF_COOKIE_SAMESITE=(str, "Lax"),
@@ -247,8 +247,15 @@ if CACHE_BACKEND == "redis":
             "BACKEND": "django.core.cache.backends.redis.RedisCache",
             "LOCATION": REDIS_URL,
             "TIMEOUT": CACHE_DEFAULT_TIMEOUT_SECONDS,
+            "OPTIONS": {
+                "socket_connect_timeout": 5,
+                "socket_timeout": 5,
+            },
         }
     }
+    # Store sessions in Redis instead of DB — avoids per-request DB writes.
+    SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+    SESSION_CACHE_ALIAS = "default"
 else:
     CACHES = {
         "default": {

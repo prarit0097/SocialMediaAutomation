@@ -27,7 +27,9 @@ class ScheduledPost(models.Model):
     class Meta:
         indexes = [
             models.Index(fields=["status", "scheduled_for"]),
+            models.Index(fields=["status", "scheduled_for", "platform"]),
             models.Index(fields=["account", "scheduled_for"]),
+            models.Index(fields=["account", "status"]),
         ]
         ordering = ["-scheduled_for"]
 

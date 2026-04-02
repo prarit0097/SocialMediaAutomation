@@ -789,6 +789,8 @@ def subscription_verify_payment(request):
         order.save(update_fields=["razorpay_payment_id", "status", "consumed_at", "updated_at"])
 
     cache.delete(_subscription_order_cache_key(order_id))
+    # Invalidate middleware subscription cache so the user gets access immediately.
+    cache.delete(f"sub_profile:{request.user.pk}")
 
     return JsonResponse(
         {

@@ -13,6 +13,10 @@ class InsightSnapshot(models.Model):
 
     class Meta:
         ordering = ["-fetched_at"]
+        indexes = [
+            models.Index(fields=["account", "-fetched_at"]),
+            models.Index(fields=["account", "platform", "-fetched_at"]),
+        ]
 
     def __str__(self) -> str:
         return f"{self.account_id}-{self.platform}-{self.fetched_at.isoformat()}"

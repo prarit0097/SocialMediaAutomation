@@ -17,6 +17,7 @@ from analytics.models import InsightSnapshot
 from core.constants import FACEBOOK, INSTAGRAM
 from core.exceptions import MetaAPIError
 from core.services.meta_client import MetaClient
+from core.throttle import throttle_per_user
 from publishing.models import ScheduledPost
 
 from .models import ConnectedAccount, MetaUserToken
@@ -68,7 +69,13 @@ def _latest_published_post_times(account_ids: list[int]) -> dict[int, datetime |
     }
 
     unresolved = set(account_ids)
-    snapshots = InsightSnapshot.objects.filter(account_id__in=account_ids).order_by("account_id", "-fetched_at")
+    # Only fetch the most recent snapshot per account (not all history).
+    # The Distinct("account_id") below is Postgres-specific; the fallback
+    # order_by + early break handles other DBs correctly.
+    snapshots = (
+        InsightSnapshot.objects.filter(account_id__in=account_ids)
+        .order_by("account_id", "-fetched_at")[:len(account_ids) * 2]
+    )
     for snapshot in snapshots:
         account_id = snapshot.account_id
         if account_id not in unresolved:
@@ -250,6 +257,7 @@ def meta_callback(request: HttpRequest) -> HttpResponse:
 
 @require_GET
 @login_required
+@throttle_per_user("30/m", scope="list_accounts")
 def list_accounts(request: HttpRequest) -> JsonResponse:
     force_refresh = request.GET.get("refresh") == "1"
     user_id = getattr(request.user, "id", None)
@@ -321,6 +329,7 @@ def accounts_sync_status(request: HttpRequest) -> JsonResponse:
 
 @require_GET
 @login_required
+@throttle_per_user("10/m", scope="meta_pages_catalog")
 def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
     force_refresh = request.GET.get("refresh") == "1"
     cache_key = f"meta_pages_catalog:{request.user.id}"

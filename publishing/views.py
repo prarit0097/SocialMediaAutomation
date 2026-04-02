@@ -18,6 +18,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from core.constants import FACEBOOK, INSTAGRAM, PLATFORM_CHOICES, POST_STATUS_FAILED, POST_STATUS_PENDING, POST_STATUS_PROCESSING
 from core.exceptions import MetaAPIError
+from core.throttle import throttle_per_user
 from core.services.meta_client import MetaClient
 from integrations.models import ConnectedAccount
 from integrations.sync_state import build_account_sync_state
@@ -167,7 +168,7 @@ def _auto_dispatch_due_posts_guarded() -> None:
         return
 
     lock_key = "publishing:auto_dispatch_due_posts_lock"
-    if not cache.add(lock_key, now.isoformat(), timeout=12):
+    if not cache.add(lock_key, now.isoformat(), timeout=30):
         return
 
     try:
@@ -213,6 +214,7 @@ def _recover_stale_processing_posts(user=None, stale_minutes: int = 12) -> int:
 
 @require_POST
 @login_required
+@throttle_per_user("60/m", scope="schedule_post")
 def schedule_post(request: HttpRequest) -> JsonResponse:
     is_json_request = request.content_type and request.content_type.startswith("application/json")
     if is_json_request:

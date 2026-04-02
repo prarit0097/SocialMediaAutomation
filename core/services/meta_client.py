@@ -27,9 +27,33 @@ def _mime_type_for_extension(filename: str) -> str:
     return _MIME_TYPES.get(ext, "application/octet-stream")
 
 
+def _shared_session() -> requests.Session:
+    """Return a module-level session with connection pooling.
+
+    Re-uses TCP connections across MetaClient instances instead of
+    opening a new connection per API call.  Thread-safe by default.
+    """
+    global _session
+    if _session is None:
+        s = requests.Session()
+        adapter = requests.adapters.HTTPAdapter(
+            pool_connections=20,
+            pool_maxsize=50,
+            max_retries=0,  # We handle retries ourselves.
+        )
+        s.mount("https://", adapter)
+        s.mount("http://", adapter)
+        _session = s
+    return _session
+
+
+_session: requests.Session | None = None
+
+
 class MetaClient:
     def __init__(self):
         self.base_url = f"https://graph.facebook.com/{settings.META_GRAPH_VERSION}"
+        self._session = _shared_session()
 
     def _last_7_day_window(self) -> dict:
         until = timezone.now().date()
@@ -755,11 +779,12 @@ class MetaClient:
     def _request_with_retry(self, method: str, url: str, *, timeout: int, params: dict | None = None, data: dict | None = None, files: dict | None = None):
         attempts = self._retry_attempts()
         last_error: Exception | None = None
+        session = self._session
         for attempt in range(1, attempts + 1):
             try:
                 if method == "GET":
-                    return requests.get(url, params=params, timeout=timeout)
-                return requests.post(url, data=data, files=files, timeout=timeout)
+                    return session.get(url, params=params, timeout=timeout)
+                return session.post(url, data=data, files=files, timeout=timeout)
             except requests.RequestException as exc:
                 last_error = exc
                 if attempt < attempts:

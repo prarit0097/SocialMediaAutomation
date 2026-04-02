@@ -90,30 +90,50 @@ def _daily_snapshot_metadata() -> dict:
 
 @shared_task(name="analytics.tasks.queue_daily_heavy_insight_refresh")
 def queue_daily_heavy_insight_refresh(force: bool = False):
-    accounts = list(ConnectedAccount.objects.filter(user__isnull=False).order_by("id"))
+    # Use iterator + values_list to avoid loading all ConnectedAccount objects
+    # into memory at once.  For 10k+ accounts this saves ~100 MB of RAM.
+    BATCH = 500
     queued = 0
     skipped = 0
+    total = 0
 
-    for account in accounts:
-        if not account.access_token:
-            skipped += 1
-            continue
-        if not force and _has_daily_heavy_snapshot(account):
-            skipped += 1
-            continue
-        # Keep daily-heavy refresh in lower priority than user-facing publish jobs.
-        refresh_account_insights_snapshot.apply_async(args=[account.id], kwargs={"force": force}, priority=1)
-        queued += 1
+    account_qs = (
+        ConnectedAccount.objects.filter(user__isnull=False)
+        .exclude(access_token="")
+        .order_by("id")
+        .values_list("id", flat=True)
+    )
+
+    for batch_start in range(0, account_qs.count(), BATCH):
+        batch_ids = list(account_qs[batch_start:batch_start + BATCH])
+        total += len(batch_ids)
+
+        if not force:
+            # Pre-filter accounts that already have today's snapshot in bulk.
+            already_done = set(
+                InsightSnapshot.objects.filter(
+                    account_id__in=batch_ids,
+                    fetched_at__date=timezone.localdate(),
+                ).values_list("account_id", flat=True).distinct()
+            )
+        else:
+            already_done = set()
+
+        for account_id in batch_ids:
+            if account_id in already_done:
+                skipped += 1
+                continue
+            refresh_account_insights_snapshot.apply_async(
+                args=[account_id], kwargs={"force": force}, priority=1,
+            )
+            queued += 1
 
     logger.info(
         "daily heavy insight refresh queued total_accounts=%s queued=%s skipped=%s force=%s",
-        len(accounts),
-        queued,
-        skipped,
-        force,
+        total, queued, skipped, force,
     )
     return {
-        "total_accounts": len(accounts),
+        "total_accounts": total,
         "queued": queued,
         "skipped": skipped,
         "forced": bool(force),

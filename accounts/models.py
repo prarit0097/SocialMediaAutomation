@@ -37,6 +37,9 @@ class UserProfile(models.Model):
 
     class Meta:
         ordering = ["-updated_at", "-id"]
+        indexes = [
+            models.Index(fields=["subscription_status", "subscription_expires_on"]),
+        ]
 
     def __str__(self):
         return f"UserProfile(user_id={self.user_id}, email={self.user.email})"

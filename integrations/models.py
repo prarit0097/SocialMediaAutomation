@@ -21,6 +21,9 @@ class ConnectedAccount(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["user", "platform", "page_id"], name="uniq_user_platform_page"),
         ]
+        indexes = [
+            models.Index(fields=["user", "is_active"]),
+        ]
         ordering = ["-created_at"]
 
     def __str__(self) -> str:
