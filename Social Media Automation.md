@@ -152,7 +152,7 @@ What it does:
 - insight endpoints are now cache-first: if a profile has no stored snapshot yet, the UI gets an immediate placeholder response while a background Celery refresh is queued, avoiding first-load nginx timeouts
 - production Docker Compose file now omits the obsolete top-level `version` key, so `docker compose` commands no longer emit the legacy schema warning during routine ops
 - publish retries for transient Meta throttles now use DB-scheduled backoff instead of Celery self-retry, which avoids duplicate publish-task collisions on Instagram and keeps throttled posts in a paced auto-retry state until Meta recovers
-- scheduler queue now labels throttled pending rows as `retrying`, and due-dispatch only advances one Instagram post per batch so Meta-facing publish pressure is reduced during busy windows
+- scheduler queue now labels throttled pending rows as `retrying`, and due-dispatch only advances at most one Instagram post per user in each batch so different users can still publish in parallel while same-user IG pressure stays paced
 - force refresh-all now refuses to start while Instagram due posts are already close to publish/processing, so operators do not create avoidable Meta contention right before scheduled delivery
 - publish health status is exposed to the dashboard, showing retrying/processing/due-pending pressure and the next known retry time for throttled posts
 - scheduler queue now shortens transient Meta throttle text into a compact retry note in the table while preserving the full raw detail in the cell tooltip
@@ -417,7 +417,9 @@ Operational meaning:
 - default session persistence is now env-configurable with:
   - `SESSION_COOKIE_AGE=2592000` (`30` days)
   - `SESSION_EXPIRE_AT_BROWSER_CLOSE=False`
-  - `SESSION_SAVE_EVERY_REQUEST=True` so active use keeps extending the cookie window
+  - `SESSION_SAVE_EVERY_REQUEST=False` so production does not write session state on every request
+- when `CACHE_BACKEND=redis`, Django sessions are stored in Redis instead of the database to reduce write load during high concurrent usage
+- subscription-access middleware now caches each user's subscription profile for 5 minutes and clears that cache after successful payment verification so access updates immediately without repeated DB reads
 - logout is POST-only and rendered as a CSRF-protected form instead of a GET link
 - runtime Meta app config endpoint still exists for controlled recovery/admin use, but it is blocked for normal logged-in users and only available in debug or for staff/admin accounts
 
@@ -481,9 +483,12 @@ Stores:
 ## Scale Readiness (1000+ Concurrent Users)
 - Use PostgreSQL via `DATABASE_URL` (SQLite is not suitable for high concurrent writes).
 - Use Redis for cache (`CACHE_BACKEND=redis`) and Celery broker/result backend.
+- when Redis cache is enabled, sessions also live in Redis so authenticated traffic does not add per-request session writes to PostgreSQL
 - Keep multiple web workers + multiple Celery workers (separate worker pool for publishing vs analytics is recommended).
 - hot tables now ship with DB indexes for active-account lookups, due-post scans, account/status scans, snapshot recency, and subscription expiry checks so high-traffic dashboard queries avoid full-table scans
 - critical write paths now use DB row locks where needed (`select_for_update()` in bulk-refresh bookkeeping and subscription verification) so concurrent requests do not double-finalize the same workflow
+- Meta Graph calls reuse a shared `requests.Session` with HTTP connection pooling (`pool_connections=20`, `pool_maxsize=50`) so heavy publish/insight traffic avoids excessive TCP connection churn
+- heavy dashboard APIs now use per-user cache-backed throttles (`schedule_post 60/m`, `list_accounts 30/m`, `meta_pages_catalog 10/m`) to protect the app from operator bursts and abusive clients
 - Tune runtime env knobs:
   - `DB_CONN_MAX_AGE`, `DB_CONN_HEALTH_CHECKS`
   - `CELERY_PUBLISH_RATE_LIMIT`, `CELERY_INSIGHTS_REFRESH_RATE_LIMIT`
