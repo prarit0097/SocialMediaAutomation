@@ -139,6 +139,7 @@ What it does:
 - refreshes the connected account list
 - `Refresh List` now forces fresh reads for both connected accounts list and Meta catalog (`?refresh=1`), so operators see latest reconnect state immediately
 - shows current sync status and Meta page catalog data
+- Accounts list endpoint is per-user throttled (`30/m`) and Meta catalog endpoint is per-user throttled (`10/m`) so one operator cannot flood the DB/cache or Meta lookups during heavy usage
 - can queue force-refresh jobs for all active connected profiles to pull latest Meta insights into snapshots
 - force-refresh-all now uses persistent per-user run tracking with live progress (%) and completion state, so the button stays disabled until that user's run finishes (even after page reload or re-login)
 - force-refresh-all now asks for operator confirmation before starting, because full refresh can take significant time based on connected FB/IG profile count
@@ -189,6 +190,7 @@ What happens:
 - Instagram/FB+IG scheduling stores optimized IG-safe media URLs at schedule time (not only at publish time)
 - Facebook publishing now prefers direct multipart upload from local stored media when available, so Meta receives the original file bytes instead of re-fetching a public URL
 - combined FB + IG scheduling now preserves the original media for Facebook while storing the optimized derivative only for the Instagram leg
+- Scheduler create endpoint is per-user throttled (`60/m`) so accidental UI bursts or abusive clients cannot flood the publish queue
 - post is stored in UTC internally
 - Celery beat checks every minute for due posts
 - Celery worker publishes due jobs to Meta Graph
@@ -200,20 +202,19 @@ What happens:
 - publish task now uses a per-post execution lock (`publish_task_lock:<post_id>`) so duplicate deliveries do not run in parallel
 - failed jobs can be retried if the account row is current
 - invalid Meta token failures are stored with reconnect guidance so the operator knows to reconnect before retrying
-- Instagram video / reel publishing waits for container processing to finish before final publish
+- Instagram video / reel publishing prefers direct resumable upload from locally stored media when available, then waits for container processing before final publish
 - Meta media download timeouts are treated as transient and automatically retried
 - Instagram "media not ready to publish" responses (`code=9007`, `subcode=2207027`) are treated as transient and retried automatically
 - Meta Graph application/page rate-limit responses (`code=2`, `code=4`, plus common transient throttle codes/subcodes) are treated as transient instead of permanent failures
 - transient publish errors no longer stay stuck as long `processing`; row is moved back to `pending` with visible auto-retry message/countdown context
 - transient publish retries now also move `scheduled_for` forward by the retry cooldown, preventing immediate re-pick loops each minute
-- Instagram publish now uses a global lane lock to reduce parallel IG bursts; if lane is busy, post is re-queued with short delay instead of hammering Meta and hitting app-level throttles
-- when Instagram gets app-level throttle (`code=4`), scheduler now sets a temporary global IG cooldown window so due IG jobs are held briefly instead of being picked repeatedly into processing loops
+- Instagram publish now uses a per-user lane lock to reduce parallel IG bursts; if lane is busy, only that same user's IG job is re-queued with short delay instead of hammering Meta and hitting app-level throttles
+- when Instagram gets app-level throttle (`code=4`), scheduler now sets a temporary per-user IG cooldown window so that user's due IG jobs are held briefly without blocking other users' IG publishing
 - Instagram media-ready polling now uses configurable slower defaults (`META_IG_READY_TIMEOUT`, `META_IG_READY_POLL_INTERVAL`), with the current poll default set to `20s` to reduce Graph status-check pressure
 - Instagram media-ready polling now tolerates transient API failures/rate limits with backoff and continues polling instead of immediate hard-fail
 - Instagram publish now fails fast with a clear permanent error if media URL or IG user ID is missing, instead of entering a vague downstream failure path
 - Instagram video publishing explicitly requests `share_to_feed=true` so Reels also surface in the main feed grid
-- Instagram scheduling now reserves a minimum `120s` gap between non-terminal IG posts; if the requested slot conflicts with another IG job, the scheduler pushes it to the next available IG slot automatically
-- combined FB + IG scheduling still creates the FB leg at the requested time, but the IG leg is auto-shifted to the next free IG slot so it avoids overlapping another IG publish window
+- combined FB + IG scheduling now keeps a small `5s` stagger between the Facebook leg and Instagram leg, while the per-user IG lane lock handles same-user IG serialization at publish time
 - internal Instagram lane-busy retries now requeue silently without leaving a visible transient error message in the scheduled row
 - media preflight stream read timeouts (while validating public URL) are now classified as transient, so scheduler auto-retry path handles temporary ngrok/network instability instead of immediate hard-fail
 - publishing retries now use longer cooldown for Graph rate-limit errors to reduce repeated burst failures during multi-profile scheduling
@@ -374,6 +375,7 @@ Operational meaning:
 - `is_active` tracks whether a stored row is part of the latest usable reconnect set
 - encrypted token text itself is not used for DB filtering decisions; active/inactive state is managed with `is_active`
 - encrypted token values now survive Django model/form/admin round-trips without accidental double-encryption
+- active-account lookups are indexed on `(user, is_active)` so reconnect/account screens stay fast under larger user counts
 
 ### Subscription Orders
 Model: `dashboard.SubscriptionOrder`
@@ -480,6 +482,8 @@ Stores:
 - Use PostgreSQL via `DATABASE_URL` (SQLite is not suitable for high concurrent writes).
 - Use Redis for cache (`CACHE_BACKEND=redis`) and Celery broker/result backend.
 - Keep multiple web workers + multiple Celery workers (separate worker pool for publishing vs analytics is recommended).
+- hot tables now ship with DB indexes for active-account lookups, due-post scans, account/status scans, snapshot recency, and subscription expiry checks so high-traffic dashboard queries avoid full-table scans
+- critical write paths now use DB row locks where needed (`select_for_update()` in bulk-refresh bookkeeping and subscription verification) so concurrent requests do not double-finalize the same workflow
 - Tune runtime env knobs:
   - `DB_CONN_MAX_AGE`, `DB_CONN_HEALTH_CHECKS`
   - `CELERY_PUBLISH_RATE_LIMIT`, `CELERY_INSIGHTS_REFRESH_RATE_LIMIT`
