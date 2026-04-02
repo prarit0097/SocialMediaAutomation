@@ -36,6 +36,10 @@ def _ig_cooldown_key(account_id) -> str:
     return f"{IG_COOLDOWN_PREFIX}:{account_id}"
 
 
+def _is_ig_throttled_for_account(account_id) -> bool:
+    return bool(cache.get(_ig_cooldown_key(account_id)))
+
+
 def _publish_attempt_cache_key(post_id: int) -> str:
     return f"{PUBLISH_TRANSIENT_ATTEMPT_KEY_PREFIX}:{post_id}"
 
@@ -57,14 +61,29 @@ def _clear_publish_attempts(post_id: int) -> None:
     cache.delete(_publish_attempt_cache_key(post_id))
 
 
+def _select_dispatchable_due_posts(posts: list[ScheduledPost], batch_size: int) -> list[ScheduledPost]:
+    selected: list[ScheduledPost] = []
+    for post in posts:
+        if post.platform == INSTAGRAM and _is_ig_throttled_for_account(post.account_id):
+            continue
+        selected.append(post)
+        if len(selected) >= batch_size:
+            break
+    return selected
+
+
 def _get_due_posts(batch_size: int = 50) -> list[ScheduledPost]:
     now = timezone.now()
     with transaction.atomic():
+        # Over-fetch a little so IG rows currently under per-account cooldown
+        # can be skipped without starving the dispatch batch.
+        candidate_limit = max(batch_size * 3, batch_size)
         base_qs = ScheduledPost.objects.select_for_update(skip_locked=True).filter(
             status=POST_STATUS_PENDING,
             scheduled_for__lte=now,
         )
-        due_posts = list(base_qs.order_by("scheduled_for")[:batch_size])
+        candidate_posts = list(base_qs.order_by("scheduled_for")[:candidate_limit])
+        due_posts = _select_dispatchable_due_posts(candidate_posts, batch_size)
 
         for post in due_posts:
             post.status = POST_STATUS_PROCESSING
@@ -76,11 +95,15 @@ def _get_due_posts(batch_size: int = 50) -> list[ScheduledPost]:
 
 def _claim_due_posts_without_skip_locked(batch_size: int = 50) -> list[ScheduledPost]:
     now = timezone.now()
+    candidate_limit = max(batch_size * 3, batch_size)
     fallback_qs = ScheduledPost.objects.select_related("account").filter(
         status=POST_STATUS_PENDING,
         scheduled_for__lte=now,
     )
-    candidate_posts = list(fallback_qs.order_by("scheduled_for")[:batch_size])
+    candidate_posts = _select_dispatchable_due_posts(
+        list(fallback_qs.order_by("scheduled_for")[:candidate_limit]),
+        batch_size,
+    )
     claimed_ids: list[int] = []
     for post in candidate_posts:
         updated = ScheduledPost.objects.filter(id=post.id, status=POST_STATUS_PENDING).update(

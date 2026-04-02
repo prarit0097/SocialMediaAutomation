@@ -152,7 +152,7 @@ What it does:
 - insight endpoints are now cache-first: if a profile has no stored snapshot yet, the UI gets an immediate placeholder response while a background Celery refresh is queued, avoiding first-load nginx timeouts
 - production Docker Compose file now omits the obsolete top-level `version` key, so `docker compose` commands no longer emit the legacy schema warning during routine ops
 - publish retries for transient Meta throttles now use DB-scheduled backoff instead of Celery self-retry, which avoids duplicate publish-task collisions on Instagram and keeps throttled posts in a paced auto-retry state until Meta recovers
-- scheduler queue now labels throttled pending rows as `retrying`, and due-dispatch only advances at most one Instagram post per user in each batch so different users can still publish in parallel while same-user IG pressure stays paced
+- scheduler queue now labels throttled pending rows as `retrying`, skips only the IG accounts currently under cooldown, and can now claim larger due batches (up to `50`) so high-volume schedules drain faster
 - force refresh-all now refuses to start while Instagram due posts are already close to publish/processing, so operators do not create avoidable Meta contention right before scheduled delivery
 - publish health status is exposed to the dashboard, showing retrying/processing/due-pending pressure and the next known retry time for throttled posts
 - scheduler queue now shortens transient Meta throttle text into a compact retry note in the table while preserving the full raw detail in the cell tooltip
@@ -208,13 +208,13 @@ What happens:
 - Meta Graph application/page rate-limit responses (`code=2`, `code=4`, plus common transient throttle codes/subcodes) are treated as transient instead of permanent failures
 - transient publish errors no longer stay stuck as long `processing`; row is moved back to `pending` with visible auto-retry message/countdown context
 - transient publish retries now also move `scheduled_for` forward by the retry cooldown, preventing immediate re-pick loops each minute
-- Instagram publish now uses a per-user lane lock to reduce parallel IG bursts; if lane is busy, only that same user's IG job is re-queued with short delay instead of hammering Meta and hitting app-level throttles
-- when Instagram gets app-level throttle (`code=4`), scheduler now sets a temporary per-user IG cooldown window so that user's due IG jobs are held briefly without blocking other users' IG publishing
+- Instagram publish now uses a per-account lane lock, so posts for different IG accounts can publish in parallel while duplicate/same-account publishes are still serialized
+- when Instagram gets app-level throttle (`code=4`), scheduler now sets a temporary per-account IG cooldown window so only that throttled account's due IG jobs are held briefly
 - Instagram media-ready polling now uses configurable slower defaults (`META_IG_READY_TIMEOUT`, `META_IG_READY_POLL_INTERVAL`), with the current poll default set to `20s` to reduce Graph status-check pressure
 - Instagram media-ready polling now tolerates transient API failures/rate limits with backoff and continues polling instead of immediate hard-fail
 - Instagram publish now fails fast with a clear permanent error if media URL or IG user ID is missing, instead of entering a vague downstream failure path
 - Instagram video publishing explicitly requests `share_to_feed=true` so Reels also surface in the main feed grid
-- combined FB + IG scheduling now keeps a small `5s` stagger between the Facebook leg and Instagram leg, while the per-user IG lane lock handles same-user IG serialization at publish time
+- combined FB + IG scheduling now keeps a small `5s` stagger between the Facebook leg and Instagram leg, while the per-account IG lane lock handles same-account serialization at publish time
 - internal Instagram lane-busy retries now requeue silently without leaving a visible transient error message in the scheduled row
 - media preflight stream read timeouts (while validating public URL) are now classified as transient, so scheduler auto-retry path handles temporary ngrok/network instability instead of immediate hard-fail
 - publishing retries now use longer cooldown for Graph rate-limit errors to reduce repeated burst failures during multi-profile scheduling

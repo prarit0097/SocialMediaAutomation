@@ -23,7 +23,7 @@ from publishing.models import ScheduledPost
 from publishing.media_utils import Image as PIL_IMAGE
 from publishing.media_utils import ensure_public_media_fetchable
 from publishing.services import publish_scheduled_post
-from publishing.tasks import _get_due_posts, publish_post_task
+from publishing.tasks import _get_due_posts, _ig_cooldown_key, _ig_lane_key, publish_post_task
 
 
 class PublishingApiTests(TestCase):
@@ -439,7 +439,7 @@ class PublishingTaskTests(TestCase):
         self.assertGreater(self.post.scheduled_for, before_schedule)
 
     @patch("publishing.tasks.publish_scheduled_post")
-    def test_publish_post_task_sets_global_ig_cooldown_on_code4(self, mock_publish):
+    def test_publish_post_task_sets_per_account_ig_cooldown_on_code4(self, mock_publish):
         ig_account = ConnectedAccount.objects.create(
             platform=INSTAGRAM,
             page_id="17890003",
@@ -460,7 +460,7 @@ class PublishingTaskTests(TestCase):
         result = publish_post_task(ig_post.id)
 
         self.assertEqual(result["status"], "requeued_transient")
-        self.assertTrue(bool(cache.get("publishing:ig_global_cooldown")))
+        self.assertTrue(bool(cache.get(_ig_cooldown_key(ig_account.id))))
 
     @override_settings(IG_PUBLISH_LANE_RETRY_SECONDS=45)
     @patch("publishing.tasks.publish_scheduled_post")
@@ -480,7 +480,7 @@ class PublishingTaskTests(TestCase):
             scheduled_for=timezone.now(),
             status="processing",
         )
-        cache.set("publishing:ig_publish_lane", "busy", timeout=60)
+        cache.set(_ig_lane_key(ig_account.id), "busy", timeout=60)
 
         result = publish_post_task(ig_post.id)
 
@@ -490,7 +490,7 @@ class PublishingTaskTests(TestCase):
         self.assertEqual(ig_post.status, POST_STATUS_PENDING)
         self.assertEqual(ig_post.error_message, "")
 
-    def test_get_due_posts_skips_instagram_when_global_cooldown_set(self):
+    def test_get_due_posts_skips_only_the_cooled_instagram_account(self):
         ig_account = ConnectedAccount.objects.create(
             platform=INSTAGRAM,
             page_id="17890002",
@@ -513,16 +513,32 @@ class PublishingTaskTests(TestCase):
             scheduled_for=timezone.now() - timedelta(minutes=1),
             status=POST_STATUS_PENDING,
         )
-        cache.set("publishing:ig_global_cooldown", "throttled", timeout=60)
+        other_ig_account = ConnectedAccount.objects.create(
+            platform=INSTAGRAM,
+            page_id="17890005",
+            page_name="IG Page 5",
+            ig_user_id="17890005",
+            access_token="token",
+        )
+        other_ig_due = ScheduledPost.objects.create(
+            account=other_ig_account,
+            platform=INSTAGRAM,
+            message="ig due other",
+            media_url="https://example.com/b.jpg",
+            scheduled_for=timezone.now() - timedelta(minutes=1),
+            status=POST_STATUS_PENDING,
+        )
+        cache.set(_ig_cooldown_key(ig_account.id), "throttled", timeout=60)
 
         due_posts = _get_due_posts(batch_size=10)
         due_ids = {post.id for post in due_posts}
 
         self.assertIn(fb_due.id, due_ids)
         self.assertNotIn(ig_due.id, due_ids)
+        self.assertIn(other_ig_due.id, due_ids)
 
-    def test_get_due_posts_limits_batch_to_one_instagram_post(self):
-        ig_account = ConnectedAccount.objects.create(
+    def test_get_due_posts_allows_multiple_instagram_accounts_in_same_batch(self):
+        first_ig_account = ConnectedAccount.objects.create(
             platform=INSTAGRAM,
             page_id="17890004",
             page_name="IG Page 4",
@@ -530,15 +546,22 @@ class PublishingTaskTests(TestCase):
             access_token="token",
         )
         first_ig = ScheduledPost.objects.create(
-            account=ig_account,
+            account=first_ig_account,
             platform=INSTAGRAM,
             message="ig due 1",
             media_url="https://example.com/a.jpg",
             scheduled_for=timezone.now() - timedelta(minutes=2),
             status=POST_STATUS_PENDING,
         )
+        second_ig_account = ConnectedAccount.objects.create(
+            platform=INSTAGRAM,
+            page_id="17890006",
+            page_name="IG Page 6",
+            ig_user_id="17890006",
+            access_token="token",
+        )
         second_ig = ScheduledPost.objects.create(
-            account=ig_account,
+            account=second_ig_account,
             platform=INSTAGRAM,
             message="ig due 2",
             media_url="https://example.com/b.jpg",
@@ -550,7 +573,7 @@ class PublishingTaskTests(TestCase):
         due_ids = {post.id for post in due_posts}
 
         self.assertIn(first_ig.id, due_ids)
-        self.assertNotIn(second_ig.id, due_ids)
+        self.assertIn(second_ig.id, due_ids)
 
 
 class PublishingServiceTests(TestCase):
