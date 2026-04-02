@@ -210,8 +210,9 @@ What happens:
 - transient publish retries now also move `scheduled_for` forward by the retry cooldown, preventing immediate re-pick loops each minute
 - Instagram publish now uses a per-account lane lock, so posts for different IG accounts can publish in parallel while duplicate/same-account publishes are still serialized
 - when Instagram gets app-level throttle (`code=4`), scheduler now sets a temporary per-account IG cooldown window so only that throttled account's due IG jobs are held briefly
-- Instagram media-ready polling now uses configurable slower defaults (`META_IG_READY_TIMEOUT`, `META_IG_READY_POLL_INTERVAL`), with the current poll default set to `20s` to reduce Graph status-check pressure
+- Instagram media-ready polling now uses configurable defaults (`META_IG_READY_TIMEOUT`, `META_IG_READY_POLL_INTERVAL`), with the current poll default set to `12s`
 - Instagram media-ready polling now tolerates transient API failures/rate limits with backoff and continues polling instead of immediate hard-fail
+- Instagram resumable-upload video flow now starts polling after a short `8s` initial wait instead of waiting for the full poll interval, reducing end-to-end Reel publish latency
 - Instagram publish now fails fast with a clear permanent error if media URL or IG user ID is missing, instead of entering a vague downstream failure path
 - Instagram video publishing explicitly requests `share_to_feed=true` so Reels also surface in the main feed grid
 - combined FB + IG scheduling now keeps a small `5s` stagger between the Facebook leg and Instagram leg, while the per-account IG lane lock handles same-account serialization at publish time

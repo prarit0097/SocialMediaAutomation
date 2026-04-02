@@ -342,14 +342,16 @@ class MetaClient:
         poll_interval = (
             poll_interval
             if isinstance(poll_interval, int) and poll_interval > 0
-            else max(5, int(getattr(settings, "META_IG_READY_POLL_INTERVAL", 20)))
+            else max(5, int(getattr(settings, "META_IG_READY_POLL_INTERVAL", 12)))
         )
         started = time.monotonic()
         latest_payload = {}
         latest_transient_error: MetaTransientError | None = None
-        # IG media containers are never ready in the first ~15-20s, so skip
-        # the very first poll to avoid wasting an API call on the burst window.
-        time.sleep(min(poll_interval, timeout // 2))
+        # Brief initial pause — resumable-uploaded videos are available faster
+        # than URL-fetched ones, so 8 s is enough to skip the "not ready yet"
+        # burst without adding unnecessary latency.
+        initial_wait = min(8, poll_interval, timeout // 2)
+        time.sleep(initial_wait)
         while time.monotonic() - started < timeout:
             try:
                 latest_payload = self._get(

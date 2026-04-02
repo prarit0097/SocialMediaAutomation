@@ -765,11 +765,11 @@ class PublishingServiceTests(TestCase):
             "creation-id",
             "token",
             timeout=60,
-            poll_interval=20,
+            poll_interval=12,
         )
 
         self.assertEqual(payload["status_code"], "FINISHED")
-        mock_sleep.assert_called_once_with(20)
+        mock_sleep.assert_called_once_with(8)
         mock_get.assert_called_once()
 
     @patch("publishing.media_utils._resolved_public_ips", return_value=["93.184.216.34"])
