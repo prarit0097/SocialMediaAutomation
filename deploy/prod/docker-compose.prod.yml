@@ -20,7 +20,7 @@ services:
     build:
       context: ../..
       dockerfile: Dockerfile
-    command: celery -A social_automation worker -l info --pool=threads -c 8 -n worker_main@%h
+    command: celery -A social_automation worker -l info --pool=gevent --concurrency=20 -n worker_main@%h
     env_file:
       - ../../.env
     volumes:

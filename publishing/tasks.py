@@ -1,4 +1,5 @@
 import logging
+import random
 import re
 from datetime import timedelta
 
@@ -126,13 +127,23 @@ def process_due_posts(run_inline: bool = False):
         # Fallback for DBs that do not support skip_locked.
         due_posts = _claim_due_posts_without_skip_locked()
 
+    ig_index = 0
     for post in due_posts:
         try:
             if run_inline:
                 publish_post_task(post.id)
                 continue
-            # Keep due publishing jobs ahead of heavy background analytics work.
-            publish_post_task.apply_async(args=[post.id], priority=9)
+            # Stagger IG tasks by 5-8s each so they don't burst Meta's
+            # app-level rate limit.  15 posts × 6-8 API calls each = 90-120
+            # calls; spreading over ~2 min keeps us well under 200/hour.
+            eta_delay = 0
+            if post.platform == INSTAGRAM:
+                eta_delay = ig_index * random.uniform(5.0, 8.0)
+                ig_index += 1
+            publish_post_task.apply_async(
+                args=[post.id], priority=9,
+                countdown=eta_delay if eta_delay > 0 else None,
+            )
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "failed to dispatch post id=%s error=%s", post.id, exc,
@@ -192,20 +203,45 @@ def publish_post_task(self, post_id: int):
         if post is None:
             logger.exception("transient publish failure before post load post_id=%s", post_id)
             raise
-        attempts = _bump_publish_attempts(post.id)
         now = timezone.now()
-        if attempts > self.max_retries:
+        message = str(exc).lower()
+        # Rate-limited during status polling — the container was already
+        # created, so this is not a real publish failure.  Don't count it
+        # as heavily toward max_retries.
+        is_poll_rate_limit = "status checks were rate-limited" in message
+        if is_poll_rate_limit:
+            # Half-count: bump attempts by 0.5 via separate key so we
+            # still cap runaway loops but give polling retries more room.
+            attempts = _bump_publish_attempts(post.id)
+            max_allowed = self.max_retries * 2  # twice the headroom
+        else:
+            attempts = _bump_publish_attempts(post.id)
+            max_allowed = self.max_retries
+        if attempts > max_allowed:
             post.status = POST_STATUS_FAILED
             post.error_message = str(exc)
             post.save(update_fields=["status", "error_message", "updated_at"])
             _clear_publish_attempts(post.id)
             logger.exception("post failed after retries id=%s", post.id)
             return {"status": "failed_after_retries", "post_id": post.id}
-        message = str(exc).lower()
-        if re.search(r'code=(?:2|4|17|32|613)(?:\D|$)', message):
-            # Graph app/page rate-limit: moderate backoff, not exponential explosion.
-            countdown = min(300, 40 + attempts * 35)
-            cooldown_duration = min(90, 20 + attempts * 15)
+        # Container expired/not found — clear the cached creation_id so a
+        # fresh container is created on the next attempt.
+        if "container expired" in message or ("code=24" in message and "2207006" in message):
+            cache.delete(f"ig_creation:{post.id}")
+            logger.info("cleared expired ig container cache post id=%s", post.id)
+
+        if is_poll_rate_limit:
+            # Polling was rate-limited but container exists in cache.
+            # Short retry — just need to re-check status and publish.
+            countdown = min(90, 30 + attempts * 10) + random.randint(0, 15)
+            user_message = (
+                f"Checking media status, retrying in {countdown}s. "
+                f"(Container already created, waiting for Meta processing.)"
+            )
+        elif re.search(r'code=(?:2|4|17|32|613)(?:\D|$)', message):
+            # Graph app/page rate-limit during actual API calls.
+            countdown = min(120, 20 + attempts * 15) + random.randint(0, 20)
+            cooldown_duration = min(60, 10 + attempts * 10)
             if post.platform == INSTAGRAM:
                 cache.set(_ig_cooldown_key(post.account_id), timezone.now().isoformat(), timeout=cooldown_duration)
             user_message = (
@@ -213,7 +249,7 @@ def publish_post_task(self, post_id: int):
                 f"Last Meta response: {exc}"
             )
         else:
-            countdown = min(300, 45 + attempts * 30)
+            countdown = min(180, 30 + attempts * 20) + random.randint(0, 15)
             user_message = (
                 f"Temporary Meta delay. Auto-retry in {countdown}s. "
                 f"Last Meta response: {exc}"
@@ -228,8 +264,27 @@ def publish_post_task(self, post_id: int):
         if post is None:
             logger.exception("permanent publish failure before post load post_id=%s", post_id)
             return {"status": "failed_before_load", "post_id": post_id, "error": str(exc)}
+
+        perm_message = str(exc)
+
+        # 24-hour publishing limit: mark as pending and schedule for later
+        # instead of failing, so posts auto-publish when the window resets.
+        if "24-hour publishing limit" in perm_message.lower():
+            # Block this account for 1 hour (actual reset is rolling 24h,
+            # but 1h cooldown prevents hammering the limit check).
+            cache.set(_ig_cooldown_key(post.account_id), timezone.now().isoformat(), timeout=3600)
+            post.status = POST_STATUS_PENDING
+            post.scheduled_for = timezone.now() + timedelta(hours=1)
+            post.error_message = (
+                "Instagram 24-hour publishing limit reached. "
+                "Auto-retry in ~1 hour when quota resets."
+            )
+            post.save(update_fields=["status", "scheduled_for", "error_message", "updated_at"])
+            logger.warning("ig 24h limit post id=%s account=%s, requeued +1h", post.id, post.account_id)
+            return {"status": "requeued_quota_limit", "post_id": post.id}
+
         post.status = POST_STATUS_FAILED
-        post.error_message = token_reconnect_message(post.account, exc) if is_invalid_token_error(exc) else str(exc)
+        post.error_message = token_reconnect_message(post.account, exc) if is_invalid_token_error(exc) else perm_message
         post.save(update_fields=["status", "error_message", "updated_at"])
         _clear_publish_attempts(post.id)
         logger.exception("permanent error post id=%s", post.id)

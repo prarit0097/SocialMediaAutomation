@@ -1,10 +1,11 @@
 import logging
 import os
 
+from django.core.cache import cache
 from django.core.files.storage import default_storage
 
 from core.constants import FACEBOOK
-from core.exceptions import MetaPermanentError
+from core.exceptions import MetaPermanentError, MetaTransientError
 from core.services.meta_client import MetaClient
 from publishing.media_utils import (
     IMAGE_EXTENSIONS,
@@ -151,31 +152,72 @@ def publish_scheduled_post(post):
     if ext and media_kind == "image" and ext not in IMAGE_EXTENSIONS:
         raise MetaPermanentError(f"Unsupported Instagram media type: {ext}")
 
-    # For videos, prefer direct upload (resumable) so Meta doesn't need to
-    # fetch from our server — avoids Content-Type / SSL / redirect issues.
-    # For images, IG API still requires image_url (no resumable support).
-    source_bytes, source_filename = None, None
-    if media_kind == "video":
-        source_bytes, source_filename = _read_local_media(post.media_url)
+    # Check IG publishing quota before wasting API calls on container
+    # creation.  The endpoint tells us how many posts this account has
+    # left in the rolling 24-hour window.
+    quota_cache_key = f"ig_quota_ok:{account.id}"
+    if not cache.get(quota_cache_key):
+        try:
+            quota = client.check_ig_publishing_limit(
+                ig_user_id=ig_user_id,
+                page_access_token=account.access_token,
+            )
+            if quota["quota_remaining"] <= 0:
+                raise MetaPermanentError(
+                    f"Instagram 24-hour publishing limit reached for {account.page_name}. "
+                    f"Used {quota['quota_usage']}/{quota['quota_total']}. "
+                    f"Remaining posts will be queued for later."
+                )
+            # Cache the "ok" for 5 minutes to avoid burning API calls
+            # on quota checks for every single post.
+            cache.set(quota_cache_key, quota["quota_remaining"], timeout=300)
+            logger.info(
+                "ig quota check account=%s remaining=%s/%s",
+                account.id, quota["quota_remaining"], quota["quota_total"],
+            )
+        except MetaTransientError:
+            # Quota endpoint unreachable — proceed with publish attempt
+            # and let the actual publish call fail if over quota.
+            pass
 
-    if not source_bytes:
-        # Fallback to URL-based: verify the URL is reachable by Meta.
-        ensure_public_media_fetchable(post.media_url)
+    # Check if a previous attempt already created a container for this post.
+    # This avoids creating duplicate IG media containers when a retry is
+    # caused by rate-limited polling (container was created fine, we just
+    # couldn't check its status).
+    creation_cache_key = f"ig_creation:{post.id}"
+    creation_id = cache.get(creation_cache_key)
 
-    creation = client.create_instagram_media(
-        ig_user_id=ig_user_id,
-        page_access_token=account.access_token,
-        media_url=post.media_url,
-        caption=post.message or "",
-        media_kind=media_kind,
-        source_bytes=source_bytes,
-        source_filename=source_filename,
-    )
-    creation_id = creation.get("id")
     if not creation_id:
-        raise MetaPermanentError(
-            f"Instagram media container creation returned no ID. Response: {creation}"
+        # For videos, prefer direct upload (resumable) so Meta doesn't need to
+        # fetch from our server — avoids Content-Type / SSL / redirect issues.
+        # For images, IG API still requires image_url (no resumable support).
+        source_bytes, source_filename = None, None
+        if media_kind == "video":
+            source_bytes, source_filename = _read_local_media(post.media_url)
+
+        if not source_bytes:
+            # Fallback to URL-based: verify the URL is reachable by Meta.
+            ensure_public_media_fetchable(post.media_url)
+
+        creation = client.create_instagram_media(
+            ig_user_id=ig_user_id,
+            page_access_token=account.access_token,
+            media_url=post.media_url,
+            caption=post.message or "",
+            media_kind=media_kind,
+            source_bytes=source_bytes,
+            source_filename=source_filename,
         )
+        creation_id = creation.get("id")
+        if not creation_id:
+            raise MetaPermanentError(
+                f"Instagram media container creation returned no ID. Response: {creation}"
+            )
+        # Cache for 30 minutes so retries can reuse the same container.
+        cache.set(creation_cache_key, creation_id, timeout=1800)
+        logger.info("ig container created post id=%s creation_id=%s", post.id, creation_id)
+    else:
+        logger.info("ig container reused from cache post id=%s creation_id=%s", post.id, creation_id)
 
     client.wait_for_instagram_media_ready(
         creation_id=creation_id,
@@ -186,4 +228,6 @@ def publish_scheduled_post(post):
         page_access_token=account.access_token,
         creation_id=creation_id,
     )
+    # Clean up — container is published, no need to cache it.
+    cache.delete(creation_cache_key)
     return publish_result.get("id")

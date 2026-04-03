@@ -1,4 +1,5 @@
-﻿import os
+﻿import logging
+import os
 from datetime import timedelta
 import time
 from urllib.parse import urlencode
@@ -9,6 +10,8 @@ from django.utils import timezone
 
 from core.constants import META_SCOPES
 from core.exceptions import MetaAPIError, MetaPermanentError, MetaTransientError
+
+logger = logging.getLogger("meta_client")
 
 TRANSIENT_GRAPH_ERROR_CODES = {2, 4, 17, 32, 613}
 TRANSIENT_GRAPH_ERROR_SUBCODES = {2207003, 2207027, 2207051}
@@ -264,17 +267,26 @@ class MetaClient:
                 # Resumable upload: Meta downloads from its own infra instead
                 # of fetching from our server — avoids Content-Type / SSL /
                 # redirect failures that cause status_code=ERROR.
-                payload["upload_type"] = "resumable"
-                container = self._post(f"/{ig_user_id}/media", payload)
-                upload_uri = container.get("uri")
-                if not upload_uri:
-                    raise MetaPermanentError(
-                        f"IG resumable container missing upload URI. Response: {container}"
+                try:
+                    resumable_payload = {**payload, "upload_type": "resumable"}
+                    container = self._post(f"/{ig_user_id}/media", resumable_payload)
+                    upload_uri = container.get("uri")
+                    if not upload_uri:
+                        raise MetaTransientError(
+                            f"IG resumable container missing upload URI. Response: {container}"
+                        )
+                    self._upload_ig_resumable_video(
+                        upload_uri, page_access_token, source_bytes, source_filename,
                     )
-                self._upload_ig_resumable_video(
-                    upload_uri, page_access_token, source_bytes, source_filename,
-                )
-                return container
+                    return container
+                except (MetaTransientError, MetaPermanentError) as resumable_exc:
+                    # Resumable upload failed — fall back to video_url so
+                    # the publish still has a chance to succeed.
+                    logger.warning(
+                        "IG resumable upload failed, falling back to video_url: %s",
+                        resumable_exc,
+                    )
+                    payload["video_url"] = media_url
             else:
                 payload["video_url"] = media_url
         else:
@@ -331,6 +343,37 @@ class MetaClient:
             },
         )
 
+    def check_ig_publishing_limit(
+        self, ig_user_id: str, page_access_token: str,
+    ) -> dict:
+        """Check IG content publishing quota via official endpoint.
+
+        Returns dict with keys: quota_usage, quota_total, quota_remaining.
+        Raises MetaTransientError if the endpoint is unreachable.
+        """
+        try:
+            data = self._get(
+                f"/{ig_user_id}/content_publishing_limit",
+                {
+                    "access_token": page_access_token,
+                    "fields": "config,quota_usage",
+                },
+            )
+        except MetaPermanentError:
+            # Some older accounts / permission sets don't expose this endpoint.
+            # Treat as "unknown" — don't block publishing, let the actual
+            # publish call fail if over quota.
+            return {"quota_usage": 0, "quota_total": 25, "quota_remaining": 25}
+
+        config = data.get("config") or {}
+        quota_total = int(config.get("quota_total", 25))
+        quota_usage = int(data.get("quota_usage", 0))
+        return {
+            "quota_usage": quota_usage,
+            "quota_total": quota_total,
+            "quota_remaining": max(0, quota_total - quota_usage),
+        }
+
     def wait_for_instagram_media_ready(
         self,
         creation_id: str,
@@ -338,7 +381,9 @@ class MetaClient:
         timeout: int | None = None,
         poll_interval: int | None = None,
     ) -> dict:
-        timeout = timeout if isinstance(timeout, int) and timeout > 0 else max(120, int(getattr(settings, "META_IG_READY_TIMEOUT", 240)))
+        import random
+
+        timeout = timeout if isinstance(timeout, int) and timeout > 0 else max(120, int(getattr(settings, "META_IG_READY_TIMEOUT", 300)))
         poll_interval = (
             poll_interval
             if isinstance(poll_interval, int) and poll_interval > 0
@@ -347,10 +392,10 @@ class MetaClient:
         started = time.monotonic()
         latest_payload = {}
         latest_transient_error: MetaTransientError | None = None
-        # Brief initial pause — resumable-uploaded videos are available faster
-        # than URL-fetched ones, so 8 s is enough to skip the "not ready yet"
-        # burst without adding unnecessary latency.
-        initial_wait = min(8, poll_interval, timeout // 2)
+        consecutive_rate_limits = 0
+        # Brief initial pause + random jitter so parallel tasks don't all
+        # fire their first poll at the exact same instant.
+        initial_wait = min(8, poll_interval, timeout // 2) + random.uniform(0, 4)
         time.sleep(initial_wait)
         while time.monotonic() - started < timeout:
             try:
@@ -362,9 +407,14 @@ class MetaClient:
                     },
                 )
                 latest_transient_error = None
+                consecutive_rate_limits = 0
             except MetaTransientError as exc:
                 latest_transient_error = exc
-                time.sleep(min(max(poll_interval + 2, 5), 20))
+                consecutive_rate_limits += 1
+                # Progressive backoff on rate limits: the more consecutive
+                # failures, the longer we wait — gives other tasks room.
+                rl_backoff = min(60, (poll_interval + 5) * consecutive_rate_limits) + random.uniform(0, 8)
+                time.sleep(rl_backoff)
                 continue
             status_code = str(latest_payload.get("status_code") or "").upper()
             status = str(latest_payload.get("status") or "").upper()
@@ -374,7 +424,8 @@ class MetaClient:
                 raise MetaPermanentError(
                     f"Instagram media processing failed before publish. status_code={status_code or 'unknown'}"
                 )
-            time.sleep(poll_interval)
+            # Jitter on normal polls too — prevents synchronized polling waves
+            time.sleep(poll_interval + random.uniform(0, 5))
 
         if latest_transient_error:
             raise MetaTransientError(
@@ -840,7 +891,55 @@ class MetaClient:
         )
         return self._handle_response(response)
 
+    # ------------------------------------------------------------------ #
+    # X-App-Usage / X-Page-Usage proactive throttle
+    # ------------------------------------------------------------------ #
+    # Meta returns these headers on every Graph API response.  When any
+    # metric exceeds ~80 % we inject a short sleep so the next call doesn't
+    # push us into a rate-limit error.  At >90 % we sleep longer.  This is
+    # per Meta's best-practice guidance (see Executive Summary §5).
+    _APP_USAGE_THROTTLE_PCT = 75   # start slowing down
+    _APP_USAGE_HARD_PCT = 90       # aggressive backoff
+
+    def _check_usage_headers(self, response: requests.Response) -> None:
+        """Read X-App-Usage / X-Page-Usage and sleep proactively."""
+        import json as _json
+
+        for header in ("X-App-Usage", "X-Business-Use-Case-Usage", "X-Page-Usage"):
+            raw = response.headers.get(header)
+            if not raw:
+                continue
+            try:
+                usage = _json.loads(raw)
+            except (ValueError, TypeError):
+                continue
+            # X-App-Usage is {"call_count":N, "total_cputime":N, "total_time":N}
+            # X-Page-Usage has the same shape but may be nested per page-id.
+            pcts: list[float] = []
+            if isinstance(usage, dict):
+                for v in usage.values():
+                    if isinstance(v, (int, float)):
+                        pcts.append(float(v))
+                    elif isinstance(v, list):
+                        for item in v:
+                            if isinstance(item, dict):
+                                for vv in item.values():
+                                    if isinstance(vv, (int, float)):
+                                        pcts.append(float(vv))
+            if not pcts:
+                continue
+            peak = max(pcts)
+            if peak >= self._APP_USAGE_HARD_PCT:
+                logger.warning("Meta %s at %.0f%% — hard throttle 15s", header, peak)
+                time.sleep(15)
+            elif peak >= self._APP_USAGE_THROTTLE_PCT:
+                logger.info("Meta %s at %.0f%% — soft throttle 5s", header, peak)
+                time.sleep(5)
+
     def _handle_response(self, response: requests.Response) -> dict:
+        # Track X-App-Usage to proactively throttle when approaching limits.
+        self._check_usage_headers(response)
+
         if response.status_code < 400:
             try:
                 return response.json()
@@ -875,6 +974,45 @@ class MetaClient:
             message = f"{message} ({', '.join(details)})"
         lower_msg = (message or "").lower()
         lower_user_msg = (user_msg or "").lower()
+
+        # --- IG-specific permanent errors that should NOT be retried ---
+        # Code 9 + subcode 2207042: 24-hour publishing limit exceeded.
+        if code == 9 and subcode == 2207042:
+            raise MetaPermanentError(
+                f"Instagram 24-hour publishing limit reached for this account. "
+                f"Remaining posts will be queued for tomorrow. ({message})",
+                status_code=response.status_code, payload=payload,
+            )
+        # Code 368: duplicate/repeated content flagged as spam.
+        if code == 368:
+            raise MetaPermanentError(
+                f"Instagram rejected this post as duplicate or repeated content. "
+                f"Change the caption/hashtags and try again. ({message})",
+                status_code=response.status_code, payload=payload,
+            )
+        # Code 25 + subcode 2207050: account restricted/inactive.
+        if code == 25 and subcode == 2207050:
+            raise MetaPermanentError(
+                f"This Instagram account is restricted or inactive. "
+                f"Log into the Instagram app and check for any restrictions. ({message})",
+                status_code=response.status_code, payload=payload,
+            )
+        # Code 24 + subcode 2207006: container expired / media not found.
+        if code == 24 and subcode == 2207006:
+            raise MetaTransientError(
+                f"Instagram media container expired or not found. "
+                f"A fresh container will be created on retry. ({message})",
+                status_code=response.status_code, payload=payload,
+            )
+        # Code 36003: invalid aspect ratio.
+        if code == 36003:
+            raise MetaPermanentError(
+                f"Instagram rejected the media due to invalid aspect ratio. "
+                f"Supported: 1:1, 4:5, 1.91:1 (images) or 9:16 (Reels). ({message})",
+                status_code=response.status_code, payload=payload,
+            )
+
+        # --- General transient errors (retryable) ---
         if (
             code == -2
             or code in TRANSIENT_GRAPH_ERROR_CODES

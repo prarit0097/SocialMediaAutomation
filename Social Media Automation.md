@@ -203,6 +203,7 @@ What happens:
 - failed jobs can be retried if the account row is current
 - invalid Meta token failures are stored with reconnect guidance so the operator knows to reconnect before retrying
 - Instagram video / reel publishing prefers direct resumable upload from locally stored media when available, then waits for container processing before final publish
+- if Instagram resumable video upload fails during container setup, publish flow now falls back to `video_url` container creation instead of immediately failing the whole post
 - Meta media download timeouts are treated as transient and automatically retried
 - Instagram "media not ready to publish" responses (`code=9007`, `subcode=2207027`) are treated as transient and retried automatically
 - Meta Graph application/page rate-limit responses (`code=2`, `code=4`, plus common transient throttle codes/subcodes) are treated as transient instead of permanent failures
@@ -210,15 +211,20 @@ What happens:
 - transient publish retries now also move `scheduled_for` forward by the retry cooldown, preventing immediate re-pick loops each minute
 - Instagram publish now uses a per-account lane lock, so posts for different IG accounts can publish in parallel while duplicate/same-account publishes are still serialized
 - when Instagram gets app-level throttle (`code=4`), scheduler now sets a temporary per-account IG cooldown window so only that throttled account's due IG jobs are held briefly
+- Instagram publish now checks Meta's official `content_publishing_limit` endpoint before container creation and skips wasteful publish attempts when an account has exhausted its rolling 24-hour quota
 - Instagram media-ready polling now uses configurable defaults (`META_IG_READY_TIMEOUT`, `META_IG_READY_POLL_INTERVAL`), with the current poll default set to `12s`
-- Instagram media-ready polling now tolerates transient API failures/rate limits with backoff and continues polling instead of immediate hard-fail
-- Instagram resumable-upload video flow now starts polling after a short `8s` initial wait instead of waiting for the full poll interval, reducing end-to-end Reel publish latency
+- Instagram media-ready polling now tolerates transient API failures/rate limits with jittered progressive backoff and continues polling instead of immediate hard-fail
+- Instagram resumable-upload video flow now starts polling after a short `8s` initial wait plus small jitter, reducing end-to-end Reel publish latency while avoiding synchronized first-poll bursts
+- Instagram media container IDs are cached per scheduled post for 30 minutes, so retries caused by polling/rate-limit issues reuse the existing container instead of creating duplicate containers
 - Instagram publish now fails fast with a clear permanent error if media URL or IG user ID is missing, instead of entering a vague downstream failure path
 - Instagram video publishing explicitly requests `share_to_feed=true` so Reels also surface in the main feed grid
 - combined FB + IG scheduling now keeps a small `5s` stagger between the Facebook leg and Instagram leg, while the per-account IG lane lock handles same-account serialization at publish time
 - internal Instagram lane-busy retries now requeue silently without leaving a visible transient error message in the scheduled row
 - media preflight stream read timeouts (while validating public URL) are now classified as transient, so scheduler auto-retry path handles temporary ngrok/network instability instead of immediate hard-fail
 - publishing retries now use longer cooldown for Graph rate-limit errors to reduce repeated burst failures during multi-profile scheduling
+- Instagram due-post dispatch now adds a wider `5-8s` stagger per IG job, and status-poll retries use shorter jittered rechecks when the media container already exists
+- Meta Graph responses are now checked for `X-App-Usage`, `X-Page-Usage`, and `X-Business-Use-Case-Usage`; high usage automatically injects short sleeps before the next request to proactively avoid app-level throttling
+- Instagram-specific permanent errors now surface clearer operator actions: 24-hour quota reached requeues the post for later, duplicate-content rejection asks for caption/media changes, account restriction asks for Instagram app review, and invalid aspect ratio errors explain supported formats
 - failed Instagram retries also re-apply IG media optimization before requeueing
 - if Celery/Redis dispatch is temporarily unavailable, scheduler fallback still tries to progress due posts but prefers queue dispatch over long inline request blocking
 - stale `processing` rows are only auto-recovered after a longer safety window that exceeds the Celery task hard limit, so live IG publishes are not reset too early
@@ -603,6 +609,7 @@ This project includes local MCP servers under `mcp_servers/` so Codex or future 
   - resolves build context, `.env`, and Nginx config paths back to repo root even though the compose file lives under `deploy/prod/`
   - keeps Postgres/Redis private inside Docker network
   - serves Django via Gunicorn + app Nginx
+  - runs the production Celery worker with `--pool=gevent --concurrency=20` so IG-heavy publish batches can overlap on I/O instead of bottlenecking on the old low-thread worker config
   - binds app Nginx on loopback (`127.0.0.1:${APP_INTERNAL_PORT}`) so host reverse proxy can route multiple apps safely on one VPS
   - includes persistent Docker volumes for DB, Redis AOF, static, and media
 - local/dev `docker-compose.yml` also mounts shared media storage into web, worker, and nginx so uploaded media remains reachable across services
