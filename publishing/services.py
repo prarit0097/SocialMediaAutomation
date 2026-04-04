@@ -18,6 +18,27 @@ from publishing.media_utils import (
 
 logger = logging.getLogger("publishing")
 
+
+def _check_meta_usage_and_throttle() -> None:
+    """Publishing tasks call this to check cached Meta usage and self-throttle.
+
+    Only called from Celery tasks (publishing context), not from web requests.
+    If usage is high, sleeps to avoid pushing into rate limits.
+    """
+    import time as _time
+    from django.core.cache import cache
+
+    for header in ("X-App-Usage", "X-Business-Use-Case-Usage", "X-Page-Usage"):
+        peak = cache.get(f"meta_usage:{header}")
+        if peak is None:
+            continue
+        if peak >= 90:
+            logger.warning("Meta usage at %.0f%% — throttling 15s", peak)
+            _time.sleep(15)
+        elif peak >= 75:
+            logger.info("Meta usage at %.0f%% — throttling 5s", peak)
+            _time.sleep(5)
+
 TOKEN_INVALID_MARKERS = (
     "error validating access token",
     "code=190",

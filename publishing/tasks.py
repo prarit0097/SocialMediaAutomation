@@ -20,7 +20,7 @@ from core.constants import (
 from core.exceptions import MetaPermanentError, MetaTransientError
 
 from .models import ScheduledPost
-from .services import is_invalid_token_error, publish_scheduled_post, token_reconnect_message
+from .services import _check_meta_usage_and_throttle, is_invalid_token_error, publish_scheduled_post, token_reconnect_message
 
 logger = logging.getLogger("publishing")
 IG_PUBLISH_LANE_LOCK_PREFIX = "publishing:ig_lane"
@@ -133,12 +133,12 @@ def process_due_posts(run_inline: bool = False):
             if run_inline:
                 publish_post_task(post.id)
                 continue
-            # Stagger IG tasks by 5-8s each so they don't burst Meta's
-            # app-level rate limit.  15 posts × 6-8 API calls each = 90-120
-            # calls; spreading over ~2 min keeps us well under 200/hour.
+            # Stagger IG tasks by 8-15s each so they don't burst Meta's
+            # app-level rate limit.  16 posts × 6-8 API calls each;
+            # spreading over ~2-4 min keeps us well under 200/hour.
             eta_delay = 0
             if post.platform == INSTAGRAM:
-                eta_delay = ig_index * random.uniform(5.0, 8.0)
+                eta_delay = ig_index * random.uniform(8.0, 15.0)
                 ig_index += 1
             publish_post_task.apply_async(
                 args=[post.id], priority=9,
@@ -191,6 +191,10 @@ def publish_post_task(self, post_id: int):
                 logger.info("ig lane busy account=%s post id=%s retry_in=%s", post.account_id, post.id, lane_retry)
                 return {"status": "requeued_lane_busy", "post_id": post.id, "retry_in": lane_retry}
 
+            # Check if Meta is at high usage and self-throttle before attempting
+            # to avoid pushing ourselves into rate limits.
+            _check_meta_usage_and_throttle()
+
         external_post_id = publish_scheduled_post(post)
         post.status = POST_STATUS_PUBLISHED
         post.external_post_id = external_post_id
@@ -209,21 +213,32 @@ def publish_post_task(self, post_id: int):
         # created, so this is not a real publish failure.  Don't count it
         # as heavily toward max_retries.
         is_poll_rate_limit = "status checks were rate-limited" in message
-        if is_poll_rate_limit:
-            # Half-count: bump attempts by 0.5 via separate key so we
-            # still cap runaway loops but give polling retries more room.
-            attempts = _bump_publish_attempts(post.id)
-            max_allowed = self.max_retries * 2  # twice the headroom
-        else:
-            attempts = _bump_publish_attempts(post.id)
-            max_allowed = self.max_retries
-        if attempts > max_allowed:
+        is_rate_limit_error = is_poll_rate_limit or bool(re.search(r'code=(?:2|4|17|32|613)(?:\D|$)', message))
+        attempts = _bump_publish_attempts(post.id)
+
+        # Rate-limit errors are ALWAYS temporary — never permanently fail.
+        # Only non-rate-limit transient errors can exhaust retries.
+        if not is_rate_limit_error and attempts > self.max_retries:
             post.status = POST_STATUS_FAILED
             post.error_message = str(exc)
             post.save(update_fields=["status", "error_message", "updated_at"])
             _clear_publish_attempts(post.id)
             logger.exception("post failed after retries id=%s", post.id)
             return {"status": "failed_after_retries", "post_id": post.id}
+
+        # Safety cap for rate-limit retries: after 30 attempts (~45+ min)
+        # give up to avoid infinite loops from permanent misconfiguration.
+        if is_rate_limit_error and attempts > 30:
+            post.status = POST_STATUS_FAILED
+            post.error_message = (
+                f"Rate-limited by Meta after {attempts} retries over extended period. "
+                f"Please retry manually later. Last error: {exc}"
+            )
+            post.save(update_fields=["status", "error_message", "updated_at"])
+            _clear_publish_attempts(post.id)
+            logger.exception("post failed after extended rate-limit retries id=%s attempts=%s", post.id, attempts)
+            return {"status": "failed_after_retries", "post_id": post.id}
+
         # Container expired/not found — clear the cached creation_id so a
         # fresh container is created on the next attempt.
         if "container expired" in message or ("code=24" in message and "2207006" in message):
@@ -232,21 +247,22 @@ def publish_post_task(self, post_id: int):
 
         if is_poll_rate_limit:
             # Polling was rate-limited but container exists in cache.
-            # Short retry — just need to re-check status and publish.
-            countdown = min(90, 30 + attempts * 10) + random.randint(0, 15)
+            # Use progressively longer delays: start short, back off to 5 min.
+            countdown = min(300, 45 + attempts * 20) + random.randint(0, 30)
             user_message = (
                 f"Checking media status, retrying in {countdown}s. "
                 f"(Container already created, waiting for Meta processing.)"
             )
-        elif re.search(r'code=(?:2|4|17|32|613)(?:\D|$)', message):
+        elif is_rate_limit_error:
             # Graph app/page rate-limit during actual API calls.
-            countdown = min(120, 20 + attempts * 15) + random.randint(0, 20)
-            cooldown_duration = min(60, 10 + attempts * 10)
+            # Progressively longer delays: start at ~1 min, back off to 10 min.
+            countdown = min(600, 60 + attempts * 30) + random.randint(0, 30)
+            cooldown_duration = min(180, 30 + attempts * 20)
             if post.platform == INSTAGRAM:
                 cache.set(_ig_cooldown_key(post.account_id), timezone.now().isoformat(), timeout=cooldown_duration)
             user_message = (
                 f"Meta is pacing requests. Auto-retry in {countdown}s. "
-                f"Last Meta response: {exc}"
+                f"(Attempt {attempts}, backing off to avoid further limits.)"
             )
         else:
             countdown = min(180, 30 + attempts * 20) + random.randint(0, 15)
@@ -258,7 +274,7 @@ def publish_post_task(self, post_id: int):
         post.scheduled_for = now + timedelta(seconds=countdown)
         post.error_message = user_message
         post.save(update_fields=["status", "scheduled_for", "error_message", "updated_at"])
-        logger.warning("transient error post id=%s retry_in=%s", post.id, countdown)
+        logger.warning("transient error post id=%s retry_in=%s attempts=%s", post.id, countdown, attempts)
         return {"status": "requeued_transient", "post_id": post.id, "retry_in": countdown}
     except MetaPermanentError as exc:
         if post is None:

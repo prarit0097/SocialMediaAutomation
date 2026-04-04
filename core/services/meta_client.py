@@ -902,8 +902,13 @@ class MetaClient:
     _APP_USAGE_HARD_PCT = 90       # aggressive backoff
 
     def _check_usage_headers(self, response: requests.Response) -> None:
-        """Read X-App-Usage / X-Page-Usage and sleep proactively."""
+        """Read X-App-Usage / X-Page-Usage and cache (non-blocking).
+
+        Publishing tasks check the cached usage and self-throttle if needed.
+        Web requests are NOT blocked — they just update the usage cache.
+        """
         import json as _json
+        from django.core.cache import cache as _cache
 
         for header in ("X-App-Usage", "X-Business-Use-Case-Usage", "X-Page-Usage"):
             raw = response.headers.get(header)
@@ -929,12 +934,13 @@ class MetaClient:
             if not pcts:
                 continue
             peak = max(pcts)
+            # Just cache the peak usage; publishing tasks will check it
+            # and throttle themselves. Don't block the web request.
+            _cache.set(f"meta_usage:{header}", peak, timeout=60)
             if peak >= self._APP_USAGE_HARD_PCT:
-                logger.warning("Meta %s at %.0f%% — hard throttle 15s", header, peak)
-                time.sleep(15)
+                logger.warning("Meta %s at %.0f%% (cached for publishing throttle)", header, peak)
             elif peak >= self._APP_USAGE_THROTTLE_PCT:
-                logger.info("Meta %s at %.0f%% — soft throttle 5s", header, peak)
-                time.sleep(5)
+                logger.info("Meta %s at %.0f%% (cached for publishing throttle)", header, peak)
 
     def _handle_response(self, response: requests.Response) -> dict:
         # Track X-App-Usage to proactively throttle when approaching limits.

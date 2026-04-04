@@ -116,11 +116,18 @@ def _ensure_account_is_currently_synced(request: HttpRequest, account: Connected
 
 
 def _current_token_validity(account: ConnectedAccount) -> bool | None:
+    cache_key = f"token_valid:{account.id}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
     try:
         data = MetaClient().debug_token(account.access_token).get("data", {})
     except MetaAPIError:
         return None
-    return bool(data.get("is_valid"))
+    is_valid = bool(data.get("is_valid"))
+    # Cache for 10 min — token validity rarely changes mid-session.
+    cache.set(cache_key, is_valid, timeout=600)
+    return is_valid
 
 
 def _ensure_account_token_is_valid(account: ConnectedAccount):
