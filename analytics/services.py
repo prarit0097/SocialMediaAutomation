@@ -648,6 +648,12 @@ def fetch_and_store_insights(
         limit=post_limit,
         stats_limit=post_stats_limit,
     )
+    if not published_posts:
+        logger.warning(
+            "fetch_and_store_insights: published_posts empty account_id=%s platform=%s — "
+            "Meta API may have failed or page has no posts",
+            account.id, account.platform,
+        )
     snapshot = InsightSnapshot.objects.create(
         account=account,
         platform=platform,

@@ -69,12 +69,11 @@ def _latest_published_post_times(account_ids: list[int]) -> dict[int, datetime |
     }
 
     unresolved = set(account_ids)
-    # Only fetch the most recent snapshot per account (not all history).
-    # The Distinct("account_id") below is Postgres-specific; the fallback
-    # order_by + early break handles other DBs correctly.
+    # Check more snapshots per account so that an empty recent snapshot
+    # doesn't hide valid post data from an older snapshot.
     snapshots = (
         InsightSnapshot.objects.filter(account_id__in=account_ids)
-        .order_by("account_id", "-fetched_at")[:len(account_ids) * 2]
+        .order_by("account_id", "-fetched_at")[:len(account_ids) * 4]
     )
     for snapshot in snapshots:
         account_id = snapshot.account_id
@@ -92,7 +91,10 @@ def _latest_published_post_times(account_ids: list[int]) -> dict[int, datetime |
         if latest_post is not None:
             current = latest_by_account.get(account_id)
             latest_by_account[account_id] = latest_post if current is None or latest_post > current else current
-        unresolved.discard(account_id)
+            # Only mark as resolved when we actually found a post time.
+            # Empty snapshots (e.g. from failed Meta fetch) should not
+            # prevent checking older snapshots that may have data.
+            unresolved.discard(account_id)
         if not unresolved:
             break
     return latest_by_account
