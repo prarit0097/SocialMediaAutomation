@@ -1125,80 +1125,128 @@
     let schedulerAccountMapLoaded = false;
     let schedulerAssistTimer = null;
 
+    const assistContent = document.getElementById("schedulerAssistContent");
+
+    const _platformLabel = (platform) =>
+      platform === "facebook" ? "Facebook" : platform === "instagram" ? "Instagram" : platform;
+    const _platformCls = (platform) => (platform === "instagram" ? " ig" : "");
+
+    const _buildCadencePanel = (platforms, platformKeys) => {
+      let html = `<div class="assist-panel-header"><span class="assist-panel-icon">\u{1F4CA}</span><h3 class="assist-title">Posting Cadence</h3></div>`;
+      platformKeys.forEach((p) => {
+        const row = platforms[p] || {};
+        const label = escapeHtml(_platformLabel(p));
+        html += `<div class="assist-platform-block">
+          <div class="assist-platform-label${_platformCls(p)}">${label}</div>
+          <div class="assist-metric-row">
+            <span class="assist-metric"><span class="assist-metric-value">${escapeHtml(String(row.posts_last_7d ?? 0))}</span> posts in 7 days</span>
+            <span class="assist-metric"><strong>${escapeHtml(String(row.avg_posts_per_day_7d ?? 0))}</strong> avg/day</span>
+          </div>
+          <div class="assist-recommendation">\u{2192} <em>${escapeHtml(row.recommended_cadence || "Start posting regularly")}</em></div>
+        </div>`;
+      });
+      return html;
+    };
+
+    const _buildBestTimePanel = (platforms, platformKeys) => {
+      let html = `<div class="assist-panel-header"><span class="assist-panel-icon">\u{23F0}</span><h3 class="assist-title">Best Time to Post</h3></div>`;
+      platformKeys.forEach((p) => {
+        const row = platforms[p] || {};
+        const label = escapeHtml(_platformLabel(p));
+        const nextWindow = escapeHtml(row.next_best_window || "Not enough data");
+        const bestFormat = row.best_format && row.best_format.format ? escapeHtml(row.best_format.format) : null;
+        const nextTopic = row.next_topic ? escapeHtml(row.next_topic) : null;
+        const slots = Array.isArray(row.best_time_slots) ? row.best_time_slots.slice(0, 3) : [];
+        html += `<div class="assist-platform-block">
+          <div class="assist-platform-label${_platformCls(p)}">${label}</div>
+          <div class="assist-metric-row">
+            <span class="assist-metric">Next best window: <strong>${nextWindow}</strong></span>
+          </div>`;
+        if (slots.length) {
+          html += `<div class="assist-slots">`;
+          slots.forEach((s, i) => {
+            const chipCls = i === 0 ? "assist-slot-chip top" : "assist-slot-chip";
+            html += `<span class="${chipCls}">${escapeHtml(s.label)} \u2022 ${escapeHtml(String(s.sample_posts))} posts</span>`;
+          });
+          html += `</div>`;
+        }
+        if (bestFormat || nextTopic) {
+          html += `<div class="assist-recommendation">`;
+          if (bestFormat) html += `Best format: <em>${bestFormat}</em>`;
+          if (bestFormat && nextTopic) html += ` \u00B7 `;
+          if (nextTopic) html += `Topic: <em>${nextTopic}</em>`;
+          html += `</div>`;
+        }
+        html += `</div>`;
+      });
+      return html;
+    };
+
+    const _buildCaptionPanel = (platforms, platformKeys) => {
+      let html = `<div class="assist-panel-header"><span class="assist-panel-icon">\u{270D}\u{FE0F}</span><h3 class="assist-title">A/B Caption Strategy</h3></div>`;
+      platformKeys.forEach((p) => {
+        const row = platforms[p] || {};
+        const label = escapeHtml(_platformLabel(p));
+        const ab = row.caption_ab_test || {};
+        html += `<div class="assist-platform-block">
+          <div class="assist-platform-label${_platformCls(p)}">${label}</div>
+          <div class="assist-recommendation"><em>${escapeHtml(ab.primary_test || "Short vs Medium captions")}</em></div>
+          <div class="assist-metric" style="margin-top:4px">${escapeHtml(ab.reasoning || "Run A/B test with different caption lengths.")}</div>
+        </div>`;
+      });
+      return html;
+    };
+
     const renderSchedulerAssist = (data) => {
       const platforms = data && data.platforms && typeof data.platforms === "object" ? data.platforms : {};
       const platformKeys = Object.keys(platforms);
       if (!platformKeys.length) {
-        if (schedulerAssistStatus) schedulerAssistStatus.textContent = "Not enough post history yet for this profile.";
+        if (schedulerAssistStatus) {
+          schedulerAssistStatus.textContent = "Not enough post history yet for this profile.";
+          schedulerAssistStatus.classList.remove("loading");
+        }
+        if (assistContent) assistContent.classList.add("hidden");
         if (schedulerCadenceAssist) schedulerCadenceAssist.innerHTML = "";
         if (schedulerBestTimeAssist) schedulerBestTimeAssist.innerHTML = "";
         if (schedulerCaptionAssist) schedulerCaptionAssist.innerHTML = "";
         return;
       }
       if (schedulerAssistStatus) {
-        schedulerAssistStatus.textContent = `Profile-wise strategy loaded for ${data.page_name || "selected account"}.`;
+        schedulerAssistStatus.innerHTML = `\u{2705} Strategy loaded for <strong>${escapeHtml(data.page_name || "selected account")}</strong>`;
+        schedulerAssistStatus.classList.remove("loading");
       }
-
-      const cadenceBlocks = [];
-      const bestTimeBlocks = [];
-      const captionBlocks = [];
-      platformKeys.forEach((platform) => {
-        const row = platforms[platform] || {};
-        const label = escapeHtml(platform === "facebook" ? "Facebook" : platform === "instagram" ? "Instagram" : platform);
-        cadenceBlocks.push(
-          `<li><strong>${label}:</strong> current ${escapeHtml(row.avg_posts_per_day_7d ?? "-")} post/day (${escapeHtml(
-            row.posts_last_7d ?? "-"
-          )} in 7d). Recommended: ${
-            escapeHtml(row.recommended_cadence || "-")
-          }</li>`
-        );
-
-        const topSlot = escapeHtml(row.next_best_window || "Not enough data");
-        const sampleText = Array.isArray(row.best_time_slots)
-          ? row.best_time_slots
-              .slice(0, 3)
-              .map((s) => `${escapeHtml(s.label)} (${escapeHtml(s.sample_posts)} posts)`)
-              .join(", ")
-          : "";
-        const bestFormat = escapeHtml(row.best_format && row.best_format.format ? row.best_format.format : "not available");
-        const nextTopic = escapeHtml(row.next_topic || "not available");
-        bestTimeBlocks.push(
-          `<li><strong>${label}:</strong> next best window ${topSlot}${sampleText ? ` | top slots: ${sampleText}` : ""} | best format: ${bestFormat} | topic: ${nextTopic}</li>`
-        );
-
-        const ab = row.caption_ab_test || {};
-        captionBlocks.push(
-          `<li><strong>${label}:</strong> ${escapeHtml(ab.primary_test || "Short vs Medium captions")} | ${escapeHtml(
-            ab.reasoning || ""
-          )}</li>`
-        );
-      });
-
-      if (schedulerCadenceAssist) {
-        schedulerCadenceAssist.innerHTML = `<h3 class="assist-title">Posting cadence</h3><ul class="assist-list">${cadenceBlocks.join("")}</ul>`;
-      }
-      if (schedulerBestTimeAssist) {
-        schedulerBestTimeAssist.innerHTML = `<h3 class="assist-title">Best time to post</h3><ul class="assist-list">${bestTimeBlocks.join("")}</ul>`;
-      }
-      if (schedulerCaptionAssist) {
-        schedulerCaptionAssist.innerHTML = `<h3 class="assist-title">A/B caption strategy</h3><ul class="assist-list">${captionBlocks.join("")}</ul>`;
-      }
+      if (assistContent) assistContent.classList.remove("hidden");
+      if (schedulerCadenceAssist) schedulerCadenceAssist.innerHTML = _buildCadencePanel(platforms, platformKeys);
+      if (schedulerBestTimeAssist) schedulerBestTimeAssist.innerHTML = _buildBestTimePanel(platforms, platformKeys);
+      if (schedulerCaptionAssist) schedulerCaptionAssist.innerHTML = _buildCaptionPanel(platforms, platformKeys);
     };
 
     const loadSchedulerAssist = async (accountId) => {
       if (!accountId) {
-        if (schedulerAssistStatus) schedulerAssistStatus.textContent = "Enter Account ID to load profile-wise best posting guidance.";
+        if (schedulerAssistStatus) {
+          schedulerAssistStatus.textContent = "Enter Account ID to load profile-wise best posting guidance.";
+          schedulerAssistStatus.classList.remove("loading");
+        }
+        if (assistContent) assistContent.classList.add("hidden");
         if (schedulerCadenceAssist) schedulerCadenceAssist.innerHTML = "";
         if (schedulerBestTimeAssist) schedulerBestTimeAssist.innerHTML = "";
         if (schedulerCaptionAssist) schedulerCaptionAssist.innerHTML = "";
         return;
       }
-      if (schedulerAssistStatus) schedulerAssistStatus.textContent = "Loading smart posting assist...";
+      if (schedulerAssistStatus) {
+        schedulerAssistStatus.textContent = "Analyzing posting history\u2026";
+        schedulerAssistStatus.classList.add("loading");
+      }
+      if (assistContent) assistContent.classList.add("hidden");
       try {
         const data = await fetchJSON(`/api/insights/scheduler-assist/${accountId}/`);
         renderSchedulerAssist(data);
       } catch (err) {
-        if (schedulerAssistStatus) schedulerAssistStatus.textContent = `Assist unavailable: ${err.message}`;
+        if (schedulerAssistStatus) {
+          schedulerAssistStatus.textContent = `Assist unavailable: ${err.message}`;
+          schedulerAssistStatus.classList.remove("loading");
+        }
+        if (assistContent) assistContent.classList.add("hidden");
         if (schedulerCadenceAssist) schedulerCadenceAssist.innerHTML = "";
         if (schedulerBestTimeAssist) schedulerBestTimeAssist.innerHTML = "";
         if (schedulerCaptionAssist) schedulerCaptionAssist.innerHTML = "";
