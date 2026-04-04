@@ -203,6 +203,16 @@ def process_due_posts(run_inline: bool = False):
             logger.error(
                 "failed to dispatch post id=%s error=%s", post.id, exc,
             )
+            # Reset to PENDING so the post isn't stuck in PROCESSING
+            # if the task queue (Redis/Celery) was temporarily down.
+            try:
+                ScheduledPost.objects.filter(id=post.id, status=POST_STATUS_PROCESSING).update(
+                    status=POST_STATUS_PENDING,
+                    error_message="Task dispatch failed; auto re-queued.",
+                    updated_at=timezone.now(),
+                )
+            except Exception:  # noqa: BLE001
+                pass
 
     return {"queued": len(due_posts), "ig_dispatched": ig_count}
 
@@ -294,9 +304,15 @@ def publish_post_task(self, post_id: int):
             logger.exception("post failed after extended rate-limit retries id=%s attempts=%s", post.id, attempts)
             return {"status": "failed_after_retries", "post_id": post.id}
 
-        # Container expired/not found — clear the cached creation_id so a
+        # Container expired/error/failed — clear the cached creation_id so a
         # fresh container is created on the next attempt.
-        if "container expired" in message or ("code=24" in message and "2207006" in message):
+        if (
+            "container expired" in message
+            or "container will be recreated" in message
+            or "status_code=error" in message
+            or "status_code=expired" in message
+            or ("code=24" in message and "2207006" in message)
+        ):
             cache.delete(f"ig_creation:{post.id}")
             logger.info("cleared expired ig container cache post id=%s", post.id)
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import ipaddress
+import logging
 import os
 import socket
 import ssl
@@ -13,6 +14,8 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 
 from core.exceptions import MetaPermanentError, MetaTransientError
+
+logger = logging.getLogger("publishing")
 
 try:
     from PIL import Image, ImageOps
@@ -148,7 +151,8 @@ def _optimize_local_image_for_instagram(media_url: str) -> str:
 
             derived_path = f"{os.path.splitext(storage_path)[0]}_ig.jpg"
             return _save_public_media_file(derived_path, output.getvalue())
-    except OSError:
+    except OSError as exc:
+        logger.warning("ig image optimization failed, using original path=%s error=%s", storage_path, exc)
         return media_url
 
 

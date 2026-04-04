@@ -5,7 +5,7 @@ from django.core.cache import cache
 from django.core.files.storage import default_storage
 
 from core.constants import FACEBOOK
-from core.exceptions import MetaPermanentError, MetaTransientError
+from core.exceptions import MetaAPIError, MetaPermanentError, MetaTransientError
 from core.services.meta_client import MetaClient
 from publishing.media_utils import (
     IMAGE_EXTENSIONS,
@@ -196,9 +196,9 @@ def publish_scheduled_post(post):
                 "ig quota check account=%s remaining=%s/%s",
                 account.id, quota["quota_remaining"], quota["quota_total"],
             )
-        except MetaTransientError:
-            # Quota endpoint unreachable — proceed with publish attempt
-            # and let the actual publish call fail if over quota.
+        except (MetaTransientError, MetaAPIError):
+            # Quota endpoint unreachable or permission denied — proceed
+            # with publish attempt and let actual publish fail if over quota.
             pass
 
     # Check if a previous attempt already created a container for this post.

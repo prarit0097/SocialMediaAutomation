@@ -420,9 +420,15 @@ class MetaClient:
             status = str(latest_payload.get("status") or "").upper()
             if status_code in {"FINISHED", "PUBLISHED"} or status in {"FINISHED", "PUBLISHED"}:
                 return latest_payload
-            if status_code in {"ERROR", "EXPIRED", "FAILED"} or status in {"ERROR", "EXPIRED", "FAILED"}:
-                raise MetaPermanentError(
-                    f"Instagram media processing failed before publish. status_code={status_code or 'unknown'}"
+            if status_code == "EXPIRED" or status == "EXPIRED":
+                raise MetaTransientError(
+                    f"Instagram media container expired during processing. "
+                    f"A fresh container will be created on retry. status_code={status_code or 'unknown'}"
+                )
+            if status_code in {"ERROR", "FAILED"} or status in {"ERROR", "FAILED"}:
+                raise MetaTransientError(
+                    f"Instagram media processing returned {status_code or status}. "
+                    f"Container will be recreated on retry. status_code={status_code or 'unknown'}"
                 )
             # Jitter on normal polls too — prevents synchronized polling waves
             time.sleep(poll_interval + random.uniform(0, 5))
@@ -1023,11 +1029,18 @@ class MetaClient:
             code == -2
             or code in TRANSIENT_GRAPH_ERROR_CODES
             or subcode in TRANSIENT_GRAPH_ERROR_SUBCODES
-            or (user_title or "").lower() == "timeout"
+            or "timeout" in (user_title or "").lower()
             or code == 9007
             or "media is not ready" in lower_user_msg
             or "media is not ready" in lower_msg
             or "try again later" in lower_msg
+            or "rate limit" in lower_msg
+            or "too many requests" in lower_msg
+            or "temporarily unavailable" in lower_msg
+            or "unknown error" in lower_msg
+            or "an unknown error" in lower_msg
+            or "request timed out" in lower_msg
+            or "service temporarily" in lower_msg
         ):
             raise MetaTransientError(message, status_code=response.status_code, payload=payload)
         if response.status_code >= 500 or response.status_code == 429:
