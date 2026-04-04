@@ -62,11 +62,30 @@ def _clear_publish_attempts(post_id: int) -> None:
     cache.delete(_publish_attempt_cache_key(post_id))
 
 
+IG_MAX_CONCURRENT_PUBLISH = 3  # Max IG posts actively publishing at once
+
+
+def _count_ig_currently_processing() -> int:
+    """Count IG posts already in PROCESSING state (actively publishing)."""
+    return ScheduledPost.objects.filter(
+        platform=INSTAGRAM,
+        status=POST_STATUS_PROCESSING,
+    ).count()
+
+
 def _select_dispatchable_due_posts(posts: list[ScheduledPost], batch_size: int) -> list[ScheduledPost]:
+    ig_processing = _count_ig_currently_processing()
+    ig_slots = max(0, IG_MAX_CONCURRENT_PUBLISH - ig_processing)
+
     selected: list[ScheduledPost] = []
+    ig_selected = 0
     for post in posts:
-        if post.platform == INSTAGRAM and _is_ig_throttled_for_account(post.account_id):
-            continue
+        if post.platform == INSTAGRAM:
+            if _is_ig_throttled_for_account(post.account_id):
+                continue
+            if ig_selected >= ig_slots:
+                continue
+            ig_selected += 1
         selected.append(post)
         if len(selected) >= batch_size:
             break
@@ -119,13 +138,48 @@ def _claim_due_posts_without_skip_locked(batch_size: int = 50) -> list[Scheduled
     return list(ScheduledPost.objects.select_related("account").filter(id__in=claimed_ids).order_by("scheduled_for"))
 
 
+def _recover_stale_processing() -> int:
+    """Auto-recover IG posts stuck in PROCESSING beyond the task hard limit.
+
+    This runs inside process_due_posts (every minute) so stuck posts are
+    found quickly without waiting for a user to open the scheduler page.
+    """
+    stale_minutes = max(12, int(getattr(settings, "CELERY_TASK_TIME_LIMIT", 480)) // 60 + 2)
+    cutoff = timezone.now() - timedelta(minutes=stale_minutes)
+    stale_ids = list(
+        ScheduledPost.objects.filter(
+            status=POST_STATUS_PROCESSING,
+            updated_at__lt=cutoff,
+        ).values_list("id", flat=True)[:20]
+    )
+    if stale_ids:
+        ScheduledPost.objects.filter(id__in=stale_ids).update(
+            status=POST_STATUS_PENDING,
+            error_message="Recovered from stale processing state; auto re-queued.",
+            scheduled_for=timezone.now() + timedelta(seconds=30),
+            updated_at=timezone.now(),
+        )
+        logger.warning("auto-recovered stale processing posts count=%s ids=%s", len(stale_ids), stale_ids)
+    return len(stale_ids)
+
+
 @shared_task(name="publishing.tasks.process_due_posts")
 def process_due_posts(run_inline: bool = False):
+    _recover_stale_processing()
+
     try:
         due_posts = _get_due_posts()
     except DatabaseError:
         # Fallback for DBs that do not support skip_locked.
         due_posts = _claim_due_posts_without_skip_locked()
+
+    ig_count = sum(1 for p in due_posts if p.platform == INSTAGRAM)
+    non_ig_count = len(due_posts) - ig_count
+    if ig_count:
+        logger.info(
+            "dispatching due posts ig=%s non_ig=%s (max_concurrent_ig=%s)",
+            ig_count, non_ig_count, IG_MAX_CONCURRENT_PUBLISH,
+        )
 
     ig_index = 0
     for post in due_posts:
@@ -133,12 +187,13 @@ def process_due_posts(run_inline: bool = False):
             if run_inline:
                 publish_post_task(post.id)
                 continue
-            # Stagger IG tasks by 8-15s each so they don't burst Meta's
-            # app-level rate limit.  16 posts × 6-8 API calls each;
-            # spreading over ~2-4 min keeps us well under 200/hour.
+            # Small stagger between IG posts (10-20s) — with only 3 per
+            # cycle this keeps them from creating containers at the same
+            # instant while still publishing quickly.
             eta_delay = 0
+            if post.platform == INSTAGRAM and ig_index > 0:
+                eta_delay = ig_index * random.uniform(10.0, 20.0)
             if post.platform == INSTAGRAM:
-                eta_delay = ig_index * random.uniform(8.0, 15.0)
                 ig_index += 1
             publish_post_task.apply_async(
                 args=[post.id], priority=9,
@@ -149,7 +204,7 @@ def process_due_posts(run_inline: bool = False):
                 "failed to dispatch post id=%s error=%s", post.id, exc,
             )
 
-    return {"queued": len(due_posts)}
+    return {"queued": len(due_posts), "ig_dispatched": ig_count}
 
 
 @shared_task(bind=True, max_retries=6, default_retry_delay=60, name="publishing.tasks.publish_post_task")
