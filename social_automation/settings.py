@@ -29,10 +29,10 @@ env = environ.Env(
     CACHE_DEFAULT_TIMEOUT_SECONDS=(int, 300),
     INSIGHTS_RESPONSE_CACHE_TTL=(int, 90),
     ACCOUNTS_LIST_CACHE_TTL=(int, 20),
-    META_REQUEST_RETRY_ATTEMPTS=(int, 2),
+    META_REQUEST_RETRY_ATTEMPTS=(int, 3),
     META_POST_STATS_TIMEOUT=(int, 12),
     META_POST_STATS_RETRIES=(int, 2),
-    META_IG_READY_TIMEOUT=(int, 240),
+    META_IG_READY_TIMEOUT=(int, 360),
     META_IG_READY_POLL_INTERVAL=(int, 12),
     BULK_REFRESH_STALE_MINUTES=(int, 45),
     DB_CONN_MAX_AGE=(int, 60),
@@ -42,8 +42,8 @@ env = environ.Env(
     CELERY_PUBLISH_RATE_LIMIT=(str, "180/m"),
     CELERY_INSIGHTS_REFRESH_RATE_LIMIT=(str, "90/m"),
     CELERY_WORKER_MAX_TASKS_PER_CHILD=(int, 200),
-    CELERY_TASK_SOFT_TIME_LIMIT=(int, 420),
-    CELERY_TASK_TIME_LIMIT=(int, 480),
+    CELERY_TASK_SOFT_TIME_LIMIT=(int, 540),
+    CELERY_TASK_TIME_LIMIT=(int, 600),
     SECURE_SSL_REDIRECT=(bool, False),
     SESSION_COOKIE_SECURE=(bool, False),
     CSRF_COOKIE_SECURE=(bool, False),
@@ -164,7 +164,7 @@ LOGOUT_REDIRECT_URL = "/login/"
 META_APP_ID = env("META_APP_ID", default="")
 META_APP_SECRET = env("META_APP_SECRET", default="")
 META_REDIRECT_URI = env("META_REDIRECT_URI", default="http://localhost:8000/auth/meta/callback")
-META_GRAPH_VERSION = env("META_GRAPH_VERSION", default="v21.0")
+META_GRAPH_VERSION = env("META_GRAPH_VERSION", default="v22.0")
 
 FERNET_KEY = env("FERNET_KEY", default="")
 FERNET_KEYS = env.list("FERNET_KEYS", default=[])
@@ -275,6 +275,7 @@ LOGGING = {
         "publishing": {"handlers": ["console"], "level": "INFO"},
         "integrations": {"handlers": ["console"], "level": "INFO"},
         "analytics": {"handlers": ["console"], "level": "INFO"},
+        "meta_client": {"handlers": ["console"], "level": "INFO"},
     },
 }
 

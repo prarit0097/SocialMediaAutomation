@@ -26,7 +26,7 @@ from publishing.media_utils import prepare_instagram_media_url
 
 from .models import ScheduledPost
 from .services import is_invalid_token_error, token_reconnect_message
-from .tasks import process_due_posts
+from .tasks import PUBLISH_TRANSIENT_ATTEMPT_KEY_PREFIX, process_due_posts
 
 logger = logging.getLogger("publishing")
 ALLOWED_MEDIA_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".mp4", ".mov", ".webm", ".m4v", ".avi"}
@@ -182,12 +182,10 @@ def _auto_dispatch_due_posts_guarded() -> None:
         # Preferred: dispatch via Celery so the HTTP request returns fast.
         process_due_posts.apply_async(priority=9)
     except Exception:  # noqa: BLE001
-        # Celery/Redis unreachable — last-resort inline for at most 1 FB post
-        # (never IG inline since IG publishing can block for several minutes).
-        try:
-            process_due_posts(run_inline=True)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("auto dispatcher inline fallback failed error=%s", str(exc))
+        # Celery/Redis unreachable — skip inline fallback entirely.
+        # Inline publish can block the HTTP request for minutes (especially IG),
+        # and celery-beat will pick up the backlog on the next cycle.
+        logger.warning("auto dispatcher celery unreachable, skipping inline fallback")
 
 
 def _recover_stale_processing_posts(user=None, stale_minutes: int = 12) -> int:
@@ -457,6 +455,12 @@ def retry_failed_post(request: HttpRequest, post_id: int) -> JsonResponse:
         if media_error:
             return media_error
         post.media_url = prepared_media_url
+
+    # Clear all stale caches from prior failed attempts so the retry
+    # starts clean (fresh container, no skip-resumable flag, etc.).
+    cache.delete(f"ig_creation:{post.id}")
+    cache.delete(f"ig_skip_resumable:{post.id}")
+    cache.delete(f"{PUBLISH_TRANSIENT_ATTEMPT_KEY_PREFIX}:{post.id}")
 
     post.status = POST_STATUS_PENDING
     post.error_message = ""

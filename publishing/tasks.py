@@ -267,6 +267,7 @@ def publish_post_task(self, post_id: int):
         post.published_at = timezone.now()
         post.save(update_fields=["status", "external_post_id", "error_message", "published_at", "updated_at"])
         _clear_publish_attempts(post.id)
+        cache.delete(f"ig_skip_resumable:{post.id}")
         logger.info("post published id=%s external_post_id=%s", post.id, external_post_id)
     except MetaTransientError as exc:
         if post is None:
@@ -279,11 +280,20 @@ def publish_post_task(self, post_id: int):
         # as heavily toward max_retries.
         is_poll_rate_limit = "status checks were rate-limited" in message
         is_rate_limit_error = is_poll_rate_limit or bool(re.search(r'code=(?:2|4|17|32|613)(?:\D|$)', message))
+        # Video processing ERROR/FAILED is Meta-side flakiness (same video
+        # succeeds on other accounts).  Don't exhaust the low retry cap —
+        # keep retrying with backoff like rate-limit errors.
+        is_video_processing_error = (
+            "status_code=error" in message
+            or "status_code=failed" in message
+            or "media processing returned error" in message
+            or "media processing returned failed" in message
+        )
         attempts = _bump_publish_attempts(post.id)
 
-        # Rate-limit errors are ALWAYS temporary — never permanently fail.
-        # Only non-rate-limit transient errors can exhaust retries.
-        if not is_rate_limit_error and attempts > self.max_retries:
+        # Rate-limit and video-processing errors are ALWAYS temporary —
+        # never permanently fail on the low retry cap.
+        if not is_rate_limit_error and not is_video_processing_error and attempts > self.max_retries:
             post.status = POST_STATUS_FAILED
             post.error_message = str(exc)
             post.save(update_fields=["status", "error_message", "updated_at"])
@@ -291,8 +301,24 @@ def publish_post_task(self, post_id: int):
             logger.exception("post failed after retries id=%s", post.id)
             return {"status": "failed_after_retries", "post_id": post.id}
 
-        # Safety cap for rate-limit retries: after 30 attempts (~45+ min)
-        # give up to avoid infinite loops from permanent misconfiguration.
+        # Safety cap: after many retries give up to avoid infinite loops.
+        # Rate-limit: 30 attempts (~45+ min).
+        # Video processing: 15 attempts (~30 min) then permanent fail.
+        if is_video_processing_error and attempts > 15:
+            # After 15 attempts Meta consistently fails to process the video
+            # for this account.  Likely a persistent account-level issue.
+            post.status = POST_STATUS_FAILED
+            post.error_message = (
+                f"Instagram video processing failed after {attempts} attempts. "
+                f"This may be an account-level issue — try re-uploading the video "
+                f"or posting from the Instagram app to verify the account works. "
+                f"Last error: {exc}"
+            )
+            post.save(update_fields=["status", "error_message", "updated_at"])
+            _clear_publish_attempts(post.id)
+            cache.delete(f"ig_skip_resumable:{post.id}")
+            logger.exception("post failed after video processing retries id=%s attempts=%s", post.id, attempts)
+            return {"status": "failed_after_retries", "post_id": post.id}
         if is_rate_limit_error and attempts > 30:
             post.status = POST_STATUS_FAILED
             post.error_message = (
@@ -316,7 +342,20 @@ def publish_post_task(self, post_id: int):
             cache.delete(f"ig_creation:{post.id}")
             logger.info("cleared expired ig container cache post id=%s", post.id)
 
-        if is_poll_rate_limit:
+        if is_video_processing_error:
+            # Video processing failed on Meta's side — create fresh container
+            # with longer delay to give Meta's infra time to recover.
+            countdown = min(300, 60 + attempts * 30) + random.randint(0, 30)
+            # After 3+ failures with resumable upload, switch to URL-based
+            # so Meta fetches the video itself (different processing path).
+            if attempts >= 3:
+                cache.set(f"ig_skip_resumable:{post.id}", "1", timeout=3600)
+                logger.info("switching to URL-based upload for post id=%s after %s video errors", post.id, attempts)
+            user_message = (
+                f"Instagram video processing error (attempt {attempts}/15). "
+                f"Auto-retry in {countdown}s with fresh upload."
+            )
+        elif is_poll_rate_limit:
             # Polling was rate-limited but container exists in cache.
             # Use progressively longer delays: start short, back off to 5 min.
             countdown = min(300, 45 + attempts * 20) + random.randint(0, 30)
@@ -374,6 +413,8 @@ def publish_post_task(self, post_id: int):
         post.error_message = token_reconnect_message(post.account, exc) if is_invalid_token_error(exc) else perm_message
         post.save(update_fields=["status", "error_message", "updated_at"])
         _clear_publish_attempts(post.id)
+        cache.delete(f"ig_skip_resumable:{post.id}")
+        cache.delete(f"ig_creation:{post.id}")
         logger.exception("permanent error post id=%s", post.id)
     except SoftTimeLimitExceeded:
         # Celery killed the task for exceeding the soft time limit.  This

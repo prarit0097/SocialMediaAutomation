@@ -32,6 +32,7 @@ INSTAGRAM_ASPECT_RATIO_MIN = 0.8    # 4:5 portrait (most portrait allowed)
 INSTAGRAM_ASPECT_RATIO_MAX = 1.91   # 1.91:1 landscape (most landscape allowed)
 INSTAGRAM_IMAGE_TARGET_BYTES = 4_000_000  # IG allows 8MB; 4MB balances quality vs URL-fetch speed
 INSTAGRAM_VIDEO_MAX_BYTES = 100 * 1024 * 1024
+INSTAGRAM_VIDEO_MIN_BYTES = 50 * 1024  # Videos under 50KB are almost certainly corrupt
 MEDIA_FETCH_TIMEOUT_SECONDS = 12
 ALLOWED_PUBLIC_MEDIA_SCHEMES = {"http", "https"}
 DISALLOWED_MEDIA_HOSTNAMES = {
@@ -162,6 +163,11 @@ def prepare_instagram_media_url(media_url: str) -> str:
         storage_path = resolve_local_media_storage_path(media_url)
         if storage_path and default_storage.exists(storage_path):
             size = default_storage.size(storage_path)
+            if size < INSTAGRAM_VIDEO_MIN_BYTES:
+                raise MetaPermanentError(
+                    "Instagram video file is too small and likely corrupt. "
+                    "Re-upload a valid video file before scheduling."
+                )
             if size > INSTAGRAM_VIDEO_MAX_BYTES:
                 raise MetaPermanentError(
                     "Instagram video is too large for reliable publishing from this app. "

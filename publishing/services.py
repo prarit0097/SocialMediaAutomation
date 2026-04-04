@@ -213,8 +213,10 @@ def publish_scheduled_post(post):
         # fetch from our server — avoids Content-Type / SSL / redirect issues.
         # For images, IG API still requires image_url (no resumable support).
         source_bytes, source_filename = None, None
-        if media_kind == "video":
+        if media_kind == "video" and not cache.get(f"ig_skip_resumable:{post.id}"):
             source_bytes, source_filename = _read_local_media(post.media_url)
+        elif media_kind == "video":
+            logger.info("skipping resumable upload for post id=%s (prior video processing errors)", post.id)
 
         if not source_bytes:
             # Fallback to URL-based: verify the URL is reachable by Meta.

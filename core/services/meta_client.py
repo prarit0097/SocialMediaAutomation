@@ -262,6 +262,9 @@ class MetaClient:
             # IG Graph now requires REELS for feed video publishing.
             payload["media_type"] = "REELS"
             payload["share_to_feed"] = "true"
+            # Let Meta auto-select the best thumbnail frame (2000ms in).
+            # This gives the algorithm a clean cover to distribute to Explore/Reels.
+            payload["thumb_offset"] = "2000"
 
             if source_bytes:
                 # Resumable upload: Meta downloads from its own infra instead
@@ -403,7 +406,7 @@ class MetaClient:
                     f"/{creation_id}",
                     {
                         "access_token": page_access_token,
-                        "fields": "status,status_code",
+                        "fields": "status,status_code,error_message",
                     },
                 )
                 latest_transient_error = None
@@ -421,14 +424,21 @@ class MetaClient:
             if status_code in {"FINISHED", "PUBLISHED"} or status in {"FINISHED", "PUBLISHED"}:
                 return latest_payload
             if status_code == "EXPIRED" or status == "EXPIRED":
+                logger.warning("ig container expired creation_id=%s payload=%s", creation_id, latest_payload)
                 raise MetaTransientError(
                     f"Instagram media container expired during processing. "
                     f"A fresh container will be created on retry. status_code={status_code or 'unknown'}"
                 )
             if status_code in {"ERROR", "FAILED"} or status in {"ERROR", "FAILED"}:
+                error_message = str(latest_payload.get("error_message") or "").strip()
+                logger.warning(
+                    "ig container processing error creation_id=%s status_code=%s status=%s error_message=%s payload=%s",
+                    creation_id, status_code, status, error_message, latest_payload,
+                )
+                detail = f" Meta says: {error_message}" if error_message else ""
                 raise MetaTransientError(
                     f"Instagram media processing returned {status_code or status}. "
-                    f"Container will be recreated on retry. status_code={status_code or 'unknown'}"
+                    f"Container will be recreated on retry.{detail} status_code={status_code or 'unknown'}"
                 )
             # Jitter on normal polls too — prevents synchronized polling waves
             time.sleep(poll_interval + random.uniform(0, 5))
@@ -1023,6 +1033,18 @@ class MetaClient:
                 f"Supported: 1:1, 4:5, 1.91:1 (images) or 9:16 (Reels). ({message})",
                 status_code=response.status_code, payload=payload,
             )
+        # "Media posted before" — duplicate detection, not retryable.
+        if "media posted before" in lower_msg or "media has already been posted" in lower_msg:
+            raise MetaPermanentError(
+                f"Instagram flagged this as duplicate content. Change the media or caption. ({message})",
+                status_code=response.status_code, payload=payload,
+            )
+        # Code 9 (general) without specific subcode: often transient server-side.
+        if code == 9 and subcode not in {2207042, 2207050}:
+            raise MetaTransientError(
+                f"Instagram returned a server error. Auto-retry will attempt again. ({message})",
+                status_code=response.status_code, payload=payload,
+            )
 
         # --- General transient errors (retryable) ---
         if (
@@ -1041,6 +1063,10 @@ class MetaClient:
             or "an unknown error" in lower_msg
             or "request timed out" in lower_msg
             or "service temporarily" in lower_msg
+            or "could not fetch" in lower_msg
+            or "failed to fetch" in lower_msg
+            or "connection reset" in lower_msg
+            or "server error" in lower_msg
         ):
             raise MetaTransientError(message, status_code=response.status_code, payload=payload)
         if response.status_code >= 500 or response.status_code == 429:
