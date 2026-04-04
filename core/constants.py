@@ -27,5 +27,4 @@ META_SCOPES = [
     "instagram_basic",
     "instagram_content_publish",
     "instagram_manage_insights",
-    "instagram_manage_comments",
 ]
