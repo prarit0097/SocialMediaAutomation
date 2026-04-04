@@ -287,7 +287,9 @@ def _public_url_status_payload(request):
 
 
 TOKEN_HEALTH_CACHE_KEY_PREFIX = "meta_token_health_summary_v1"
-TOKEN_HEALTH_CACHE_TTL = 300
+TOKEN_HEALTH_CACHE_TTL = 900  # 15 minutes — token state changes rarely
+_DEBUG_TOKEN_CACHE_PREFIX = "debug_token_result"
+_DEBUG_TOKEN_CACHE_TTL = 600  # 10 minutes per unique token
 
 
 def _account_label(account: ConnectedAccount) -> str:
@@ -346,11 +348,20 @@ def _token_health_payload(user):
     invalid_accounts: list[dict] = []
     validation_error = None
     for token, grouped_accounts in token_groups.items():
-        try:
-            data = client.debug_token(token).get("data", {})
-        except MetaAPIError as exc:
-            validation_error = str(exc)
-            break
+        # Cache debug_token results per unique token to avoid repeated
+        # live Meta API calls on every health check refresh.
+        token_hash = hashlib.sha256(token.encode()).hexdigest()[:16]
+        dt_cache_key = f"{_DEBUG_TOKEN_CACHE_PREFIX}:{token_hash}"
+        cached_data = cache.get(dt_cache_key)
+        if cached_data is not None:
+            data = cached_data
+        else:
+            try:
+                data = client.debug_token(token).get("data", {})
+                cache.set(dt_cache_key, data, _DEBUG_TOKEN_CACHE_TTL)
+            except MetaAPIError as exc:
+                validation_error = str(exc)
+                break
 
         if data.get("is_valid"):
             continue
