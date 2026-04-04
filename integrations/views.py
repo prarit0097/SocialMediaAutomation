@@ -222,6 +222,23 @@ def meta_callback(request: HttpRequest) -> HttpResponse:
     token_data = client.exchange_code_for_token(code, redirect_uri=redirect_uri)
     pages = client.get_managed_pages(token_data["access_token"])
     upsert_connected_accounts(pages, request.user)
+
+    # Re-activate any previously-connected IG accounts that are linked
+    # from a now-active FB account. /me/accounts only returns directly
+    # linked IG pages, but the user may have many more that were synced
+    # via catalog discovery. We must re-activate them BEFORE calling
+    # _deactivate_disconnected_accounts, which deactivates based on
+    # the narrow /me/accounts list.
+    active_fb_accounts = ConnectedAccount.objects.filter(
+        user=request.user, platform=FACEBOOK, is_active=True
+    ).exclude(ig_user_id__isnull=True).exclude(ig_user_id="")
+    for fb_account in active_fb_accounts:
+        ConnectedAccount.objects.filter(
+            user=request.user,
+            platform=INSTAGRAM,
+            page_id=fb_account.ig_user_id,
+        ).update(is_active=True, access_token=fb_account.access_token)
+
     _deactivate_disconnected_accounts(request.user, pages)
     cache.delete(f"{TOKEN_HEALTH_CACHE_KEY}:{request.user.id}")
 
