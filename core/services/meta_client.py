@@ -406,7 +406,7 @@ class MetaClient:
                     f"/{creation_id}",
                     {
                         "access_token": page_access_token,
-                        "fields": "status,status_code,error_message",
+                        "fields": "status,status_code",
                     },
                 )
                 latest_transient_error = None
@@ -430,15 +430,13 @@ class MetaClient:
                     f"A fresh container will be created on retry. status_code={status_code or 'unknown'}"
                 )
             if status_code in {"ERROR", "FAILED"} or status in {"ERROR", "FAILED"}:
-                error_message = str(latest_payload.get("error_message") or "").strip()
                 logger.warning(
-                    "ig container processing error creation_id=%s status_code=%s status=%s error_message=%s payload=%s",
-                    creation_id, status_code, status, error_message, latest_payload,
+                    "ig container processing error creation_id=%s status_code=%s status=%s payload=%s",
+                    creation_id, status_code, status, latest_payload,
                 )
-                detail = f" Meta says: {error_message}" if error_message else ""
                 raise MetaTransientError(
                     f"Instagram media processing returned {status_code or status}. "
-                    f"Container will be recreated on retry.{detail} status_code={status_code or 'unknown'}"
+                    f"Container will be recreated on retry. status_code={status_code or 'unknown'}"
                 )
             # Jitter on normal polls too — prevents synchronized polling waves
             time.sleep(poll_interval + random.uniform(0, 5))
