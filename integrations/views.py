@@ -115,8 +115,19 @@ def _deactivate_disconnected_accounts(user, pages: list[dict]) -> None:
         page_id__in=active_fb_page_ids
     ).update(is_active=False, token_expires_at=None)
 
+    # Also preserve IG accounts that are linked from an active FB account
+    # (via ig_user_id).  These were auto-created by the catalog from
+    # debug_token target_ids and would be lost if we only check /me/accounts
+    # which returns limited instagram_business_account links.
+    fb_linked_ig_ids = set(
+        ConnectedAccount.objects.filter(
+            is_active=True, user=user, platform=FACEBOOK,
+        ).exclude(ig_user_id__isnull=True).exclude(ig_user_id="").values_list("ig_user_id", flat=True)
+    )
+    safe_ig_ids = active_ig_user_ids | {str(uid) for uid in fb_linked_ig_ids}
+
     ConnectedAccount.objects.filter(is_active=True, user=user, platform=INSTAGRAM).exclude(
-        page_id__in=active_ig_user_ids
+        page_id__in=safe_ig_ids
     ).update(is_active=False, token_expires_at=None)
 
 
@@ -542,8 +553,8 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                 }
             )
             seen_ids.add(target_id)
-    except MetaAPIError:
-        pass
+    except MetaAPIError as exc:
+        logger.warning("meta_pages_catalog: debug_token or target lookup failed user=%s error=%s", request.user.id, exc)
 
     rows.sort(key=lambda r: (0 if r["status"] == "connected" else 1, (r.get("page_name") or "").lower()))
     payload = {
