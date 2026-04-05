@@ -29,17 +29,21 @@
     </div>
   </div>
   <div class="ai-form-grid">
-    <label>Account ID
-      <input type="number" id="aiInsightAccountId" placeholder="Enter account id">
-    </label>
-    <label>Focus Goal (optional)
-      <textarea id="aiInsightGoal" rows="4" placeholder="Example: Increase reel plays and comments in next 30 days."></textarea>
-    </label>
-    <label class="ai-toggle">
-      <input type="checkbox" id="aiInsightForceRefresh">
-      <span>Use Force Refresh before AI analysis</span>
-    </label>
-    <button id="runAiInsightsBtn" class="btn">Generate AI Insights</button>
+    <div class="ai-form-row-2col">
+      <label>Account ID
+        <input type="number" id="aiInsightAccountId" placeholder="Enter account id">
+      </label>
+      <label>Focus Goal (optional)
+        <textarea id="aiInsightGoal" rows="3" placeholder="Example: Increase reel plays and comments in next 30 days."></textarea>
+      </label>
+    </div>
+    <div class="ai-form-actions">
+      <label class="ai-toggle">
+        <input type="checkbox" id="aiInsightForceRefresh">
+        <span>Force refresh data before analysis</span>
+      </label>
+      <button id="runAiInsightsBtn" class="btn">Generate AI Insights</button>
+    </div>
   </div>
   <div class="status-stack">
     <p id="aiInsightError" class="error-text"></p>
@@ -47,12 +51,12 @@
   </div>
 </section>
 
-<section class="card">
+<section class="card" id="aiReportSection">
   <div class="section-head">
     <div>
       <p class="eyebrow">Output</p>
       <h2>AI Profile Report</h2>
-      <p class="section-copy">This report includes strengths, problems, risks, and execution-level improvement suggestions.</p>
+      <p class="section-copy">Strengths, weaknesses, risks, opportunities, and a concrete execution plan for the next 7 days.</p>
     </div>
   </div>
   <div id="aiInsightResult" class="ai-output-empty">Run analysis to view AI insights.</div>

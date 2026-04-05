@@ -2153,44 +2153,64 @@
     renderCompactList(insightDistributionAlerts, alertRows, "No low-distribution alerts in recent window.");
   }
 
-  function renderAiListCard(title, rows, tone) {
+  function renderAiListCard(title, rows, tone, icon) {
     const items = Array.isArray(rows) ? rows.filter((item) => String(item || "").trim()) : [];
+    const iconHtml = icon ? `<span class="ai-section-icon">${icon}</span>` : "";
     if (!items.length) {
       return `
         <article class="ai-report-card ${tone}">
-          <h3>${escapeHtml(title)}</h3>
+          <h3>${iconHtml}${escapeHtml(title)}</h3>
           <p class="ai-empty">No specific items available.</p>
         </article>
       `;
     }
     return `
       <article class="ai-report-card ${tone}">
-        <h3>${escapeHtml(title)}</h3>
+        <h3>${iconHtml}${escapeHtml(title)}</h3>
         <ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
       </article>
     `;
   }
 
-  function renderAiPlanTable(title, rows) {
+  function renderAiContentIdeas(ideas) {
+    const items = Array.isArray(ideas) ? ideas.filter((item) => String(item || "").trim()) : [];
+    if (!items.length) {
+      return `
+        <article class="ai-report-card">
+          <h3><span class="ai-section-icon">\u{1F4A1}</span>Content Ideas</h3>
+          <p class="ai-empty">No content ideas generated.</p>
+        </article>
+      `;
+    }
+    return `
+      <article class="ai-report-card">
+        <h3><span class="ai-section-icon">\u{1F4A1}</span>Content Ideas</h3>
+        <div class="ai-ideas-grid">${items.map((item) => `<div class="ai-idea-chip">${escapeHtml(item)}</div>`).join("")}</div>
+      </article>
+    `;
+  }
+
+  function renderAiPlanTable(title, rows, icon) {
     const safeRows = Array.isArray(rows) ? rows : [];
+    const iconHtml = icon ? `<span class="ai-section-icon">${icon}</span>` : "";
     if (!safeRows.length) {
       return `
         <article class="ai-report-card">
-          <h3>${escapeHtml(title)}</h3>
+          <h3>${iconHtml}${escapeHtml(title)}</h3>
           <p class="ai-empty">No detailed plan generated.</p>
         </article>
       `;
     }
     return `
       <article class="ai-report-card">
-        <h3>${escapeHtml(title)}</h3>
+        <h3>${iconHtml}${escapeHtml(title)}</h3>
         <div class="table-wrap table-wrap-strong">
           <table class="ai-table">
             <tr>
-              <th>action</th>
-              <th>why</th>
-              <th>expected_impact</th>
-              <th>timeline</th>
+              <th>Action</th>
+              <th>Why</th>
+              <th>Expected Impact</th>
+              <th>Timeline</th>
             </tr>
             ${safeRows
               .map(
@@ -2215,27 +2235,27 @@
     if (!safeRows.length) {
       return `
         <article class="ai-report-card">
-          <h3>7-day KPI growth plan</h3>
+          <h3><span class="ai-section-icon">\u{1F4C8}</span>7-Day KPI Growth Plan</h3>
           <p class="ai-empty">No KPI target table generated.</p>
         </article>
       `;
     }
     return `
       <article class="ai-report-card">
-        <h3>7-day KPI growth plan</h3>
+        <h3><span class="ai-section-icon">\u{1F4C8}</span>7-Day KPI Growth Plan</h3>
         <div class="table-wrap table-wrap-strong">
           <table class="ai-table">
             <tr>
-              <th>metric</th>
-              <th>current</th>
-              <th>target_7d</th>
-              <th>how</th>
+              <th>Metric</th>
+              <th>Current</th>
+              <th>Target (7d)</th>
+              <th>How to Achieve</th>
             </tr>
             ${safeRows
               .map(
                 (row) => `
                   <tr>
-                    <td>${escapeHtml(row.metric)}</td>
+                    <td><strong>${escapeHtml(row.metric)}</strong></td>
                     <td>${escapeHtml(row.current)}</td>
                     <td>${escapeHtml(row.target_7d)}</td>
                     <td>${escapeHtml(row.how)}</td>
@@ -2249,77 +2269,128 @@
     `;
   }
 
+  function _fmtNum(val) {
+    if (val === null || val === undefined || val === "-") return "-";
+    const n = Number(val);
+    if (Number.isNaN(n)) return String(val);
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
+    if (n >= 1000) return (n / 1000).toFixed(1) + "K";
+    return String(n);
+  }
+
   function renderAiInsights(data) {
     if (!aiInsightResult || !aiInsightMeta) return;
     const analysis = data && data.analysis ? data.analysis : {};
     const cadence = (data && data.source_overview && data.source_overview.posting_cadence) || {};
     const perf = (data && data.source_overview && data.source_overview.performance_last_7d) || {};
+    const pageName = data.page_name || "Unknown Profile";
+    const initial = pageName.charAt(0).toUpperCase();
+    const platformLabel = (data.platform || "").replace("+", " + ");
 
-    const cadenceText = [
-      `Posts 24h: ${cadence.posts_last_24h ?? "-"}`,
-      `Posts 7d: ${cadence.posts_last_7d ?? "-"}`,
-      `Posts 30d: ${cadence.posts_last_30d ?? "-"}`,
-      `Avg/day (7d): ${cadence.avg_posts_per_day_last_7d ?? "-"}`,
-      `FB posts 7d: ${cadence.facebook_posts_last_7d ?? "-"}`,
-      `FB avg/day (7d): ${cadence.facebook_avg_posts_per_day_last_7d ?? "-"}`,
-      `IG posts 7d: ${cadence.instagram_posts_last_7d ?? "-"}`,
-      `IG avg/day (7d): ${cadence.instagram_avg_posts_per_day_last_7d ?? "-"}`,
-    ].join(" | ");
-
-    const perfText = [
-      `Views: ${perf.views ?? "-"}`,
-      `Likes: ${perf.likes ?? "-"}`,
-      `Comments: ${perf.comments ?? "-"}`,
-      `Shares: ${perf.shares ?? "-"}`,
-      `Saves: ${perf.saves ?? "-"}`,
-    ].join(" | ");
-
-    aiInsightMeta.textContent = `Profile: ${data.page_name || "-"} | Platform: ${data.platform || "-"} | Model: ${
-      data.model || "-"
-    } | Snapshot fetched: ${toIndianDateTime(data.fetched_at) || "-"} | AI generated: ${
+    aiInsightMeta.textContent = `Snapshot: ${toIndianDateTime(data.fetched_at) || "-"} | Generated: ${
       toIndianDateTime(data.generated_at) || "-"
-    } | Cached: ${data.cached ? "Yes" : "No"}`;
+    } | ${data.cached ? "Cached" : "Fresh data"}`;
+
+    const profileBanner = `
+      <div class="ai-profile-banner">
+        <div class="ai-profile-avatar">${escapeHtml(initial)}</div>
+        <div class="ai-profile-info">
+          <p class="ai-profile-name">${escapeHtml(pageName)}</p>
+          <p class="ai-profile-platform">${escapeHtml(platformLabel || "Multi-platform")} ${data.combined ? " (Combined FB + IG)" : ""}</p>
+        </div>
+        <div class="ai-profile-badges">
+          <span class="ai-badge ai-badge-model">${escapeHtml(data.model || "AI")}</span>
+          <span class="ai-badge ai-badge-time">${escapeHtml(toIndianDateTime(data.generated_at) || "Just now")}</span>
+        </div>
+      </div>`;
+
+    const statsBar = `
+      <div class="ai-stats-bar">
+        <div class="ai-stat-tile"><div class="ai-stat-value">${_fmtNum(perf.views)}</div><div class="ai-stat-label">Views (7d)</div></div>
+        <div class="ai-stat-tile"><div class="ai-stat-value">${_fmtNum(perf.likes)}</div><div class="ai-stat-label">Likes (7d)</div></div>
+        <div class="ai-stat-tile"><div class="ai-stat-value">${_fmtNum(perf.comments)}</div><div class="ai-stat-label">Comments (7d)</div></div>
+        <div class="ai-stat-tile"><div class="ai-stat-value">${_fmtNum(perf.shares)}</div><div class="ai-stat-label">Shares (7d)</div></div>
+        <div class="ai-stat-tile"><div class="ai-stat-value">${_fmtNum(perf.saves)}</div><div class="ai-stat-label">Saves (7d)</div></div>
+      </div>`;
+
+    const cadenceBar = `
+      <div class="ai-cadence-bar">
+        <span class="ai-cadence-chip"><strong>${cadence.posts_last_24h ?? "-"}</strong> posts today</span>
+        <span class="ai-cadence-chip"><strong>${cadence.posts_last_7d ?? "-"}</strong> posts (7d)</span>
+        <span class="ai-cadence-chip"><strong>${cadence.posts_last_30d ?? "-"}</strong> posts (30d)</span>
+        <span class="ai-cadence-chip">FB <strong>${cadence.facebook_avg_posts_per_day_last_7d ?? "-"}</strong>/day</span>
+        <span class="ai-cadence-chip">IG <strong>${cadence.instagram_avg_posts_per_day_last_7d ?? "-"}</strong>/day</span>
+      </div>`;
+
+    const execSummary = `
+      <div class="ai-report-header">
+        <h3><span class="ai-section-icon">\u{1F4CB}</span>Executive Summary</h3>
+        <p>${escapeHtml(analysis.executive_summary || "No summary generated.")}</p>
+      </div>`;
+
+    const strategy = analysis.posting_strategy || {};
+    const strategyCard = `
+      <div class="ai-strategy-card">
+        <h3><span class="ai-section-icon">\u{1F3AF}</span>Posting Strategy</h3>
+        <div class="ai-strategy-row">
+          <div class="ai-strategy-label">Current Approach</div>
+          <div class="ai-strategy-value">${escapeHtml(strategy.current_posting || "Not specified")}</div>
+        </div>
+        <div class="ai-strategy-row">
+          <div class="ai-strategy-label">Recommended Change</div>
+          <div class="ai-strategy-value">${escapeHtml(strategy.recommended_posting || "Not specified")}</div>
+        </div>
+        <div class="ai-strategy-row">
+          <div class="ai-strategy-label">Data-Backed Reasoning</div>
+          <div class="ai-strategy-value">${escapeHtml(strategy.reasoning || "Not specified")}</div>
+        </div>
+      </div>`;
+
+    const nbp = analysis.next_best_post || {};
+    const nextPostCard = `
+      <div class="ai-next-post-card">
+        <h3><span class="ai-section-icon">\u{1F680}</span>Your Next Best Post</h3>
+        <div class="ai-next-post-grid">
+          <div class="ai-next-post-item">
+            <div class="ai-strategy-label">Best Time Window</div>
+            <div class="ai-strategy-value">${escapeHtml(nbp.best_time_window || "Not specified")}</div>
+          </div>
+          <div class="ai-next-post-item">
+            <div class="ai-strategy-label">Recommended Format</div>
+            <div class="ai-strategy-value">${escapeHtml(nbp.recommended_format || "Not specified")}</div>
+          </div>
+          <div class="ai-next-post-item">
+            <div class="ai-strategy-label">Recommended Topic</div>
+            <div class="ai-strategy-value">${escapeHtml(nbp.recommended_topic || "Not specified")}</div>
+          </div>
+          <div class="ai-next-post-item">
+            <div class="ai-strategy-label">Why Now</div>
+            <div class="ai-strategy-value">${escapeHtml(nbp.why_now || "Not specified")}</div>
+          </div>
+        </div>
+      </div>`;
 
     aiInsightResult.innerHTML = `
-      <div class="ai-report-header">
-        <h3>Executive summary</h3>
-        <p>${escapeHtml(analysis.executive_summary || "No summary generated.")}</p>
-      </div>
-      <div class="ai-report-meta">
-        <span>${escapeHtml(cadenceText)}</span>
-        <span>${escapeHtml(perfText)}</span>
-      </div>
-      <div class="ai-report-grid">
-        ${renderAiListCard("Pros", analysis.pros || [], "tone-good")}
-        ${renderAiListCard("Cons", analysis.cons || [], "tone-bad")}
-        ${renderAiListCard("Risks", analysis.risks || [], "tone-bad")}
-        ${renderAiListCard("Opportunities", analysis.opportunities || [], "tone-good")}
+      ${profileBanner}
+      ${statsBar}
+      ${cadenceBar}
+      ${execSummary}
+      <div class="ai-report-grid-4">
+        ${renderAiListCard("Strengths", analysis.pros || [], "tone-good", "\u{2705}")}
+        ${renderAiListCard("Weaknesses", analysis.cons || [], "tone-bad", "\u{26A0}\u{FE0F}")}
+        ${renderAiListCard("Risks", analysis.risks || [], "tone-warn", "\u{1F6A8}")}
+        ${renderAiListCard("Opportunities", analysis.opportunities || [], "tone-blue", "\u{1F4A0}")}
       </div>
       <div class="ai-report-grid">
-        ${renderAiListCard("What Worked", analysis.what_worked || [], "tone-good")}
-        ${renderAiListCard("What Flopped", analysis.what_flopped || [], "tone-bad")}
+        ${renderAiListCard("What Worked", analysis.what_worked || [], "tone-good", "\u{1F44D}")}
+        ${renderAiListCard("What Flopped", analysis.what_flopped || [], "tone-bad", "\u{1F44E}")}
       </div>
-      <article class="ai-report-card">
-        <h3>Posting strategy</h3>
-        <p><strong>Current:</strong> ${escapeHtml(
-          (analysis.posting_strategy || {}).current_posting || "Not specified"
-        )}</p>
-        <p><strong>Recommended:</strong> ${escapeHtml(
-          (analysis.posting_strategy || {}).recommended_posting || "Not specified"
-        )}</p>
-        <p><strong>Reasoning:</strong> ${escapeHtml((analysis.posting_strategy || {}).reasoning || "Not specified")}</p>
-      </article>
-      <article class="ai-report-card">
-        <h3>Next Best Post</h3>
-        <p><strong>Best time:</strong> ${escapeHtml(((analysis.next_best_post || {}).best_time_window) || "Not specified")}</p>
-        <p><strong>Format:</strong> ${escapeHtml(((analysis.next_best_post || {}).recommended_format) || "Not specified")}</p>
-        <p><strong>Topic:</strong> ${escapeHtml(((analysis.next_best_post || {}).recommended_topic) || "Not specified")}</p>
-        <p><strong>Why:</strong> ${escapeHtml(((analysis.next_best_post || {}).why_now) || "Not specified")}</p>
-      </article>
-      ${renderAiPlanTable("7-day action plan", analysis.action_plan_7d || [])}
+      ${strategyCard}
+      ${nextPostCard}
+      ${renderAiPlanTable("7-Day Action Plan", analysis.action_plan_7d || [], "\u{1F4C5}")}
       ${renderAiKpiTable(analysis.kpi_growth_plan || [])}
-      ${renderAiListCard("Content ideas", analysis.content_ideas || [], "")}
-      ${renderAiListCard("Best recommendation for grow your profile", analysis.best_recommendations_for_growth || [], "tone-good")}
+      ${renderAiContentIdeas(analysis.content_ideas || [])}
+      ${renderAiListCard("Top Growth Recommendations", analysis.best_recommendations_for_growth || [], "tone-good", "\u{1F31F}")}
     `;
   }
 
