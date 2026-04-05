@@ -1939,27 +1939,111 @@
     const igRecentSaves = aggregateRecentPostMetric(publishedPosts, "instagram", "total_saves");
 
     return [
-      { metric: "Total Followers", facebook: fbSummary.total_followers, instagram: igSummary.total_followers, window: "Overall" },
-      { metric: "Total Following", facebook: fbSummary.total_following, instagram: igSummary.total_following, window: "Overall" },
-      { metric: "Total Post Share", facebook: fbSummary.total_post_share, instagram: igSummary.total_post_share, window: "Overall" },
-      { metric: "Total Reach", facebook: metricFromInsights(fbInsights, ["page_reach"]), instagram: metricFromInsights(igInsights, ["reach"]), window: "Last 7 days" },
-      { metric: "Total Profile Views", facebook: metricFromInsights(fbInsights, ["page_views_total"]), instagram: metricFromInsights(igInsights, ["profile_views"]), window: "Last 7 days" },
-      { metric: "Total Accounts Engaged", facebook: metricFromInsights(fbInsights, ["page_engaged_users"]), instagram: metricFromInsights(igInsights, ["accounts_engaged"]), window: "Last 7 days" },
-      { metric: "Total Interactions", facebook: [fbRecentLikes, fbRecentComments, fbRecentShares].some((v) => v !== null) ? (fbRecentLikes || 0) + (fbRecentComments || 0) + (fbRecentShares || 0) : null, instagram: metricFromInsights(igInsights, ["total_interactions"]), window: "Last 7 days" },
-      { metric: "Total Likes", facebook: fbRecentLikes, instagram: metricFromInsights(igInsights, ["likes"]), window: "Last 7 days" },
-      { metric: "Total Comments", facebook: fbRecentComments, instagram: metricFromInsights(igInsights, ["comments"]), window: "Last 7 days" },
-      { metric: "Total Shares", facebook: fbRecentShares, instagram: metricFromInsights(igInsights, ["shares"]) ?? igRecentShares, window: "Last 7 days" },
-      { metric: "Total Views", facebook: metricFromInsights(fbInsights, ["page_impressions"]) ?? fbRecentViews, instagram: metricFromInsights(igInsights, ["views"]), window: "Last 7 days" },
-      { metric: "Total Saves", facebook: null, instagram: metricFromInsights(igInsights, ["saves"]) ?? igRecentSaves, window: "Last 7 days" },
-      { metric: "Total Followers Count", facebook: metricFromInsights(fbInsights, ["followers_count"]), instagram: metricFromInsights(igInsights, ["follower_count", "followers_count"]), window: "Current / 7 days" },
-      { metric: "Total Follows Count", facebook: metricFromInsights(fbInsights, ["page_follows"]), instagram: metricFromInsights(igInsights, ["follows_count"]), window: "Current" },
-      { metric: "Total Media Count", facebook: fbSummary.total_post_share, instagram: metricFromInsights(igInsights, ["media_count"]), window: "Current" },
-    ].map((row) => ({
-      metric: row.metric,
-      facebook: row.facebook === null || row.facebook === undefined ? "N/A" : row.facebook,
-      instagram: row.instagram === null || row.instagram === undefined ? "N/A" : row.instagram,
-      window: row.window,
-    }));
+      { metric: "Followers", facebook: fbSummary.total_followers, instagram: igSummary.total_followers, window: "Current", group: "profile" },
+      { metric: "Following", facebook: fbSummary.total_following, instagram: igSummary.total_following, window: "Current", group: "profile" },
+      { metric: "Media / Posts", facebook: fbSummary.total_post_share, instagram: metricFromInsights(igInsights, ["media_count"]), window: "Current", group: "profile" },
+      { metric: "Reach", facebook: metricFromInsights(fbInsights, ["page_reach"]), instagram: metricFromInsights(igInsights, ["reach"]), window: "Last 7 days", group: "engagement" },
+      { metric: "Profile Views", facebook: metricFromInsights(fbInsights, ["page_views_total"]), instagram: metricFromInsights(igInsights, ["profile_views"]), window: "Last 7 days", group: "engagement" },
+      { metric: "Accounts Engaged", facebook: metricFromInsights(fbInsights, ["page_engaged_users"]), instagram: metricFromInsights(igInsights, ["accounts_engaged"]), window: "Last 7 days", group: "engagement" },
+      { metric: "Interactions", facebook: [fbRecentLikes, fbRecentComments, fbRecentShares].some((v) => v !== null) ? (fbRecentLikes || 0) + (fbRecentComments || 0) + (fbRecentShares || 0) : null, instagram: metricFromInsights(igInsights, ["total_interactions"]), window: "Last 7 days", group: "engagement" },
+      { metric: "Views", facebook: metricFromInsights(fbInsights, ["page_impressions"]) ?? fbRecentViews, instagram: metricFromInsights(igInsights, ["views"]), window: "Last 7 days", group: "performance" },
+      { metric: "Likes", facebook: fbRecentLikes, instagram: metricFromInsights(igInsights, ["likes"]), window: "Last 7 days", group: "performance" },
+      { metric: "Comments", facebook: fbRecentComments, instagram: metricFromInsights(igInsights, ["comments"]), window: "Last 7 days", group: "performance" },
+      { metric: "Shares", facebook: fbRecentShares, instagram: metricFromInsights(igInsights, ["shares"]) ?? igRecentShares, window: "Last 7 days", group: "performance" },
+      { metric: "Saves", facebook: null, instagram: metricFromInsights(igInsights, ["saves"]) ?? igRecentSaves, window: "Last 7 days", group: "performance" },
+      { metric: "New Followers", facebook: metricFromInsights(fbInsights, ["followers_count"]), instagram: metricFromInsights(igInsights, ["follower_count", "followers_count"]), window: "Last 7 days", group: "growth" },
+      { metric: "New Follows", facebook: metricFromInsights(fbInsights, ["page_follows"]), instagram: metricFromInsights(igInsights, ["follows_count"]), window: "Current", group: "growth" },
+    ];
+  }
+
+  function _cmpFmt(val) {
+    if (val === null || val === undefined || val === "N/A" || val === "") return null;
+    const n = Number(val);
+    if (Number.isNaN(n)) return null;
+    return n;
+  }
+
+  function _cmpDisplay(val) {
+    const n = _cmpFmt(val);
+    if (n === null) return '<span class="cmp-na">-</span>';
+    if (n >= 1000000) return `<strong>${(n / 1000000).toFixed(1)}M</strong>`;
+    if (n >= 1000) return `<strong>${(n / 1000).toFixed(1)}K</strong>`;
+    return `<strong>${n.toLocaleString()}</strong>`;
+  }
+
+  function _cmpWinnerClass(fbVal, igVal) {
+    const fb = _cmpFmt(fbVal);
+    const ig = _cmpFmt(igVal);
+    if (fb === null && ig === null) return { fbCls: "", igCls: "" };
+    if (fb === null) return { fbCls: "", igCls: "cmp-winner" };
+    if (ig === null) return { fbCls: "cmp-winner", igCls: "" };
+    if (fb > ig) return { fbCls: "cmp-winner", igCls: "" };
+    if (ig > fb) return { fbCls: "", igCls: "cmp-winner" };
+    return { fbCls: "", igCls: "" };
+  }
+
+  function _cmpBar(fbVal, igVal) {
+    const fb = _cmpFmt(fbVal) || 0;
+    const ig = _cmpFmt(igVal) || 0;
+    const max = Math.max(fb, ig, 1);
+    const fbPct = Math.round((fb / max) * 100);
+    const igPct = Math.round((ig / max) * 100);
+    return `<div class="cmp-bar-track">
+      <div class="cmp-bar cmp-bar-fb" style="width:${fbPct}%"></div>
+      <div class="cmp-bar cmp-bar-ig" style="width:${igPct}%"></div>
+    </div>`;
+  }
+
+  const _groupLabels = {
+    profile: "\u{1F464} Profile Overview",
+    engagement: "\u{1F4CA} Engagement (7 days)",
+    performance: "\u{1F525} Post Performance (7 days)",
+    growth: "\u{1F4C8} Growth",
+  };
+
+  function renderComparisonTable(container, rows, data) {
+    if (!container) return;
+    if (!rows || !rows.length) {
+      container.innerHTML = "<p class='cmp-empty'>No comparison data available. Fetch insights first.</p>";
+      return;
+    }
+
+    // Group rows
+    const grouped = {};
+    const groupOrder = ["profile", "engagement", "performance", "growth"];
+    rows.forEach((row) => {
+      const g = row.group || "other";
+      if (!grouped[g]) grouped[g] = [];
+      grouped[g].push(row);
+    });
+
+    let html = `<div class="cmp-header-row">
+      <div class="cmp-header-metric">Metric</div>
+      <div class="cmp-header-fb"><img class="cmp-platform-icon" src="/static/dashboard/brand/meta-logo.jpg" alt="FB"> Facebook</div>
+      <div class="cmp-header-vs">vs</div>
+      <div class="cmp-header-ig"><img class="cmp-platform-icon" src="/static/dashboard/brand/instagram-logo.webp" alt="IG"> Instagram</div>
+      <div class="cmp-header-bar">Comparison</div>
+    </div>`;
+
+    groupOrder.forEach((groupKey) => {
+      const groupRows = grouped[groupKey];
+      if (!groupRows || !groupRows.length) return;
+      const label = _groupLabels[groupKey] || groupKey;
+      html += `<div class="cmp-group-header">${label}</div>`;
+      groupRows.forEach((row) => {
+        const { fbCls, igCls } = _cmpWinnerClass(row.facebook, row.instagram);
+        const windowBadge = row.window ? `<span class="cmp-window">${escapeHtml(row.window)}</span>` : "";
+        html += `<div class="cmp-row">
+          <div class="cmp-cell-metric">${escapeHtml(row.metric)}${windowBadge}</div>
+          <div class="cmp-cell-value ${fbCls}">${_cmpDisplay(row.facebook)}</div>
+          <div class="cmp-cell-vs"></div>
+          <div class="cmp-cell-value ${igCls}">${_cmpDisplay(row.instagram)}</div>
+          <div class="cmp-cell-bar">${_cmpBar(row.facebook, row.instagram)}</div>
+        </div>`;
+      });
+    });
+
+    container.innerHTML = `<div class="cmp-table">${html}</div>`;
   }
 
   function isVideoUrl(url) {
@@ -2134,7 +2218,7 @@
     const comparisonRows = Array.isArray(data.comparison_rows) && data.comparison_rows.length
       ? data.comparison_rows
       : comparisonMetricRows(data);
-    renderTable(insightMetricsTable, comparisonRows);
+    renderComparisonTable(insightMetricsTable, comparisonRows, data);
 
     const earlyRows = (Array.isArray(data.early_engagement_monitor) ? data.early_engagement_monitor : []).map((row) => ({
       title: `${String(row.platform || "").toUpperCase()} ${row.id}`,
