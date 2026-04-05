@@ -3583,8 +3583,54 @@ pre {
   .ai-stats-bar { grid-template-columns: repeat(3, 1fr); }
 }
 
+/* --- Profile stats row --- */
+.profile-stats-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.profile-stat-tile {
+  padding: 16px 14px;
+  border-radius: 14px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.94), rgba(241, 245, 246, 0.88));
+  border: 1px solid rgba(56, 78, 92, 0.1);
+  text-align: center;
+  transition: box-shadow 0.2s, border-color 0.2s;
+}
+.profile-stat-tile:hover {
+  border-color: rgba(56, 78, 92, 0.2);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+}
+.profile-stat-value {
+  font-size: 28px;
+  font-weight: 900;
+  color: var(--ink);
+  line-height: 1.15;
+  letter-spacing: -0.5px;
+}
+.profile-stat-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  font-weight: 700;
+  margin-top: 4px;
+}
+.profile-stat-sub {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
 .profile-form {
-  gap: 10px;
+  gap: 12px;
+}
+
+.profile-form-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
 }
 
 .profile-form input[readonly] {
@@ -3604,6 +3650,13 @@ pre {
   height: 1px;
   margin: 4px 0;
   background: rgba(56, 78, 92, 0.14);
+}
+
+.profile-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .profile-preview-card {
@@ -3688,6 +3741,50 @@ pre {
   margin: 10px 0 0;
   color: var(--muted);
   font-size: 12.5px;
+}
+
+.profile-preview-member {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.profile-quick-links {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.22);
+  display: grid;
+  gap: 6px;
+}
+.profile-quick-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: rgba(200, 215, 225, 0.7);
+  margin: 0 0 4px;
+}
+.profile-quick-link {
+  display: block;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(220, 235, 245, 0.92);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background 0.15s, border-color 0.15s;
+}
+.profile-quick-link:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+@media (max-width: 700px) {
+  .profile-stats-row { grid-template-columns: repeat(2, 1fr); }
+  .profile-form-2col { grid-template-columns: 1fr; }
 }
 
 .subscription-hero {

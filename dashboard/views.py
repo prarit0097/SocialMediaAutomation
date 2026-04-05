@@ -150,8 +150,26 @@ def _validate_meta_config(app_id: str, app_secret: str, redirect_uri: str) -> li
 
 
 def _profile_payload(user) -> dict:
+    from publishing.models import ScheduledPost
+
     profile, _ = UserProfile.objects.get_or_create(user=user)
     profile.refresh_subscription_state()
+
+    accounts = ConnectedAccount.objects.filter(user=user, is_active=True)
+    total_accounts = accounts.count()
+    fb_accounts = accounts.filter(platform="facebook").count()
+    ig_accounts = accounts.filter(platform="instagram").count()
+
+    post_qs = ScheduledPost.objects.filter(account__user=user)
+    total_published = post_qs.filter(status="published").count()
+    total_failed = post_qs.filter(status="failed").count()
+    total_pending = post_qs.filter(status="pending").count()
+    total_scheduled = post_qs.count()
+
+    today = timezone.now().date()
+    expiry = profile.subscription_expires_on
+    days_left = (expiry - today).days if expiry and expiry >= today else 0
+
     return {
         "email": user.email,
         "first_name": profile.resolved_first_name,
@@ -159,7 +177,18 @@ def _profile_payload(user) -> dict:
         "profile_picture_url": profile.profile_picture_url,
         "subscription_plan": profile.subscription_plan,
         "subscription_status": profile.subscription_status,
-        "subscription_expires_on": profile.subscription_expires_on.isoformat() if profile.subscription_expires_on else None,
+        "subscription_expires_on": expiry.isoformat() if expiry else None,
+        "days_left": days_left,
+        "member_since": user.date_joined.strftime("%b %d, %Y") if user.date_joined else None,
+        "connected_accounts": total_accounts,
+        "fb_accounts": fb_accounts,
+        "ig_accounts": ig_accounts,
+        "stats": {
+            "total_scheduled": total_scheduled,
+            "published": total_published,
+            "failed": total_failed,
+            "pending": total_pending,
+        },
     }
 
 

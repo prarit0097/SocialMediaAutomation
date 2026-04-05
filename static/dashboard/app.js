@@ -1474,6 +1474,16 @@
     return (mail.slice(0, 2) || "NA").toUpperCase();
   }
 
+  const profileMemberSince = document.getElementById("profileMemberSince");
+  const statConnectedAccounts = document.getElementById("statConnectedAccounts");
+  const statAccountBreakdown = document.getElementById("statAccountBreakdown");
+  const statPublished = document.getElementById("statPublished");
+  const statTotalScheduled = document.getElementById("statTotalScheduled");
+  const statPending = document.getElementById("statPending");
+  const statFailed = document.getElementById("statFailed");
+  const statDaysLeft = document.getElementById("statDaysLeft");
+  const statMemberSince = document.getElementById("statMemberSince");
+
   function setProfilePreview(data) {
     if (!data) return;
     const firstName = String(data.first_name || "").trim();
@@ -1495,6 +1505,9 @@
       const formattedDate = rawDate ? formatScheduleDateTime(`${rawDate}T00:00:00`) : "-";
       profileExpiryPreview.textContent = `Plan expiry: ${formattedDate || "-"}`;
     }
+    if (profileMemberSince) {
+      profileMemberSince.textContent = `Member since: ${data.member_since || "-"}`;
+    }
 
     const initials = profileInitials(firstName, lastName, email);
     if (profileAvatarFallback) profileAvatarFallback.textContent = initials;
@@ -1508,6 +1521,19 @@
         if (profileAvatarFallback) profileAvatarFallback.hidden = false;
       }
     }
+
+    // Stats tiles
+    const stats = data.stats || {};
+    if (statConnectedAccounts) statConnectedAccounts.textContent = data.connected_accounts ?? "-";
+    if (statAccountBreakdown) {
+      statAccountBreakdown.textContent = `FB: ${data.fb_accounts ?? 0} | IG: ${data.ig_accounts ?? 0}`;
+    }
+    if (statPublished) statPublished.textContent = stats.published ?? "-";
+    if (statTotalScheduled) statTotalScheduled.textContent = `${stats.total_scheduled ?? 0} total scheduled`;
+    if (statPending) statPending.textContent = stats.pending ?? "-";
+    if (statFailed) statFailed.textContent = stats.failed ?? "-";
+    if (statDaysLeft) statDaysLeft.textContent = data.days_left ?? "-";
+    if (statMemberSince) statMemberSince.textContent = data.member_since || "-";
   }
 
   function applyProfileFormData(data) {

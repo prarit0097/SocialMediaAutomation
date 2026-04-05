@@ -20,6 +20,35 @@
   </div>
 </section>
 
+<!-- Stats overview row -->
+<div class="profile-stats-row" id="profileStatsRow">
+  <div class="profile-stat-tile">
+    <div class="profile-stat-value" id="statConnectedAccounts">-</div>
+    <div class="profile-stat-label">Connected Accounts</div>
+    <div class="profile-stat-sub" id="statAccountBreakdown">-</div>
+  </div>
+  <div class="profile-stat-tile">
+    <div class="profile-stat-value" id="statPublished">-</div>
+    <div class="profile-stat-label">Posts Published</div>
+    <div class="profile-stat-sub" id="statTotalScheduled">-</div>
+  </div>
+  <div class="profile-stat-tile">
+    <div class="profile-stat-value" id="statPending">-</div>
+    <div class="profile-stat-label">Posts Pending</div>
+    <div class="profile-stat-sub">In queue</div>
+  </div>
+  <div class="profile-stat-tile">
+    <div class="profile-stat-value" id="statFailed">-</div>
+    <div class="profile-stat-label">Posts Failed</div>
+    <div class="profile-stat-sub">Need attention</div>
+  </div>
+  <div class="profile-stat-tile">
+    <div class="profile-stat-value" id="statDaysLeft">-</div>
+    <div class="profile-stat-label">Days Left</div>
+    <div class="profile-stat-sub" id="statMemberSince">-</div>
+  </div>
+</div>
+
 <div class="content-grid content-grid-aside">
   <section class="card">
     <div class="section-head">
@@ -32,14 +61,16 @@
 
     <form id="profileForm" class="form-grid profile-form">
       {% csrf_token %}
+      <div class="profile-form-2col">
+        <label for="profileFirstName">First Name
+          <input id="profileFirstName" name="first_name" type="text" maxlength="150" required>
+        </label>
+        <label for="profileLastName">Last Name
+          <input id="profileLastName" name="last_name" type="text" maxlength="150">
+        </label>
+      </div>
       <label for="profileEmail">Email (read-only)
         <input id="profileEmail" name="email" type="email" readonly>
-      </label>
-      <label for="profileFirstName">First Name
-        <input id="profileFirstName" name="first_name" type="text" maxlength="150" required>
-      </label>
-      <label for="profileLastName">Last Name
-        <input id="profileLastName" name="last_name" type="text" maxlength="150">
       </label>
       <label for="profilePictureUrl">Profile Picture URL
         <input id="profilePictureUrl" name="profile_picture_url" type="url" placeholder="https://..." readonly>
@@ -47,21 +78,25 @@
 
       <div class="profile-form-divider"></div>
 
-      <label for="profilePlan">Subscription Plan
-        <input id="profilePlan" name="subscription_plan" type="text" maxlength="120" readonly>
-      </label>
-      <label for="profilePlanStatus">Plan Status
-        <select id="profilePlanStatus" name="subscription_status" disabled>
-          <option value="active">Active</option>
-          <option value="expired">Expired</option>
-        </select>
-      </label>
+      <div class="profile-form-2col">
+        <label for="profilePlan">Subscription Plan
+          <input id="profilePlan" name="subscription_plan" type="text" maxlength="120" readonly>
+        </label>
+        <label for="profilePlanStatus">Plan Status
+          <select id="profilePlanStatus" name="subscription_status" disabled>
+            <option value="active">Active</option>
+            <option value="expired">Expired</option>
+          </select>
+        </label>
+      </div>
       <label for="profilePlanExpiry">Plan Expiry Date
         <input id="profilePlanExpiry" name="subscription_expires_on" type="date" readonly>
       </label>
 
-      <button id="saveProfileBtn" type="submit">Save Profile</button>
-      <small id="profileResult" class="result-note"></small>
+      <div class="profile-form-actions">
+        <button id="saveProfileBtn" type="submit">Save Profile</button>
+        <small id="profileResult" class="result-note"></small>
+      </div>
     </form>
   </section>
 
@@ -79,6 +114,15 @@
       <span class="profile-plan-pill status" id="profileStatusPreview">Active</span>
     </div>
     <p id="profileExpiryPreview" class="profile-preview-expiry">Plan expiry: -</p>
+    <p id="profileMemberSince" class="profile-preview-member">Member since: -</p>
+
+    <div class="profile-quick-links">
+      <p class="profile-quick-title">Quick Actions</p>
+      <a href="/dashboard/accounts/" class="profile-quick-link">Manage Accounts</a>
+      <a href="/dashboard/scheduler/" class="profile-quick-link">Schedule Post</a>
+      <a href="/dashboard/insights/" class="profile-quick-link">View Insights</a>
+      <a href="/dashboard/subscription/" class="profile-quick-link">Manage Plan</a>
+    </div>
   </aside>
 </div>
 {% endblock %}
