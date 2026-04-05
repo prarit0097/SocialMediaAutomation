@@ -222,6 +222,13 @@ def publish_scheduled_post(post):
             # Fallback to URL-based: verify the URL is reachable by Meta.
             ensure_public_media_fetchable(post.media_url)
 
+        upload_method = "resumable" if source_bytes else "url"
+        file_size = len(source_bytes) if source_bytes else None
+        logger.info(
+            "ig creating container post id=%s account=%s kind=%s upload=%s file_size=%s",
+            post.id, account.id, media_kind, upload_method, file_size,
+        )
+
         creation = client.create_instagram_media(
             ig_user_id=ig_user_id,
             page_access_token=account.access_token,

@@ -261,10 +261,6 @@ class MetaClient:
         if media_kind == "video":
             # IG Graph now requires REELS for feed video publishing.
             payload["media_type"] = "REELS"
-            payload["share_to_feed"] = "true"
-            # Let Meta auto-select the best thumbnail frame (2000ms in).
-            # This gives the algorithm a clean cover to distribute to Explore/Reels.
-            payload["thumb_offset"] = "2000"
 
             if source_bytes:
                 # Resumable upload: Meta downloads from its own infra instead
