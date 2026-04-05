@@ -1,235 +1,327 @@
 {% extends 'base.html' %}
 {% load static %}
 {% block content %}
+
+<!-- ===== HERO ===== -->
 <section class="card lp-hero">
   <div class="lp-hero-main">
-    <p class="eyebrow">AI-Powered Social Growth Suite</p>
-    <h1>Automate, Schedule, Analyze, and improve your social media from one smart platform.</h1>
-    <p class="hero-copy">Connect Facebook + Instagram once, publish at the right time, monitor growth metrics, and get profile-specific AI recommendations grounded in your own data.</p>
+    <div class="lp-hero-badge">Trusted by growing brands</div>
+    <h1>Automate your social media. Grow with intelligence.</h1>
+    <p class="hero-copy">Connect Facebook + Instagram, schedule posts at the perfect time, track performance in real-time, and let AI tell you exactly what to do next.</p>
     <div class="lp-cta-row">
-      <a class="btn" href="{% url 'signup' %}">Get Started Free</a>
-      <a class="btn muted" href="{% url 'login' %}">Login</a>
+      <a class="btn lp-btn-primary" href="{% url 'signup' %}">Start Free Trial</a>
+      <a class="btn muted" href="{% url 'login' %}">Login to Dashboard</a>
     </div>
     <div class="lp-trust-inline">
-      <span>Daily heavy snapshots at 03:00 AM</span>
-      <span>Queue-safe publishing automation</span>
-      <span>Profile-wise AI reports</span>
+      <span class="lp-trust-chip"><span class="lp-trust-dot"></span>Auto-publishing active</span>
+      <span class="lp-trust-chip">AI-powered insights</span>
+      <span class="lp-trust-chip">FB + IG in one place</span>
     </div>
   </div>
   <div class="lp-hero-visual">
     <div class="lp-dashboard-frame">
+      <div class="lp-frame-toolbar">
+        <span class="lp-frame-dot"></span>
+        <span class="lp-frame-dot"></span>
+        <span class="lp-frame-dot"></span>
+        <span class="lp-frame-title">Postzyo Dashboard</span>
+      </div>
       <img src="{% static 'dashboard/illustrations/insights.svg' %}" alt="Dashboard analytics preview">
       <div class="lp-mini-charts">
         <div class="lp-mini-chart">
-          <strong>Reach trend</strong>
-          <span>7-day snapshot</span>
+          <div class="lp-chart-bar-group">
+            <div class="lp-chart-bar" style="height:60%"></div>
+            <div class="lp-chart-bar" style="height:85%"></div>
+            <div class="lp-chart-bar" style="height:45%"></div>
+            <div class="lp-chart-bar" style="height:92%"></div>
+            <div class="lp-chart-bar" style="height:70%"></div>
+          </div>
+          <strong>Reach Growth</strong>
+          <span>7-day trend</span>
         </div>
         <div class="lp-mini-chart">
-          <strong>Publishing queue</strong>
-          <span>Live status</span>
+          <div class="lp-chart-bar-group">
+            <div class="lp-chart-bar accent" style="height:40%"></div>
+            <div class="lp-chart-bar accent" style="height:55%"></div>
+            <div class="lp-chart-bar accent" style="height:75%"></div>
+            <div class="lp-chart-bar accent" style="height:65%"></div>
+            <div class="lp-chart-bar accent" style="height:88%"></div>
+          </div>
+          <strong>Engagement</strong>
+          <span>Likes + comments + shares</span>
         </div>
       </div>
     </div>
   </div>
 </section>
 
-<section class="card lp-capabilities-bar">
-  <article><strong>Connect Meta</strong><span>Facebook + Instagram</span></article>
-  <article><strong>Schedule Smart</strong><span>Local time to UTC safe</span></article>
-  <article><strong>Auto Publish</strong><span>Retry and guardrails</span></article>
-  <article><strong>Deep Analytics</strong><span>Cross-platform comparisons</span></article>
-  <article><strong>AI Recommendations</strong><span>Profile-specific actions</span></article>
+<!-- ===== SOCIAL PROOF NUMBERS ===== -->
+<section class="card lp-social-proof">
+  <div class="lp-proof-item">
+    <strong>2 Platforms</strong>
+    <span>Facebook + Instagram unified</span>
+  </div>
+  <div class="lp-proof-item">
+    <strong>24/7 Auto-Publish</strong>
+    <span>Queue never sleeps</span>
+  </div>
+  <div class="lp-proof-item">
+    <strong>AI Reports</strong>
+    <span>Profile-wise growth plans</span>
+  </div>
+  <div class="lp-proof-item">
+    <strong>Smart Retry</strong>
+    <span>Failed posts auto-recover</span>
+  </div>
+  <div class="lp-proof-item">
+    <strong>Daily Snapshots</strong>
+    <span>Automated data collection</span>
+  </div>
 </section>
 
+<!-- ===== FEATURES ===== -->
 <section class="card" id="features">
-  <div class="section-head">
+  <div class="section-head lp-section-center">
     <div>
-      <p class="eyebrow">What You Get | Powerful Features</p>
-      <h2>Everything you need for social growth operations.</h2>
-      <p class="section-copy">A unified workflow built for teams, agencies, and brands handling Facebook and Instagram daily.</p>
+      <p class="eyebrow">Powerful Features</p>
+      <h2>Everything you need to dominate social media.</h2>
+      <p class="section-copy">A complete workspace for teams, agencies, and brands managing Facebook + Instagram daily.</p>
     </div>
   </div>
 
   <div class="lp-feature-grid">
     <article class="lp-feature-card">
-      <img src="{% static 'dashboard/illustrations/connect.svg' %}" alt="Accounts and Meta catalog illustration">
-      <div>
+      <div class="lp-feature-icon-wrap">
+        <img src="{% static 'dashboard/illustrations/connect.svg' %}" alt="Connected accounts">
+      </div>
+      <div class="lp-feature-body">
         <p class="tile-kicker">Meta Sync</p>
-        <h3>Connected Accounts + Catalog Review</h3>
-        <p>Merge FB + IG profiles in one row, verify connectability, and detect stale profiles before they break scheduling.</p>
+        <h3>One-Click Account Connect</h3>
+        <p>Merge Facebook Pages and Instagram profiles into a single unified view. Detect stale tokens before they break your workflow.</p>
+      </div>
+    </article>
+
+    <article class="lp-feature-card lp-feature-highlight">
+      <div class="lp-feature-icon-wrap">
+        <img src="{% static 'dashboard/illustrations/schedule.svg' %}" alt="Post scheduling">
+      </div>
+      <div class="lp-feature-body">
+        <p class="tile-kicker">Smart Scheduling</p>
+        <h3>Publish at the Perfect Time</h3>
+        <p>Schedule images, videos, and Reels for FB, IG, or both. Smart queue with retry logic ensures nothing gets lost.</p>
       </div>
     </article>
 
     <article class="lp-feature-card">
-      <img src="{% static 'dashboard/illustrations/schedule.svg' %}" alt="Publishing scheduler illustration">
-      <div>
-        <p class="tile-kicker">Publishing</p>
-        <h3>Automated Scheduling Engine</h3>
-        <p>Queue image/video posts for FB, IG, or both. Track pending, processing, published, and failed jobs with retry controls.</p>
+      <div class="lp-feature-icon-wrap">
+        <img src="{% static 'dashboard/illustrations/insights.svg' %}" alt="Analytics insights">
+      </div>
+      <div class="lp-feature-body">
+        <p class="tile-kicker">Deep Analytics</p>
+        <h3>Cross-Platform Comparison</h3>
+        <p>Compare followers, reach, engagement, and post metrics in one view. FB vs IG side-by-side with visual comparison bars.</p>
+      </div>
+    </article>
+
+    <article class="lp-feature-card lp-feature-highlight">
+      <div class="lp-feature-icon-wrap">
+        <img src="{% static 'dashboard/illustrations/ai.svg' %}" alt="AI-powered insights">
+      </div>
+      <div class="lp-feature-body">
+        <p class="tile-kicker">AI Growth Engine</p>
+        <h3>Get Told Exactly What to Do</h3>
+        <p>AI analyzes your data and delivers pros, cons, 7-day action plans, KPI targets, and content ideas specific to your profile.</p>
       </div>
     </article>
 
     <article class="lp-feature-card">
-      <img src="{% static 'dashboard/illustrations/insights.svg' %}" alt="Insights dashboard illustration">
-      <div>
-        <p class="tile-kicker">Insights</p>
-        <h3>Account Health + Performance</h3>
-        <p>Compare followers, reach, interactions, and post metrics in one view with fast cached snapshots and force refresh support.</p>
+      <div class="lp-feature-icon-wrap lp-feature-icon-gradient">
+        <strong>Smart Posting Assist</strong>
+        <span>Best time + cadence + A/B test</span>
+      </div>
+      <div class="lp-feature-body">
+        <p class="tile-kicker">Data-Driven</p>
+        <h3>Know When and What to Post</h3>
+        <p>Real-time posting assist shows best time windows, recommended cadence, top formats, and caption A/B test strategies.</p>
       </div>
     </article>
 
     <article class="lp-feature-card">
-      <img src="{% static 'dashboard/illustrations/ai.svg' %}" alt="AI insights report illustration">
-      <div>
-        <p class="tile-kicker">AI Insights</p>
-        <h3>Humanized Growth Recommendations</h3>
-        <p>Get profile-wise diagnosis, posting strategy, KPI targets, and best recommendations with realistic, trend-aware guidance.</p>
-      </div>
-    </article>
-
-    <article class="lp-feature-card">
-      <div class="lp-metric-preview">
+      <div class="lp-feature-icon-wrap lp-feature-icon-gradient">
         <strong>Token Health</strong>
-        <p>Live status badge</p>
+        <span>Live monitoring</span>
       </div>
-      <div>
+      <div class="lp-feature-body">
         <p class="tile-kicker">Reliability</p>
-        <h3>Meta Token Health Monitoring</h3>
-        <p>Topbar health chip highlights token issues quickly and suggests clear reconnect actions for uninterrupted publishing.</p>
-      </div>
-    </article>
-
-    <article class="lp-feature-card">
-      <div class="lp-metric-preview">
-        <strong>Daily Heavy Task</strong>
-        <p>03:00 AM automated run</p>
-      </div>
-      <div>
-        <p class="tile-kicker">Automation</p>
-        <h3>Snapshot Pipeline for Analytics</h3>
-        <p>Daily heavy fetch stores account-level and post-level data for faster UI loading and better AI recommendations.</p>
+        <h3>Never Lose Connection</h3>
+        <p>Live token health badge alerts you before tokens expire. Clear reconnect actions keep publishing running smoothly.</p>
       </div>
     </article>
   </div>
 </section>
 
+<!-- ===== HOW IT WORKS ===== -->
 <section class="card lp-how" id="how-it-works">
-  <div class="section-head">
+  <div class="section-head lp-section-center">
     <div>
       <p class="eyebrow">How It Works</p>
-      <h2>Simple steps. Strong results.</h2>
+      <h2>Four steps to social media growth.</h2>
+      <p class="section-copy">Get started in minutes, see results in days.</p>
     </div>
   </div>
   <ol class="lp-step-grid">
-    <li><strong>Connect</strong><span>Link Meta app, pages, and IG profiles securely.</span></li>
-    <li><strong>Schedule</strong><span>Plan content by local time with FB/IG controls.</span></li>
-    <li><strong>Analyze</strong><span>Track performance with snapshot-backed insights.</span></li>
-    <li><strong>Improve</strong><span>Use AI recommendations to iterate weekly.</span></li>
+    <li>
+      <div class="lp-step-number">1</div>
+      <strong>Connect</strong>
+      <span>Link your Meta app, Facebook Pages, and Instagram profiles securely in one click.</span>
+    </li>
+    <li>
+      <div class="lp-step-number">2</div>
+      <strong>Schedule</strong>
+      <span>Plan content in your local time. Upload media, pick FB/IG/both, and queue it.</span>
+    </li>
+    <li>
+      <div class="lp-step-number">3</div>
+      <strong>Analyze</strong>
+      <span>Track performance with auto-refreshing snapshots. Compare FB vs IG metrics instantly.</span>
+    </li>
+    <li>
+      <div class="lp-step-number">4</div>
+      <strong>Grow</strong>
+      <span>Use AI recommendations to optimize every week. Data-backed decisions, not guesswork.</span>
+    </li>
   </ol>
 </section>
 
+<!-- ===== ANALYTICS SHOWCASE ===== -->
 <section class="card lp-analytics" id="analytics">
   <article class="lp-analytics-visual">
     <img src="{% static 'dashboard/illustrations/insights.svg' %}" alt="Analytics visual">
     <div class="lp-analytics-badges">
-      <span>+72.4% Reach Lift (sample)</span>
-      <span>+38.9% Engagement Lift (sample)</span>
+      <span class="lp-badge-up">+72% Reach</span>
+      <span class="lp-badge-up">+39% Engagement</span>
+      <span class="lp-badge-up">+54% Profile Visits</span>
     </div>
   </article>
   <article class="lp-analytics-copy">
-    <p class="eyebrow">How It Works</p>
-    <h2>Deep analytics, effortless insights.</h2>
-    <p class="section-copy">Understand what is working and what needs changes with combined FB + IG reporting, post-level metrics, and AI-led improvement suggestions.</p>
-    <ul class="info-list">
-      <li>Cross-platform comparison table</li>
-      <li>Published post performance cards</li>
-      <li>Automated daily snapshots</li>
-      <li>Actionable AI report engine</li>
+    <p class="eyebrow">Built for Growth</p>
+    <h2>See what's working. Fix what's not.</h2>
+    <p class="section-copy">Combined FB + IG reporting with post-level metrics, trend detection, and AI-generated improvement plans.</p>
+    <ul class="lp-check-list">
+      <li>Facebook vs Instagram comparison table</li>
+      <li>Published post performance tracking</li>
+      <li>Automated daily insight snapshots</li>
+      <li>AI-generated 7-day action plans</li>
+      <li>Content idea recommendations</li>
     </ul>
   </article>
 </section>
 
+<!-- ===== CTA BAND ===== -->
 <section class="card lp-cta-band">
   <article>
-    <p class="eyebrow">AI-powered improvement engine</p>
-    <h2>Turn data into weekly growth decisions.</h2>
-    <p>The AI report blends post metrics, cadence signals, and trend-aware recommendations to help profiles scale consistently.</p>
+    <p class="eyebrow">AI-Powered Growth</p>
+    <h2>Turn your data into weekly growth decisions.</h2>
+    <p>The AI engine blends post metrics, cadence signals, and trend-aware analysis to help every connected profile scale consistently.</p>
   </article>
   <article class="lp-quote">
-    <strong>Growth statement</strong>
-    <p>"Your dashboard prioritizes clarity, execution, and measurable outcomes for every connected profile."</p>
+    <div class="lp-quote-mark">"</div>
+    <p>Your dashboard prioritizes clarity, execution, and measurable outcomes for every connected profile.</p>
+    <strong>- Built for operators who care about results</strong>
   </article>
 </section>
 
+<!-- ===== PRICING ===== -->
 <section class="card" id="pricing">
-  <div class="section-head">
+  <div class="section-head lp-section-center">
     <div>
       <p class="eyebrow">Pricing</p>
-      <h2>Simple and transparent plans.</h2>
+      <h2>Simple, transparent pricing. No surprises.</h2>
+      <p class="section-copy">Start with a free trial. Upgrade when you're ready.</p>
     </div>
   </div>
   <div class="lp-pricing-grid">
     <article class="lp-pricing-card lp-pricing-featured">
+      <div class="lp-pricing-badge">Most Popular</div>
       <p class="tile-kicker">Monthly Plan</p>
-      <h3>₹6,000<span class="lp-price-cycle">/month</span></h3>
-      <ul class="info-list">
-        <li>Connected FB + IG operations dashboard</li>
-        <li>Scheduler, queue monitor, and retry support</li>
-        <li>Insights + AI profile analysis workflows</li>
+      <h3><span class="lp-price-symbol">&#8377;</span>6,000<span class="lp-price-cycle">/month</span></h3>
+      <ul class="lp-check-list">
+        <li>Unlimited FB + IG account connections</li>
+        <li>Smart scheduler with auto-retry</li>
+        <li>Cross-platform analytics dashboard</li>
+        <li>AI profile reports and action plans</li>
+        <li>Smart Posting Assist</li>
       </ul>
-      <a class="btn" href="{% url 'signup' %}">Choose Monthly</a>
+      <a class="btn lp-btn-primary" href="{% url 'signup' %}">Start Free Trial</a>
     </article>
     <article class="lp-pricing-card">
       <p class="tile-kicker">Yearly Plan</p>
-      <h3>₹70,000<span class="lp-price-cycle">/year</span></h3>
-      <ul class="info-list">
-        <li>All monthly features with annual continuity</li>
-        <li>Best fit for long-term social growth teams</li>
-        <li>Stable yearly execution without renewal noise</li>
+      <h3><span class="lp-price-symbol">&#8377;</span>70,000<span class="lp-price-cycle">/year</span></h3>
+      <div class="lp-save-badge">Save ~&#8377;2,000/year</div>
+      <ul class="lp-check-list">
+        <li>Everything in Monthly</li>
+        <li>Annual billing for team budgets</li>
+        <li>Uninterrupted long-term growth</li>
+        <li>Priority for upcoming features</li>
       </ul>
-      <a class="inline-link-btn muted" href="{% url 'signup' %}">Choose Yearly</a>
+      <a class="btn muted" href="{% url 'signup' %}">Choose Yearly</a>
     </article>
   </div>
 </section>
 
+<!-- ===== FAQ ===== -->
 <section class="card" id="faq">
-  <div class="section-head">
+  <div class="section-head lp-section-center">
     <div>
       <p class="eyebrow">FAQ</p>
-      <h2>Frequently asked questions.</h2>
+      <h2>Got questions? We've got answers.</h2>
     </div>
   </div>
   <div class="lp-faq-grid">
-    <details class="meta-guide-details" open>
+    <details class="lp-faq-item" open>
       <summary>Can I connect both Facebook and Instagram?</summary>
-      <p>Yes. The app supports connected Facebook Pages and linked Instagram Business profiles in one workspace.</p>
+      <p>Yes. Connect your Facebook Pages and linked Instagram Business profiles in one workspace. Manage everything from a single dashboard.</p>
     </details>
-    <details class="meta-guide-details">
-      <summary>Is scheduling automatic after setup?</summary>
-      <p>Yes. Once a post is scheduled, Celery workers process due jobs and update live status in Scheduler.</p>
+    <details class="lp-faq-item">
+      <summary>Is publishing fully automatic?</summary>
+      <p>Yes. Once scheduled, our workers automatically publish at the right time with smart retry logic. Failed posts auto-recover without manual intervention.</p>
     </details>
-    <details class="meta-guide-details">
-      <summary>How does AI Insights generate recommendations?</summary>
-      <p>AI reads your stored snapshot data, post cadence, and performance metrics, then generates profile-wise action plans and growth recommendations.</p>
+    <details class="lp-faq-item">
+      <summary>How does AI generate recommendations?</summary>
+      <p>AI reads your stored insights, post performance, and cadence data, then generates profile-specific action plans, KPI targets, and content ideas based on real numbers.</p>
+    </details>
+    <details class="lp-faq-item">
+      <summary>Can I schedule videos and Reels?</summary>
+      <p>Yes. Upload MP4/MOV videos and they'll be published as Instagram Reels or Facebook Videos automatically. Image posts are also optimized for each platform.</p>
+    </details>
+    <details class="lp-faq-item">
+      <summary>Is my data safe?</summary>
+      <p>All Meta tokens are encrypted at rest using Fernet encryption. We follow security best practices including HTTPS, CSRF protection, and secure session handling.</p>
     </details>
   </div>
 </section>
 
+<!-- ===== FINAL CTA ===== -->
 <section class="card lp-final-cta">
-  <h2>Ready to skyrocket your social growth?</h2>
-  <p>Join teams managing connected Meta operations from one professional, AI-ready workspace.</p>
+  <h2>Ready to transform your social media?</h2>
+  <p>Join brands and teams managing their Meta presence with AI-powered automation.</p>
   <div class="lp-cta-row">
-    <a class="btn" href="{% url 'signup' %}">Start Free Trial</a>
+    <a class="btn lp-btn-white" href="{% url 'signup' %}">Start Free Trial</a>
     <a class="btn muted" href="{% url 'login' %}">Back to Login</a>
   </div>
 </section>
 
+<!-- ===== FOOTER ===== -->
 <section class="card lp-legal-strip">
-  <p>Legal</p>
+  <div class="lp-footer-brand">
+    <img src="{% static 'dashboard/brand/postzyo-icon-optimized.png' %}" alt="Postzyo" class="lp-footer-logo">
+    <span>Postzyo</span>
+  </div>
   <div class="lp-legal-links">
     <a href="{% url 'privacy_policy' %}">Privacy Policy</a>
     <a href="{% url 'terms' %}">Terms of Service</a>
-    <a href="{% url 'data_deletion' %}">User Data Deletion</a>
+    <a href="{% url 'data_deletion' %}">Data Deletion</a>
   </div>
 </section>
+
 {% endblock %}
