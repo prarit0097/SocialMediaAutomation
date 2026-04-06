@@ -1938,6 +1938,49 @@ h3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.home-stats-bar {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.home-stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 22px 14px;
+  border-right: 1px solid var(--line);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.92), rgba(244, 238, 230, 0.88));
+  transition: background 0.25s ease;
+}
+
+.home-stat-item:last-child {
+  border-right: none;
+}
+
+.home-stat-item:hover {
+  background: rgba(255, 255, 255, 0.98);
+}
+
+.home-stat-item strong {
+  font-size: 1.6rem;
+  font-family: "Aptos Display", "Trebuchet MS", "Gill Sans", sans-serif;
+  color: var(--navy);
+  line-height: 1;
+}
+
+.home-stat-item span {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
 .section-head {
   display: flex;
   align-items: flex-start;
@@ -4207,6 +4250,14 @@ pre {
     grid-template-columns: 1fr;
   }
 
+  .home-stats-bar {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .home-stat-item:nth-child(3) {
+    border-right: none;
+  }
+
   .meta-guide-grid {
     grid-template-columns: 1fr;
   }
@@ -4266,6 +4317,10 @@ pre {
   .home-module-card,
   .home-visual-grid {
     grid-template-columns: 1fr;
+  }
+
+  .home-stats-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .section-head {
