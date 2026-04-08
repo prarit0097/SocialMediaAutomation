@@ -103,7 +103,7 @@ The Profile page is the logged-in user identity/settings workspace (`/dashboard/
 What it shows:
 - Google-linked email (read-only)
 - editable first name and last name
-- read-only profile picture URL
+- live profile avatar/preview sourced from Google-backed profile data, without exposing the raw profile picture URL field to end users
 - live profile preview card (avatar, name, email, plan badge)
 - real subscription fields in read-only mode: plan name, status (`active` / `expired`), and expiry date
 

@@ -395,6 +395,17 @@ class DashboardAuthTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn("/login/", response.url)
 
+    def test_profile_page_hides_profile_picture_url_field(self):
+        user_model = get_user_model()
+        user_model.objects.create_user(username="profilepageuser", password="pass12345")
+        self.client.login(username="profilepageuser", password="pass12345")
+
+        response = self.client.get("/dashboard/profile/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Profile Picture URL")
+        self.assertNotContains(response, 'id="profilePictureUrl"', html=False)
+
     def test_profile_data_get_returns_user_profile_payload(self):
         user_model = get_user_model()
         user = user_model.objects.create_user(
