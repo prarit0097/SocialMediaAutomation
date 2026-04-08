@@ -69,11 +69,10 @@ def _latest_published_post_times(account_ids: list[int]) -> dict[int, datetime |
     }
 
     unresolved = set(account_ids)
-    # Check more snapshots per account so that an empty recent snapshot
-    # doesn't hide valid post data from an older snapshot.
     snapshots = (
         InsightSnapshot.objects.filter(account_id__in=account_ids)
-        .order_by("account_id", "-fetched_at")[:len(account_ids) * 4]
+        .only("account_id", "payload", "fetched_at")
+        .order_by("-fetched_at")
     )
     for snapshot in snapshots:
         account_id = snapshot.account_id

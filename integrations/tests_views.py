@@ -93,6 +93,52 @@ class IntegrationsViewTests(TestCase):
         self.assertEqual(row["last_post_at"], newer)
         self.assertFalse(row["last_post_is_stale"])
 
+    def test_list_accounts_uses_latest_snapshot_for_higher_account_ids(self):
+        older_account = ConnectedAccount.objects.create(
+            user=self.user,
+            platform="facebook",
+            page_id="1",
+            page_name="Older Account",
+            access_token="token",
+        )
+        target_account = ConnectedAccount.objects.create(
+            user=self.user,
+            platform="facebook",
+            page_id="2",
+            page_name="Target Account",
+            access_token="token",
+        )
+        target_latest = (timezone.now() - timedelta(hours=1)).isoformat()
+
+        for day_offset in range(10):
+            InsightSnapshot.objects.create(
+                account=older_account,
+                platform="facebook",
+                payload={
+                    "published_posts": [
+                        {"published_at": (timezone.now() - timedelta(days=day_offset + 2)).isoformat()},
+                    ]
+                },
+            )
+
+        InsightSnapshot.objects.create(
+            account=target_account,
+            platform="facebook",
+            payload={
+                "published_posts": [
+                    {"published_at": target_latest},
+                ]
+            },
+        )
+
+        response = self.client.get("/api/accounts/")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        row = next(item for item in payload if item["id"] == target_account.id)
+        self.assertEqual(row["last_post_at"], target_latest)
+        self.assertFalse(row["last_post_is_stale"])
+
     def test_list_accounts_falls_back_to_latest_published_scheduled_post(self):
         account = ConnectedAccount.objects.create(
             user=self.user,

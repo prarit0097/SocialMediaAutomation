@@ -1263,6 +1263,11 @@ def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
 def force_refresh_all_accounts_status(request: HttpRequest) -> JsonResponse:
     run = BulkInsightRefreshRun.objects.filter(user=request.user).order_by("-started_at").first()
     run = _safe_reconcile_bulk_run_progress(run)
+    if run and run.status in {
+        BulkInsightRefreshRun.STATUS_COMPLETED,
+        BulkInsightRefreshRun.STATUS_COMPLETED_WITH_ERRORS,
+    }:
+        cache.delete(f"accounts_list_v1:{request.user.id}")
     payload = _serialize_bulk_run(run)
     if run and getattr(run, "_db_lock_contention", False):
         payload["db_lock_contention"] = True

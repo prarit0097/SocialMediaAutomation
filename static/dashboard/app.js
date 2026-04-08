@@ -942,6 +942,7 @@
   let forceRefreshPollInFlight = false;
   let forceRefreshPollFailureCount = 0;
   let lastAutoReconciledRunId = null;
+  let lastCompletedForceRefreshRunId = null;
   const forceRefreshLabel = "Force Refresh All Profiles";
   if (refreshAccountsBtn) {
     const runWithRefreshAccountsLoading = withButtonLoading(refreshAccountsBtn, "Refresh List", "Refreshing...");
@@ -1000,6 +1001,16 @@
           if (status && status.auto_reconciled && status.run_id !== lastAutoReconciledRunId) {
             lastAutoReconciledRunId = status.run_id;
             showAppToast("Previous stuck force refresh was auto-recovered and finalized.", "success");
+          }
+          if (
+            status &&
+            status.run_id &&
+            status.status &&
+            status.status !== "idle" &&
+            status.run_id !== lastCompletedForceRefreshRunId
+          ) {
+            lastCompletedForceRefreshRunId = status.run_id;
+            loadAccounts({ refreshAccounts: true });
           }
           if (status && status.status && status.status !== "idle" && accountsBulkRefreshStatus) {
             const finalPct = Number(status.progress_percent || 0);

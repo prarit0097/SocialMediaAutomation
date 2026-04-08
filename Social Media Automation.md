@@ -153,6 +153,8 @@ What it does:
 - force-refresh status polling now avoids overlapping requests, applies retry backoff on temporary failures, and shows retry status text instead of silently swallowing poll errors
 - force-refresh API now returns a terminal status (`completed`/`completed_with_errors`) when no profile task is queued, instead of always reporting `queued`
 - if Celery queue dispatch fails during force-refresh-all, backend now attempts inline Meta refresh fallback for the affected profiles so button action still refreshes data instead of silently doing nothing
+- Accounts `last_post_at` now resolves against the freshest available snapshots across all active profiles instead of being biased toward lower account IDs when many snapshots exist, so a completed force refresh shows recent posting times more reliably
+- when force-refresh-all finishes, Accounts list cache is cleared and the Accounts UI re-requests fresh rows so newly collected `last_post_at` values appear without waiting for stale cached data to age out
 - accounts list refresh now preserves the last good table if an upstream request is interrupted or returns an unreadable HTML error page, so operators see a retry notice instead of a blank/broken table
 - scheduler upload failures now surface HTTP-specific guidance in the UI; proxy upload-limit failures (for example outer nginx `413`) show a direct message instead of a generic unreadable HTML error
 - insight endpoints are now cache-first: if a profile has no stored snapshot yet, the UI gets an immediate placeholder response while a background Celery refresh is queued, avoiding first-load nginx timeouts
