@@ -144,6 +144,7 @@ What it does:
 - force-refresh-all now uses persistent per-user run tracking with live progress (%) and completion state, so the button stays disabled until that user's run finishes (even after page reload or re-login)
 - force-refresh run creation is now serialized per user with DB row locking, so concurrent double-click/API bursts cannot create duplicate active runs for the same operator
 - force-refresh-all now asks for operator confirmation before starting, because full refresh can take significant time based on connected FB/IG profile count
+- if Instagram due/processing pressure is high, force-refresh-all shows a busy warning and now allows explicit operator override from the UI confirmation path
 - force-refresh run status is now auto-reconciled: if snapshot storage succeeds but callback bookkeeping misses, counters self-heal and stale `running` states are auto-finalized
 - force-refresh auto-reconcile now counts only that operator's snapshots, preventing cross-user snapshot activity from falsely completing someone else's run
 - a reconciled/completed force-refresh run no longer blocks the next refresh request for that same user
@@ -151,6 +152,7 @@ What it does:
 - Accounts UI shows a one-time toast when a previously stuck force-refresh run is auto-recovered/finalized
 - force-refresh status polling now avoids overlapping requests, applies retry backoff on temporary failures, and shows retry status text instead of silently swallowing poll errors
 - force-refresh API now returns a terminal status (`completed`/`completed_with_errors`) when no profile task is queued, instead of always reporting `queued`
+- if Celery queue dispatch fails during force-refresh-all, backend now attempts inline Meta refresh fallback for the affected profiles so button action still refreshes data instead of silently doing nothing
 - accounts list refresh now preserves the last good table if an upstream request is interrupted or returns an unreadable HTML error page, so operators see a retry notice instead of a blank/broken table
 - scheduler upload failures now surface HTTP-specific guidance in the UI; proxy upload-limit failures (for example outer nginx `413`) show a direct message instead of a generic unreadable HTML error
 - insight endpoints are now cache-first: if a profile has no stored snapshot yet, the UI gets an immediate placeholder response while a background Celery refresh is queued, avoiding first-load nginx timeouts

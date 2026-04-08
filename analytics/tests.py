@@ -259,6 +259,69 @@ class AnalyticsApiTests(TestCase):
         self.assertEqual(body["error"], "Instagram publishing window is busy")
         mock_apply_async.assert_not_called()
 
+    @patch("analytics.views.refresh_account_insights_snapshot.apply_async")
+    def test_force_refresh_all_accounts_allows_guard_override(self, mock_apply_async):
+        ig_account = ConnectedAccount.objects.create(
+            user=self.user,
+            platform=INSTAGRAM,
+            page_id="17895555",
+            page_name="IG Override",
+            ig_user_id="17895555",
+            access_token="token-ig-override",
+        )
+        from publishing.models import ScheduledPost
+
+        ScheduledPost.objects.create(
+            account=ig_account,
+            platform=INSTAGRAM,
+            message="due soon",
+            media_url="https://example.com/override.mp4",
+            scheduled_for=timezone.now() + timedelta(minutes=5),
+            status="pending",
+        )
+
+        response = self.client.post(
+            "/api/insights/force-refresh-all/",
+            data=json.dumps({"ignore_ig_guard": True}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertTrue(body.get("guard_ignored"))
+        self.assertEqual(body["status"], "queued")
+        self.assertGreaterEqual(mock_apply_async.call_count, 1)
+
+    @patch("analytics.views.fetch_and_store_insights")
+    @patch("analytics.views.refresh_account_insights_snapshot.apply_async")
+    def test_force_refresh_all_accounts_uses_inline_fallback_when_queue_dispatch_fails(
+        self,
+        mock_apply_async,
+        mock_fetch_and_store,
+    ):
+        mock_apply_async.side_effect = RuntimeError("broker unavailable")
+        mock_fetch_and_store.return_value = {
+            "account_id": self.account.id,
+            "snapshot_id": 999,
+            "platform": FACEBOOK,
+        }
+
+        response = self.client.post(
+            "/api/insights/force-refresh-all/",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["queued_count"], 0)
+        self.assertEqual(body["inline_completed"], 1)
+        self.assertEqual(body["inline_failed"], 0)
+        self.assertEqual(body["queue_errors"], 1)
+        self.assertEqual(body["unresolved_queue_errors"], 0)
+        self.assertEqual(body["status"], "completed")
+        mock_fetch_and_store.assert_called_once()
+
     @patch("analytics.views._reconcile_bulk_run_progress", side_effect=OperationalError("database is locked"))
     def test_force_refresh_all_accounts_status_handles_database_lock(self, _mock_reconcile):
         run = BulkInsightRefreshRun.objects.create(

@@ -1036,16 +1036,31 @@
       forceRefreshAllBtn.disabled = true;
       forceRefreshAllBtn.textContent = "Queuing Force Refresh...";
       try {
-        const response = await fetch("/api/insights/force-refresh-all/", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-CSRFToken": csrfToken,
-          },
-          body: JSON.stringify({}),
-        });
-        const contentType = response.headers.get("content-type") || "";
-        const data = contentType.includes("application/json") ? await response.json() : {};
+        const postForceRefresh = async (payload = {}) => {
+          const response = await fetch("/api/insights/force-refresh-all/", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRFToken": csrfToken,
+            },
+            body: JSON.stringify(payload),
+          });
+          const contentType = response.headers.get("content-type") || "";
+          const data = contentType.includes("application/json") ? await response.json() : {};
+          return { response, data };
+        };
+
+        let { response, data } = await postForceRefresh({});
+        if (!response.ok && response.status === 409 && data && data.can_override) {
+          const overrideMessage = sanitizeUiError(
+            data.details || "Instagram publishing queue is busy. Do you want to continue force refresh anyway?"
+          );
+          const proceed = window.confirm(`${overrideMessage}\n\nContinue force refresh anyway?`);
+          if (proceed) {
+            ({ response, data } = await postForceRefresh({ ignore_ig_guard: true }));
+          }
+        }
+
         if (!response.ok) {
           const errorMessage = sanitizeUiError((data && (data.details || data.error)) || "Force refresh request failed.");
           if (accountsBulkRefreshStatus) accountsBulkRefreshStatus.textContent = errorMessage;

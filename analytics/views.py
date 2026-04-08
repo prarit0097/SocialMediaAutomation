@@ -1075,6 +1075,13 @@ def ai_profile_insights(request: HttpRequest, account_id: int) -> JsonResponse:
 @require_POST
 @login_required
 def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
+    try:
+        request_payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        request_payload = {}
+    ignore_ig_guard = bool(request_payload.get("ignore_ig_guard"))
+    inline_queue_fallback = bool(request_payload.get("inline_queue_fallback", True))
+
     user_model = get_user_model()
     try:
         with transaction.atomic():
@@ -1100,8 +1107,9 @@ def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
                 )
                 return JsonResponse(payload, status=409)
 
-            guard_payload = _force_refresh_guard_payload(user=request.user)
+            guard_payload = None if ignore_ig_guard else _force_refresh_guard_payload(user=request.user)
             if guard_payload:
+                guard_payload["can_override"] = True
                 return JsonResponse(guard_payload, status=409)
 
             accounts = list(ConnectedAccount.objects.filter(is_active=True, user=request.user).order_by("id"))
@@ -1124,6 +1132,9 @@ def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
     queued = 0
     skipped_no_token = 0
     enqueue_failed = 0
+    enqueue_failed_accounts: list[ConnectedAccount] = []
+    inline_completed = 0
+    inline_failed = 0
 
     for account in accounts:
         if not account.access_token:
@@ -1138,6 +1149,7 @@ def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
             queued += 1
         except Exception as exc:  # noqa: BLE001
             enqueue_failed += 1
+            enqueue_failed_accounts.append(account)
             logger.warning(
                 "bulk force refresh enqueue failed account_id=%s user_id=%s error=%s",
                 account.id,
@@ -1145,11 +1157,50 @@ def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
                 str(exc),
             )
 
+    if inline_queue_fallback and enqueue_failed_accounts:
+        for account in enqueue_failed_accounts:
+            try:
+                fetch_and_store_insights(
+                    account,
+                    include_post_stats=True,
+                    post_limit=20,
+                    post_stats_limit=20,
+                )
+                inline_completed += 1
+                logger.info(
+                    "bulk force refresh inline fallback stored account_id=%s user_id=%s run_id=%s",
+                    account.id,
+                    request.user.id,
+                    run.id,
+                )
+            except MetaAPIError as exc:
+                inline_failed += 1
+                logger.warning(
+                    "bulk force refresh inline fallback failed account_id=%s user_id=%s run_id=%s error=%s",
+                    account.id,
+                    request.user.id,
+                    run.id,
+                    str(exc),
+                )
+            except Exception as exc:  # noqa: BLE001
+                inline_failed += 1
+                logger.exception(
+                    "bulk force refresh inline fallback unexpected failure account_id=%s user_id=%s run_id=%s error=%s",
+                    account.id,
+                    request.user.id,
+                    run.id,
+                    str(exc),
+                )
+
+    unresolved_enqueue_failed = enqueue_failed if not inline_queue_fallback else inline_failed
+
     run.queued_count = queued
     run.skipped_no_token = skipped_no_token
-    run.enqueue_failed = enqueue_failed
+    run.enqueue_failed = unresolved_enqueue_failed
+    run.completed_count = inline_completed
+    run.failed_count = inline_failed
     if queued == 0:
-        if enqueue_failed > 0:
+        if unresolved_enqueue_failed > 0 or inline_failed > 0:
             run.status = BulkInsightRefreshRun.STATUS_COMPLETED_WITH_ERRORS
         else:
             run.status = BulkInsightRefreshRun.STATUS_COMPLETED
@@ -1159,6 +1210,8 @@ def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
             "queued_count",
             "skipped_no_token",
             "enqueue_failed",
+            "completed_count",
+            "failed_count",
             "status",
             "finished_at",
             "updated_at",
@@ -1185,7 +1238,8 @@ def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
     else:
         message = (
             "No profile refresh tasks were queued. "
-            f"Skipped (no token): {skipped_no_token}. Queue errors: {enqueue_failed}."
+            f"Skipped (no token): {skipped_no_token}. Queue errors: {enqueue_failed}. "
+            f"Inline refresh completed: {inline_completed}. Inline refresh failed: {inline_failed}."
         )
     payload.update(
         {
@@ -1193,6 +1247,12 @@ def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
             "queued": queued,
             "message": message,
             "queued_at": timezone.now().isoformat(),
+            "queue_errors": enqueue_failed,
+            "unresolved_queue_errors": unresolved_enqueue_failed,
+            "inline_queue_fallback": bool(inline_queue_fallback and enqueue_failed_accounts),
+            "inline_completed": inline_completed,
+            "inline_failed": inline_failed,
+            "guard_ignored": bool(ignore_ig_guard),
         }
     )
     return JsonResponse(payload)
