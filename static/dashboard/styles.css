@@ -1564,6 +1564,7 @@ h3 {
 }
 
 .home-command-hero,
+.home-hero-shell,
 .home-confidence-shell {
   display: grid;
   grid-template-columns: minmax(0, 1.12fr) minmax(320px, 0.92fr);
@@ -1811,7 +1812,8 @@ h3 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.home-module-card {
+.home-module-card,
+.home-work-card {
   display: grid;
   grid-template-columns: 154px minmax(0, 1fr);
   gap: 16px;
@@ -1827,7 +1829,8 @@ h3 {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76);
 }
 
-.home-module-card:hover {
+.home-module-card:hover,
+.home-work-card:hover {
   transform: translateY(-4px);
   border-color: rgba(23, 53, 72, 0.2);
   box-shadow: 0 24px 40px rgba(15, 39, 54, 0.12);
@@ -4243,6 +4246,7 @@ pre {
   .hero-split,
   .meta-config-shell,
   .home-command-hero,
+  .home-hero-shell,
   .home-start-grid,
   .home-module-grid,
   .home-confidence-shell,
@@ -4315,6 +4319,7 @@ pre {
   .lp-step-grid,
   .lp-feature-card,
   .home-module-card,
+  .home-work-card,
   .home-visual-grid {
     grid-template-columns: 1fr;
   }

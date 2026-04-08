@@ -3,7 +3,7 @@
 {% block content %}
 
 <!-- ===== HERO: COMMAND CENTER ===== -->
-<section class="card home-command-hero">
+<section class="card home-hero-shell">
   <div class="home-command-main">
     <p class="eyebrow">Command Center</p>
     <h1>Your social media HQ.</h1>
@@ -151,12 +151,12 @@
     <div>
       <p class="eyebrow">Workspaces</p>
       <h2>Jump into any workspace.</h2>
-      <p class="section-copy">Each module handles one stage of your social media operations.</p>
+      <p class="section-copy">Choose where you want to work today. Each module handles one stage of your social media operations.</p>
     </div>
   </div>
 
   <div class="home-module-grid">
-    <a class="home-module-card" href="{% url 'dashboard:accounts' %}">
+    <a class="home-work-card" href="{% url 'dashboard:accounts' %}">
       <div class="home-module-visual">
         <img src="{% static 'dashboard/illustrations/connect.svg' %}" alt="Connected Accounts">
       </div>
@@ -175,7 +175,7 @@
       </div>
     </a>
 
-    <a class="home-module-card" href="{% url 'dashboard:scheduler' %}">
+    <a class="home-work-card" href="{% url 'dashboard:scheduler' %}">
       <div class="home-module-visual">
         <img src="{% static 'dashboard/illustrations/schedule.svg' %}" alt="Scheduler">
       </div>
@@ -194,7 +194,7 @@
       </div>
     </a>
 
-    <a class="home-module-card" href="{% url 'dashboard:planning' %}">
+    <a class="home-work-card" href="{% url 'dashboard:planning' %}">
       <div class="home-module-visual">
         <img src="{% static 'dashboard/illustrations/schedule.svg' %}" alt="Planning">
       </div>
@@ -213,7 +213,7 @@
       </div>
     </a>
 
-    <a class="home-module-card" href="{% url 'dashboard:insights' %}">
+    <a class="home-work-card" href="{% url 'dashboard:insights' %}">
       <div class="home-module-visual">
         <img src="{% static 'dashboard/illustrations/insights.svg' %}" alt="Insights">
       </div>
@@ -232,7 +232,7 @@
       </div>
     </a>
 
-    <a class="home-module-card" href="{% url 'dashboard:ai_insights' %}">
+    <a class="home-work-card" href="{% url 'dashboard:ai_insights' %}">
       <div class="home-module-visual">
         <img src="{% static 'dashboard/illustrations/ai.svg' %}" alt="AI Insights">
       </div>
@@ -251,7 +251,7 @@
       </div>
     </a>
 
-    <a class="home-module-card" href="{% url 'dashboard:subscription' %}">
+    <a class="home-work-card" href="{% url 'dashboard:subscription' %}">
       <div class="home-module-visual home-module-visual-brand">
         <img src="{% static 'dashboard/brand/postzyo-icon-optimized.png' %}" alt="Subscription">
       </div>

@@ -30,6 +30,7 @@ from .tasks import PUBLISH_TRANSIENT_ATTEMPT_KEY_PREFIX, process_due_posts
 
 logger = logging.getLogger("publishing")
 ALLOWED_MEDIA_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".mp4", ".mov", ".webm", ".m4v", ".avi"}
+INSTAGRAM_SCHEDULE_BUFFER_SECONDS = 120
 
 
 def _bad_request(message: str, details: dict | None = None) -> JsonResponse:
@@ -162,12 +163,25 @@ def _prepare_media_for_instagram_schedule(media_url: str | None) -> tuple[str | 
     return prepared, None
 
 
+def _next_available_instagram_slot(account: ConnectedAccount, desired_dt: datetime) -> datetime:
+    candidate = desired_dt
+    window = timedelta(seconds=INSTAGRAM_SCHEDULE_BUFFER_SECONDS)
+    while ScheduledPost.objects.filter(
+        account=account,
+        platform=INSTAGRAM,
+        status__in=[POST_STATUS_PENDING, POST_STATUS_PROCESSING],
+        scheduled_for__gte=candidate - window + timedelta(seconds=1),
+        scheduled_for__lte=candidate + window - timedelta(seconds=1),
+    ).exists():
+        candidate += window
+    return candidate
+
+
 def _auto_dispatch_due_posts_guarded() -> None:
     """
     Self-healing fallback:
-    If beat misses a cycle and due pending posts exist, kick dispatcher via
-    Celery.  Only falls back to inline execution (single post) when Celery
-    itself is unreachable, to avoid blocking the HTTP request for minutes.
+    If beat misses a cycle and due pending posts exist, run an inline
+    dispatch immediately. If inline execution fails, fall back to Celery.
     """
     now = timezone.now()
     has_due_pending = ScheduledPost.objects.filter(status=POST_STATUS_PENDING, scheduled_for__lte=now).exists()
@@ -179,13 +193,15 @@ def _auto_dispatch_due_posts_guarded() -> None:
         return
 
     try:
-        # Preferred: dispatch via Celery so the HTTP request returns fast.
-        process_due_posts.apply_async(priority=9)
+        process_due_posts(run_inline=True)
     except Exception:  # noqa: BLE001
-        # Celery/Redis unreachable — skip inline fallback entirely.
-        # Inline publish can block the HTTP request for minutes (especially IG),
-        # and celery-beat will pick up the backlog on the next cycle.
-        logger.warning("auto dispatcher celery unreachable, skipping inline fallback")
+        logger.warning("auto dispatcher inline run failed", exc_info=True)
+        try:
+            process_due_posts.apply_async(priority=9)
+        except Exception:  # noqa: BLE001
+            logger.warning("auto dispatcher celery enqueue failed")
+    finally:
+        cache.delete(lock_key)
 
 
 def _recover_stale_processing_posts(user=None, stale_minutes: int = 12) -> int:
@@ -292,9 +308,10 @@ def schedule_post(request: HttpRequest) -> JsonResponse:
         # Small stagger: FB at scheduled time, IG at scheduled time + 5s.
         # Per-user lane lock serializes each user's IG posts, so different
         # users' IG posts can run in parallel (separate rate-limit buckets).
+        ig_dt = _next_available_instagram_slot(ig_account, dt + timedelta(seconds=5))
         targets = [
             (fb_account, FACEBOOK, dt, fb_media_url),
-            (ig_account, INSTAGRAM, dt + timedelta(seconds=5), ig_media_url),
+            (ig_account, INSTAGRAM, ig_dt, ig_media_url),
         ]
 
         created_posts = []
@@ -333,6 +350,9 @@ def schedule_post(request: HttpRequest) -> JsonResponse:
             },
             status=201,
         )
+
+    if platform == INSTAGRAM:
+        dt = _next_available_instagram_slot(account, dt)
 
     post = ScheduledPost(account=account, platform=platform, message=message, media_url=media_url, scheduled_for=dt)
     if platform == INSTAGRAM:

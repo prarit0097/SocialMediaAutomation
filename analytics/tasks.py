@@ -99,13 +99,13 @@ def queue_daily_heavy_insight_refresh(force: bool = False):
 
     account_qs = (
         ConnectedAccount.objects.filter(user__isnull=False)
-        .exclude(access_token="")
         .order_by("id")
-        .values_list("id", flat=True)
+        .values_list("id", "access_token")
     )
 
     for batch_start in range(0, account_qs.count(), BATCH):
-        batch_ids = list(account_qs[batch_start:batch_start + BATCH])
+        batch_rows = list(account_qs[batch_start:batch_start + BATCH])
+        batch_ids = [row[0] for row in batch_rows]
         total += len(batch_ids)
 
         if not force:
@@ -119,7 +119,10 @@ def queue_daily_heavy_insight_refresh(force: bool = False):
         else:
             already_done = set()
 
-        for account_id in batch_ids:
+        for account_id, access_token in batch_rows:
+            if not (str(access_token or "").strip()):
+                skipped += 1
+                continue
             if account_id in already_done:
                 skipped += 1
                 continue

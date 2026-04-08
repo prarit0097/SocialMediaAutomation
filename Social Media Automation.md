@@ -603,10 +603,11 @@ This project includes local MCP servers under `mcp_servers/` so Codex or future 
 - SQLite can still hit transient write locks under high parallel activity; PostgreSQL is strongly recommended for production workloads.
 
 ## Test Reliability Notes
-- full Django test suite currently runs with 137 tests (plus optional skips depending on environment).
+- full Django test suite currently runs with 148 tests (plus optional skips depending on environment).
 - MCP helper tests are optional and auto-skip when the external `mcp` Python package is not installed.
 - Instagram local image optimization tests are auto-skip when Pillow (`PIL`) is not installed.
 - publishing task tests clear cache in setup to avoid stale lock-key side effects between tests.
+- scheduler regression coverage now explicitly checks inline auto-dispatch fallback, chained Instagram slot collision handling, and daily-heavy force-refresh queue rules.
 
 ## Recent UI Performance Update
 - Top navigation logo now uses a lightweight optimized icon asset (`postzyo-icon-optimized.png`) instead of the previous heavy lockup image.

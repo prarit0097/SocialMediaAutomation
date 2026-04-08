@@ -245,20 +245,20 @@ def build_comparison_rows(accounts: list[dict], published_posts: list[dict]) -> 
     fb_recent_shares = _aggregate_recent_post_metric(published_posts, "facebook", "total_shares")
 
     rows = [
-        {"metric": "Followers", "facebook": fb_summary.get("total_followers"), "instagram": ig_summary.get("total_followers"), "window": "Current", "group": "profile"},
-        {"metric": "Following", "facebook": fb_summary.get("total_following"), "instagram": ig_summary.get("total_following"), "window": "Current", "group": "profile"},
-        {"metric": "Media / Posts", "facebook": fb_summary.get("total_post_share"), "instagram": _metric_value(ig_insights, ["media_count"], strategy="last"), "window": "Current", "group": "profile"},
-        {"metric": "Reach", "facebook": _metric_value(fb_insights, ["page_impressions_unique"], strategy="sum"), "instagram": _metric_value(ig_insights, ["reach"], strategy="sum"), "window": "Last 7 days", "group": "engagement"},
-        {"metric": "Profile Views", "facebook": _metric_value(fb_insights, ["page_views_total"], strategy="sum"), "instagram": _metric_value(ig_insights, ["profile_views"], strategy="sum"), "window": "Last 7 days", "group": "engagement"},
-        {"metric": "Accounts Engaged", "facebook": _metric_value(fb_insights, ["page_engaged_users"], strategy="sum"), "instagram": _metric_value(ig_insights, ["accounts_engaged"], strategy="sum"), "window": "Last 7 days", "group": "engagement"},
-        {"metric": "Interactions", "facebook": _metric_value(fb_insights, ["page_post_engagements"], strategy="sum"), "instagram": _metric_value(ig_insights, ["total_interactions"], strategy="sum"), "window": "Last 7 days", "group": "engagement"},
-        {"metric": "Views", "facebook": _metric_value(fb_insights, ["page_posts_impressions"], strategy="sum"), "instagram": _metric_value(ig_insights, ["views"], strategy="sum"), "window": "Last 7 days", "group": "performance"},
-        {"metric": "Likes", "facebook": _metric_value(fb_insights, ["page_actions_post_reactions_like_total"], strategy="sum") or fb_recent_likes, "instagram": _metric_value(ig_insights, ["likes"], strategy="sum"), "window": "Last 7 days", "group": "performance"},
-        {"metric": "Comments", "facebook": fb_recent_comments, "instagram": _metric_value(ig_insights, ["comments"], strategy="sum"), "window": "Last 7 days", "group": "performance"},
-        {"metric": "Shares", "facebook": fb_recent_shares, "instagram": _metric_value(ig_insights, ["shares"], strategy="sum"), "window": "Last 7 days", "group": "performance"},
-        {"metric": "Saves", "facebook": None, "instagram": _metric_value(ig_insights, ["saves"], strategy="sum"), "window": "Last 7 days", "group": "performance"},
-        {"metric": "New Followers", "facebook": _metric_value(fb_insights, ["page_follows"], strategy="delta"), "instagram": _metric_value(ig_insights, ["follower_count"], strategy="sum"), "window": "Last 7 days", "group": "growth"},
-        {"metric": "New Follows", "facebook": _metric_value(fb_insights, ["page_follows"], strategy="last"), "instagram": _metric_value(ig_insights, ["follows_count"], strategy="last"), "window": "Current", "group": "growth"},
+        {"metric": "Total Followers", "facebook": fb_summary.get("total_followers"), "instagram": ig_summary.get("total_followers"), "window": "Current", "group": "profile"},
+        {"metric": "Total Following", "facebook": fb_summary.get("total_following"), "instagram": ig_summary.get("total_following"), "window": "Current", "group": "profile"},
+        {"metric": "Total Media Count", "facebook": fb_summary.get("total_post_share"), "instagram": _metric_value(ig_insights, ["media_count"], strategy="last"), "window": "Current", "group": "profile"},
+        {"metric": "Total Reach", "facebook": _metric_value(fb_insights, ["page_impressions_unique"], strategy="sum"), "instagram": _metric_value(ig_insights, ["reach"], strategy="sum"), "window": "Last 7 days", "group": "engagement"},
+        {"metric": "Total Profile Views", "facebook": _metric_value(fb_insights, ["page_views_total"], strategy="sum"), "instagram": _metric_value(ig_insights, ["profile_views"], strategy="sum"), "window": "Last 7 days", "group": "engagement"},
+        {"metric": "Total Accounts Engaged", "facebook": _metric_value(fb_insights, ["page_engaged_users"], strategy="sum"), "instagram": _metric_value(ig_insights, ["accounts_engaged"], strategy="sum"), "window": "Last 7 days", "group": "engagement"},
+        {"metric": "Total Interactions", "facebook": _metric_value(fb_insights, ["page_post_engagements"], strategy="sum"), "instagram": _metric_value(ig_insights, ["total_interactions"], strategy="sum"), "window": "Last 7 days", "group": "engagement"},
+        {"metric": "Total Views", "facebook": _metric_value(fb_insights, ["page_posts_impressions"], strategy="sum"), "instagram": _metric_value(ig_insights, ["views"], strategy="sum"), "window": "Last 7 days", "group": "performance"},
+        {"metric": "Total Likes", "facebook": _metric_value(fb_insights, ["page_actions_post_reactions_like_total"], strategy="sum") or fb_recent_likes, "instagram": _metric_value(ig_insights, ["likes"], strategy="sum"), "window": "Last 7 days", "group": "performance"},
+        {"metric": "Total Comments", "facebook": fb_recent_comments, "instagram": _metric_value(ig_insights, ["comments"], strategy="sum"), "window": "Last 7 days", "group": "performance"},
+        {"metric": "Total Shares", "facebook": fb_recent_shares, "instagram": _metric_value(ig_insights, ["shares"], strategy="sum"), "window": "Last 7 days", "group": "performance"},
+        {"metric": "Total Saves", "facebook": None, "instagram": _metric_value(ig_insights, ["saves"], strategy="sum"), "window": "Last 7 days", "group": "performance"},
+        {"metric": "Total Followers Count", "facebook": _metric_value(fb_insights, ["page_follows"], strategy="delta"), "instagram": _metric_value(ig_insights, ["follower_count"], strategy="sum"), "window": "Last 7 days", "group": "growth"},
+        {"metric": "Total Follows Count", "facebook": _metric_value(fb_insights, ["page_follows"], strategy="last"), "instagram": _metric_value(ig_insights, ["follows_count"], strategy="last"), "window": "Current", "group": "growth"},
     ]
 
     return [

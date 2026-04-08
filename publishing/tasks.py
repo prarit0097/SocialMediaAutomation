@@ -365,8 +365,8 @@ def publish_post_task(self, post_id: int):
             )
         elif is_rate_limit_error:
             # Graph app/page rate-limit during actual API calls.
-            # Progressively longer delays: start at ~1 min, back off to 10 min.
-            countdown = min(600, 60 + attempts * 30) + random.randint(0, 30)
+            # Progressively longer delays: start at 75s, back off up to 10 min.
+            countdown = min(600, 45 + attempts * 30)
             cooldown_duration = min(180, 30 + attempts * 20)
             if post.platform == INSTAGRAM:
                 cache.set(_ig_cooldown_key(post.account_id), timezone.now().isoformat(), timeout=cooldown_duration)

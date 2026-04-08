@@ -934,6 +934,24 @@ class AnalyticsAutomationTaskTests(TestCase):
         self.assertEqual(result["skipped"], 2)
         mock_apply_async.assert_not_called()
 
+    @patch("analytics.tasks.refresh_account_insights_snapshot.apply_async")
+    def test_queue_daily_heavy_refresh_force_requeues_snapshot_but_still_skips_blank_token(self, mock_apply_async):
+        snapshot = InsightSnapshot.objects.create(
+            account=self.account,
+            platform=FACEBOOK,
+            payload={"metadata": {"collection_mode": DAILY_HEAVY_COLLECTION_MODE}},
+        )
+        snapshot.fetched_at = timezone.now()
+        snapshot.save(update_fields=["fetched_at"])
+
+        result = queue_daily_heavy_insight_refresh(force=True)
+
+        self.assertEqual(result["total_accounts"], 2)
+        self.assertEqual(result["queued"], 1)
+        self.assertEqual(result["skipped"], 1)
+        self.assertTrue(result["forced"])
+        mock_apply_async.assert_called_once_with(args=[self.account.id], kwargs={"force": True}, priority=1)
+
     @patch("analytics.tasks.fetch_and_store_insights")
     def test_refresh_account_insights_snapshot_uses_heavy_limits_and_metadata(self, mock_fetch):
         mock_fetch.return_value = {"snapshot_id": 77}

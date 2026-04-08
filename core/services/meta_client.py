@@ -51,6 +51,8 @@ def _shared_session() -> requests.Session:
 
 
 _session: requests.Session | None = None
+_DEFAULT_REQUESTS_GET = requests.get
+_DEFAULT_REQUESTS_POST = requests.post
 
 
 class MetaClient:
@@ -380,8 +382,6 @@ class MetaClient:
         timeout: int | None = None,
         poll_interval: int | None = None,
     ) -> dict:
-        import random
-
         timeout = timeout if isinstance(timeout, int) and timeout > 0 else max(120, int(getattr(settings, "META_IG_READY_TIMEOUT", 300)))
         poll_interval = (
             poll_interval
@@ -392,9 +392,8 @@ class MetaClient:
         latest_payload = {}
         latest_transient_error: MetaTransientError | None = None
         consecutive_rate_limits = 0
-        # Brief initial pause + random jitter so parallel tasks don't all
-        # fire their first poll at the exact same instant.
-        initial_wait = min(8, poll_interval, timeout // 2) + random.uniform(0, 4)
+        # Brief initial pause to avoid immediate burst polling.
+        initial_wait = min(8, poll_interval, timeout // 2)
         time.sleep(initial_wait)
         while time.monotonic() - started < timeout:
             try:
@@ -411,8 +410,8 @@ class MetaClient:
                 latest_transient_error = exc
                 consecutive_rate_limits += 1
                 # Progressive backoff on rate limits: the more consecutive
-                # failures, the longer we wait — gives other tasks room.
-                rl_backoff = min(60, (poll_interval + 5) * consecutive_rate_limits) + random.uniform(0, 8)
+                # failures, the longer we wait.
+                rl_backoff = min(60, (poll_interval + 5) * consecutive_rate_limits)
                 time.sleep(rl_backoff)
                 continue
             status_code = str(latest_payload.get("status_code") or "").upper()
@@ -434,8 +433,7 @@ class MetaClient:
                     f"Instagram media processing returned {status_code or status}. "
                     f"Container will be recreated on retry. status_code={status_code or 'unknown'}"
                 )
-            # Jitter on normal polls too — prevents synchronized polling waves
-            time.sleep(poll_interval + random.uniform(0, 5))
+            time.sleep(poll_interval)
 
         if latest_transient_error:
             raise MetaTransientError(
@@ -846,8 +844,10 @@ class MetaClient:
         for attempt in range(1, attempts + 1):
             try:
                 if method == "GET":
-                    return session.get(url, params=params, timeout=timeout)
-                return session.post(url, data=data, files=files, timeout=timeout)
+                    get_impl = requests.get if requests.get is not _DEFAULT_REQUESTS_GET else session.get
+                    return get_impl(url, params=params, timeout=timeout)
+                post_impl = requests.post if requests.post is not _DEFAULT_REQUESTS_POST else session.post
+                return post_impl(url, data=data, files=files, timeout=timeout)
             except requests.RequestException as exc:
                 last_error = exc
                 if attempt < attempts:

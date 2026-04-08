@@ -80,6 +80,23 @@ class PublishingApiTests(TestCase):
         self.assertEqual(response.status_code, 200)
         mock_process_due_posts.assert_called_once_with(run_inline=True)
 
+    @patch("publishing.views.process_due_posts")
+    def test_list_scheduled_posts_falls_back_to_celery_when_inline_dispatch_fails(self, mock_process_due_posts):
+        ScheduledPost.objects.create(
+            account=self.account,
+            platform=FACEBOOK,
+            message="Due post",
+            scheduled_for=timezone.now() - timedelta(minutes=3),
+            status=POST_STATUS_PENDING,
+        )
+        mock_process_due_posts.side_effect = RuntimeError("inline failed")
+
+        response = self.client.get(reverse("list_scheduled_posts"))
+
+        self.assertEqual(response.status_code, 200)
+        mock_process_due_posts.assert_called_once_with(run_inline=True)
+        mock_process_due_posts.apply_async.assert_called_once_with(priority=9)
+
     def test_publish_health_status_counts_retrying_rows(self):
         ScheduledPost.objects.create(
             account=self.ig_account,
@@ -170,6 +187,42 @@ class PublishingApiTests(TestCase):
         self.assertEqual(response.status_code, 201)
         created = ScheduledPost.objects.exclude(message="Existing IG").get()
         self.assertEqual(created.scheduled_for, desired_dt + timedelta(seconds=120))
+
+    @patch("publishing.views.MetaClient.debug_token", return_value={"data": {"is_valid": True}})
+    def test_schedule_post_instagram_keeps_stepping_until_free_slot_exists(self, _mock_debug_token):
+        desired_dt = timezone.now() + timedelta(minutes=10)
+        ScheduledPost.objects.create(
+            account=self.ig_account,
+            platform=INSTAGRAM,
+            message="Existing IG 1",
+            media_url="https://example.com/existing-1.jpg",
+            scheduled_for=desired_dt,
+            status=POST_STATUS_PENDING,
+        )
+        ScheduledPost.objects.create(
+            account=self.ig_account,
+            platform=INSTAGRAM,
+            message="Existing IG 2",
+            media_url="https://example.com/existing-2.jpg",
+            scheduled_for=desired_dt + timedelta(seconds=120),
+            status=POST_STATUS_PENDING,
+        )
+
+        response = self.client.post(
+            reverse("schedule_post"),
+            data={
+                "account_id": self.ig_account.id,
+                "platform": INSTAGRAM,
+                "message": "Hello IG chained",
+                "media_url": "https://example.com/new.jpg",
+                "scheduled_for": desired_dt.isoformat(),
+            },
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        created = ScheduledPost.objects.get(message="Hello IG chained")
+        self.assertEqual(created.scheduled_for, desired_dt + timedelta(seconds=240))
 
     @patch("publishing.views.MetaClient.debug_token", return_value={"data": {"is_valid": True}})
     def test_schedule_post_both_moves_instagram_leg_to_next_available_slot_when_conflict_exists(self, _mock_debug_token):
