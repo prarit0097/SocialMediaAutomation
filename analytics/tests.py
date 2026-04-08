@@ -13,7 +13,12 @@ from django.utils import timezone
 from analytics.models import BulkInsightRefreshRun, InsightSnapshot
 from analytics.ai_service import AIInsightsError
 from analytics.services import _aggregate_recent_post_metric, build_comparison_rows, build_insight_response, build_post_stats_summary
-from analytics.tasks import DAILY_HEAVY_COLLECTION_MODE, queue_daily_heavy_insight_refresh, refresh_account_insights_snapshot
+from analytics.tasks import (
+    DAILY_HEAVY_COLLECTION_MODE,
+    _record_bulk_run_outcome,
+    queue_daily_heavy_insight_refresh,
+    refresh_account_insights_snapshot,
+)
 from analytics.views import _build_combined_response, _extract_error_message
 from core.constants import FACEBOOK, INSTAGRAM
 from core.exceptions import MetaPermanentError, MetaTransientError
@@ -170,6 +175,25 @@ class AnalyticsApiTests(TestCase):
         )
 
     @patch("analytics.views.refresh_account_insights_snapshot.apply_async")
+    def test_force_refresh_all_accounts_insights_returns_completed_when_nothing_queued(self, mock_apply_async):
+        ConnectedAccount.objects.filter(id=self.account.id).update(access_token="")
+        self.account.refresh_from_db()
+
+        response = self.client.post(
+            "/api/insights/force-refresh-all/",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["queued_count"], 0)
+        self.assertEqual(body["status"], "completed")
+        self.assertFalse(body["has_active_run"])
+        self.assertIn("No profile refresh tasks were queued", body["message"])
+        mock_apply_async.assert_not_called()
+
+    @patch("analytics.views.refresh_account_insights_snapshot.apply_async")
     def test_force_refresh_all_accounts_insights_blocks_duplicate_running_job(self, mock_apply_async):
         response1 = self.client.post(
             "/api/insights/force-refresh-all/",
@@ -279,6 +303,41 @@ class AnalyticsApiTests(TestCase):
         self.assertFalse(body["has_active_run"])
         self.assertEqual(body["completed_count"], 1)
         self.assertTrue(body["auto_reconciled"])
+
+    def test_force_refresh_status_reconcile_ignores_other_users_snapshots(self):
+        second_user = get_user_model().objects.create_user(username="other-force-refresh", password="pass12345")
+        other_account = ConnectedAccount.objects.create(
+            user=second_user,
+            platform=FACEBOOK,
+            page_id="other-acc-1",
+            page_name="Other Account",
+            access_token="other-token",
+        )
+        run = BulkInsightRefreshRun.objects.create(
+            user=self.user,
+            status=BulkInsightRefreshRun.STATUS_RUNNING,
+            total_accounts=1,
+            queued_count=1,
+            completed_count=0,
+            failed_count=0,
+            skipped_no_token=0,
+            enqueue_failed=0,
+        )
+        run_time = timezone.now() - timedelta(minutes=1)
+        BulkInsightRefreshRun.objects.filter(id=run.id).update(started_at=run_time, updated_at=run_time)
+        InsightSnapshot.objects.create(
+            account=other_account,
+            platform=FACEBOOK,
+            payload={"insights": [], "metadata": {}},
+        )
+
+        response = self.client.get("/api/insights/force-refresh-all/status/")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["run_id"], run.id)
+        self.assertEqual(body["status"], "running")
+        self.assertEqual(body["completed_count"], 0)
 
     @patch("analytics.views.fetch_and_store_insights")
     def test_force_refresh_fetches_stats_for_visible_posts(self, mock_fetch_and_store):
@@ -837,6 +896,24 @@ class AnalyticsAutomationTaskTests(TestCase):
         task_result = refresh_account_insights_snapshot.apply(args=[self.account.id], kwargs={"force": False}).result
 
         self.assertEqual(task_result["status"], "skipped_locked")
+
+    def test_record_bulk_run_outcome_marks_completed_with_errors_when_enqueue_failed_exists(self):
+        run = BulkInsightRefreshRun.objects.create(
+            user=self.user,
+            status=BulkInsightRefreshRun.STATUS_RUNNING,
+            total_accounts=1,
+            queued_count=1,
+            enqueue_failed=1,
+            completed_count=0,
+            failed_count=0,
+        )
+
+        _record_bulk_run_outcome(run.id, "stored")
+        run.refresh_from_db()
+
+        self.assertEqual(run.completed_count, 1)
+        self.assertEqual(run.status, BulkInsightRefreshRun.STATUS_COMPLETED_WITH_ERRORS)
+        self.assertIsNotNone(run.finished_at)
 
     @patch("analytics.services._get_published_posts")
     @patch("analytics.services.MetaClient.fetch_facebook_published_posts_count")

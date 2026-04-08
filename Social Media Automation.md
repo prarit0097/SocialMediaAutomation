@@ -142,11 +142,15 @@ What it does:
 - Accounts list endpoint is per-user throttled (`30/m`) and Meta catalog endpoint is per-user throttled (`10/m`) so one operator cannot flood the DB/cache or Meta lookups during heavy usage
 - can queue force-refresh jobs for all active connected profiles to pull latest Meta insights into snapshots
 - force-refresh-all now uses persistent per-user run tracking with live progress (%) and completion state, so the button stays disabled until that user's run finishes (even after page reload or re-login)
+- force-refresh run creation is now serialized per user with DB row locking, so concurrent double-click/API bursts cannot create duplicate active runs for the same operator
 - force-refresh-all now asks for operator confirmation before starting, because full refresh can take significant time based on connected FB/IG profile count
 - force-refresh run status is now auto-reconciled: if snapshot storage succeeds but callback bookkeeping misses, counters self-heal and stale `running` states are auto-finalized
+- force-refresh auto-reconcile now counts only that operator's snapshots, preventing cross-user snapshot activity from falsely completing someone else's run
 - a reconciled/completed force-refresh run no longer blocks the next refresh request for that same user
 - force-refresh status endpoint is lock-safe for SQLite contention (`database is locked`): temporary DB locks no longer break UI polling with 500 responses
 - Accounts UI shows a one-time toast when a previously stuck force-refresh run is auto-recovered/finalized
+- force-refresh status polling now avoids overlapping requests, applies retry backoff on temporary failures, and shows retry status text instead of silently swallowing poll errors
+- force-refresh API now returns a terminal status (`completed`/`completed_with_errors`) when no profile task is queued, instead of always reporting `queued`
 - accounts list refresh now preserves the last good table if an upstream request is interrupted or returns an unreadable HTML error page, so operators see a retry notice instead of a blank/broken table
 - scheduler upload failures now surface HTTP-specific guidance in the UI; proxy upload-limit failures (for example outer nginx `413`) show a direct message instead of a generic unreadable HTML error
 - insight endpoints are now cache-first: if a profile has no stored snapshot yet, the UI gets an immediate placeholder response while a background Celery refresh is queued, avoiding first-load nginx timeouts
@@ -502,6 +506,7 @@ Stores:
   - `CELERY_WORKER_MAX_TASKS_PER_CHILD`
   - `CELERY_TASK_SOFT_TIME_LIMIT`, `CELERY_TASK_TIME_LIMIT`
   - `BULK_REFRESH_STALE_MINUTES`
+  - `FORCE_REFRESH_IG_GUARD_MINUTES`, `FORCE_REFRESH_IG_GUARD_DUE_LIMIT`
 - current publishing defaults are tuned for slower Instagram processing windows:
   - `CELERY_TASK_SOFT_TIME_LIMIT=420`
   - `CELERY_TASK_TIME_LIMIT=480`
@@ -577,6 +582,9 @@ This project includes local MCP servers under `mcp_servers/` so Codex or future 
 - `PUBLIC_BASE_URL` must point to a reachable public HTTPS base.
 - `TRUST_REVERSE_PROXY=True` should only be enabled when the deployment is actually behind a trusted proxy that sets `X-Forwarded-Proto`
 - `MAX_UPLOAD_FILE_BYTES` controls the maximum accepted media upload size in Django
+- force-refresh Instagram contention guard knobs are env-configurable:
+  - `FORCE_REFRESH_IG_GUARD_MINUTES` (default `20`)
+  - `FORCE_REFRESH_IG_GUARD_DUE_LIMIT` (default `1`)
 - Celery worker and Celery beat must be running for scheduled publishing and daily heavy insights automation.
 - Celery workers must be restarted after Celery config changes so new prefetch/priority behavior is applied.
 - OpenAI credentials (`OPENAI_API_KEY`) must be set for AI Insights report generation.

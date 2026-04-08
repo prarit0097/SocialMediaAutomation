@@ -38,7 +38,7 @@ def _record_bulk_run_outcome(run_id: int | None, outcome: str) -> None:
 
         processed = run.completed_count + run.failed_count
         if processed >= run.queued_count:
-            if run.failed_count > 0:
+            if run.failed_count > 0 or run.enqueue_failed > 0:
                 run.status = BulkInsightRefreshRun.STATUS_COMPLETED_WITH_ERRORS
             else:
                 run.status = BulkInsightRefreshRun.STATUS_COMPLETED

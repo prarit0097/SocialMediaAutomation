@@ -6,6 +6,7 @@ from collections import defaultdict
 from numbers import Number
 
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
 from django.db import OperationalError, transaction
@@ -193,7 +194,10 @@ def _reconcile_bulk_run_progress(run: BulkInsightRefreshRun | None) -> BulkInsig
         # Reconcile from persisted snapshots if a task result callback was lost.
         if locked.started_at:
             refreshed_accounts = (
-                InsightSnapshot.objects.filter(fetched_at__gte=locked.started_at, account__is_active=True)
+                InsightSnapshot.objects.filter(
+                    fetched_at__gte=locked.started_at,
+                    account__user_id=locked.user_id,
+                )
                 .values("account_id")
                 .distinct()
                 .count()
@@ -1071,35 +1075,55 @@ def ai_profile_insights(request: HttpRequest, account_id: int) -> JsonResponse:
 @require_POST
 @login_required
 def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
-    active_run = BulkInsightRefreshRun.objects.filter(
-        user=request.user,
-        status=BulkInsightRefreshRun.STATUS_RUNNING,
-    ).order_by("-started_at").first()
-    active_run = _safe_reconcile_bulk_run_progress(active_run)
-    if active_run and active_run.status == BulkInsightRefreshRun.STATUS_RUNNING:
-        payload = _serialize_bulk_run(active_run)
-        payload.update(
+    user_model = get_user_model()
+    try:
+        with transaction.atomic():
+            # Serialize per-user run creation so concurrent requests cannot create duplicate running rows.
+            user_model.objects.select_for_update().filter(pk=request.user.pk).exists()
+            active_run = (
+                BulkInsightRefreshRun.objects.select_for_update()
+                .filter(
+                    user=request.user,
+                    status=BulkInsightRefreshRun.STATUS_RUNNING,
+                )
+                .order_by("-started_at")
+                .first()
+            )
+            active_run = _reconcile_bulk_run_progress(active_run)
+            if active_run and active_run.status == BulkInsightRefreshRun.STATUS_RUNNING:
+                payload = _serialize_bulk_run(active_run)
+                payload.update(
+                    {
+                        "error": "Force refresh already running",
+                        "details": "A force refresh-all run is already active for this user. Wait for it to complete.",
+                    }
+                )
+                return JsonResponse(payload, status=409)
+
+            guard_payload = _force_refresh_guard_payload(user=request.user)
+            if guard_payload:
+                return JsonResponse(guard_payload, status=409)
+
+            accounts = list(ConnectedAccount.objects.filter(is_active=True, user=request.user).order_by("id"))
+            run = BulkInsightRefreshRun.objects.create(
+                user=request.user,
+                status=BulkInsightRefreshRun.STATUS_RUNNING,
+                total_accounts=len(accounts),
+            )
+    except OperationalError as exc:
+        logger.warning("bulk force refresh creation blocked due to database lock user_id=%s error=%s", request.user.id, exc)
+        return JsonResponse(
             {
-                "error": "Force refresh already running",
-                "details": "A force refresh-all run is already active for this user. Wait for it to complete.",
-            }
+                "error": "Force refresh is temporarily unavailable",
+                "details": "Database is busy right now. Retry in a few seconds.",
+            },
+            status=503,
         )
-        return JsonResponse(payload, status=409)
 
-    guard_payload = _force_refresh_guard_payload(user=request.user)
-    if guard_payload:
-        return JsonResponse(guard_payload, status=409)
-
-    accounts = list(ConnectedAccount.objects.filter(is_active=True, user=request.user).order_by("id"))
     total_accounts = len(accounts)
     queued = 0
     skipped_no_token = 0
     enqueue_failed = 0
-    run = BulkInsightRefreshRun.objects.create(
-        user=request.user,
-        status=BulkInsightRefreshRun.STATUS_RUNNING,
-        total_accounts=total_accounts,
-    )
 
     for account in accounts:
         if not account.access_token:
@@ -1152,14 +1176,22 @@ def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
     )
 
     payload = _serialize_bulk_run(run)
+    response_status = "queued" if queued > 0 else run.status
+    if queued > 0:
+        message = (
+            f"Force refresh queued for {queued}/{total_accounts} connected profiles. "
+            f"Skipped (no token): {skipped_no_token}. Queue errors: {enqueue_failed}."
+        )
+    else:
+        message = (
+            "No profile refresh tasks were queued. "
+            f"Skipped (no token): {skipped_no_token}. Queue errors: {enqueue_failed}."
+        )
     payload.update(
         {
-            "status": "queued",
+            "status": response_status,
             "queued": queued,
-            "message": (
-                f"Force refresh queued for {queued}/{total_accounts} connected profiles. "
-                f"Skipped (no token): {skipped_no_token}. Queue errors: {enqueue_failed}."
-            ),
+            "message": message,
             "queued_at": timezone.now().isoformat(),
         }
     )

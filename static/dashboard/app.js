@@ -937,7 +937,10 @@
   const forceRefreshProgressFill = document.getElementById("forceRefreshProgressFill");
   const forceRefreshProgressText = document.getElementById("forceRefreshProgressText");
   const FORCE_REFRESH_STATUS_POLL_MS = 7000;
+  const FORCE_REFRESH_STATUS_POLL_MAX_MS = 30000;
   let forceRefreshPollTimer = null;
+  let forceRefreshPollInFlight = false;
+  let forceRefreshPollFailureCount = 0;
   let lastAutoReconciledRunId = null;
   const forceRefreshLabel = "Force Refresh All Profiles";
   if (refreshAccountsBtn) {
@@ -950,9 +953,13 @@
   if (forceRefreshAllBtn) {
     const clearForceRefreshPolling = () => {
       if (forceRefreshPollTimer) {
-        window.clearInterval(forceRefreshPollTimer);
+        window.clearTimeout(forceRefreshPollTimer);
         forceRefreshPollTimer = null;
       }
+    };
+    const scheduleForceRefreshPoll = (delayMs = FORCE_REFRESH_STATUS_POLL_MS) => {
+      clearForceRefreshPolling();
+      forceRefreshPollTimer = window.setTimeout(loadForceRefreshStatus, delayMs);
     };
 
     const renderForceRefreshProgress = (state) => {
@@ -978,12 +985,15 @@
     };
 
     const loadForceRefreshStatus = async () => {
+      if (forceRefreshPollInFlight) return;
+      forceRefreshPollInFlight = true;
       try {
         const status = await fetchJSON("/api/insights/force-refresh-all/status/");
+        forceRefreshPollFailureCount = 0;
         renderForceRefreshProgress(status);
         const running = Boolean(status && status.has_active_run);
-        if (running && !forceRefreshPollTimer) {
-          forceRefreshPollTimer = window.setInterval(loadForceRefreshStatus, FORCE_REFRESH_STATUS_POLL_MS);
+        if (running) {
+          scheduleForceRefreshPoll(FORCE_REFRESH_STATUS_POLL_MS);
         }
         if (!running) {
           clearForceRefreshPolling();
@@ -1000,8 +1010,20 @@
             }
           }
         }
-      } catch (_err) {
-        // Keep UI usable even if status endpoint fails temporarily.
+      } catch (err) {
+        forceRefreshPollFailureCount += 1;
+        const retryMs = Math.min(
+          FORCE_REFRESH_STATUS_POLL_MAX_MS,
+          FORCE_REFRESH_STATUS_POLL_MS * Math.max(1, forceRefreshPollFailureCount)
+        );
+        if (accountsBulkRefreshStatus) {
+          const msg = sanitizeUiError(err && err.message ? err.message : "Force refresh status check failed.");
+          const retrySec = Math.ceil(retryMs / 1000);
+          accountsBulkRefreshStatus.textContent = `${msg} Retrying status check in ${retrySec}s.`;
+        }
+        scheduleForceRefreshPoll(retryMs);
+      } finally {
+        forceRefreshPollInFlight = false;
       }
     };
 
@@ -1029,8 +1051,9 @@
           if (accountsBulkRefreshStatus) accountsBulkRefreshStatus.textContent = errorMessage;
           showAppToast(errorMessage, "error");
           renderForceRefreshProgress(data);
-          if (data && data.has_active_run && !forceRefreshPollTimer) {
-            forceRefreshPollTimer = window.setInterval(loadForceRefreshStatus, FORCE_REFRESH_STATUS_POLL_MS);
+          if (data && data.has_active_run) {
+            forceRefreshPollFailureCount = 0;
+            scheduleForceRefreshPoll(FORCE_REFRESH_STATUS_POLL_MS);
           }
           return;
         }
@@ -1040,12 +1063,13 @@
         if (accountsBulkRefreshStatus) accountsBulkRefreshStatus.textContent = message;
         showAppToast(message, "success");
         renderForceRefreshProgress(data);
-        clearForceRefreshPolling();
-        forceRefreshPollTimer = window.setInterval(loadForceRefreshStatus, FORCE_REFRESH_STATUS_POLL_MS);
+        forceRefreshPollFailureCount = 0;
+        scheduleForceRefreshPoll(FORCE_REFRESH_STATUS_POLL_MS);
       } catch (err) {
         const message = sanitizeUiError(err && err.message ? err.message : "Force refresh request failed.");
         if (accountsBulkRefreshStatus) accountsBulkRefreshStatus.textContent = message;
         showAppToast(message, "error");
+        clearForceRefreshPolling();
         forceRefreshAllBtn.disabled = false;
         forceRefreshAllBtn.textContent = forceRefreshLabel;
       }
