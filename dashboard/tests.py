@@ -507,6 +507,22 @@ class DashboardAuthTests(TestCase):
         self.assertEqual(profile.subscription_plan, "Pro")
         self.assertEqual(profile.subscription_status, UserProfile.SUBSCRIPTION_STATUS_ACTIVE)
 
+    def test_profile_data_post_rejects_overlong_names(self):
+        user_model = get_user_model()
+        user_model.objects.create_user(username="profiletoolong", password="pass12345")
+        self.client.login(username="profiletoolong", password="pass12345")
+
+        response = self.client.post(
+            "/dashboard/profile-data/",
+            data=json.dumps({"first_name": "a" * 151, "last_name": "b" * 151}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "Validation failed.")
+        self.assertIn("First name should be 150 characters or less.", response.json()["details"])
+        self.assertIn("Last name should be 150 characters or less.", response.json()["details"])
+
     def test_subscription_page_requires_login(self):
         response = self.client.get("/dashboard/subscription/")
         self.assertEqual(response.status_code, 302)
