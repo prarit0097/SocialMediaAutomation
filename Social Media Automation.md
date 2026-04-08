@@ -215,6 +215,7 @@ What happens:
 - Meta media download timeouts are treated as transient and automatically retried
 - Instagram "media not ready to publish" responses (`code=9007`, `subcode=2207027`) are treated as transient and retried automatically
 - Meta Graph application/page rate-limit responses (`code=2`, `code=4`, plus common transient throttle codes/subcodes) are treated as transient instead of permanent failures
+- Instagram `code=25/subcode=2207050` "user restricted" publish responses are now treated as retryable, because Meta can return them transiently even when the account is otherwise active
 - transient publish errors no longer stay stuck as long `processing`; row is moved back to `pending` with visible auto-retry message/countdown context
 - transient publish retries now also move `scheduled_for` forward by the retry cooldown, preventing immediate re-pick loops each minute
 - Instagram publish now uses a per-account lane lock, so posts for different IG accounts can publish in parallel while duplicate/same-account publishes are still serialized

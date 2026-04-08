@@ -1006,11 +1006,14 @@ class MetaClient:
                 f"Change the caption/hashtags and try again. ({message})",
                 status_code=response.status_code, payload=payload,
             )
-        # Code 25 + subcode 2207050: account restricted/inactive.
+        # Code 25 + subcode 2207050 is noisy in practice: Meta can return it
+        # transiently during Instagram publishing even when the account is
+        # otherwise healthy and posting manually. Treat it as retryable so one
+        # bad response does not strand the post in failed state.
         if code == 25 and subcode == 2207050:
-            raise MetaPermanentError(
-                f"This Instagram account is restricted or inactive. "
-                f"Log into the Instagram app and check for any restrictions. ({message})",
+            raise MetaTransientError(
+                f"Instagram temporarily rejected publishing access for this account. "
+                f"Auto-retry will try again. If this repeats, verify the account in the Instagram app. ({message})",
                 status_code=response.status_code, payload=payload,
             )
         # Code 24 + subcode 2207006: container expired / media not found.

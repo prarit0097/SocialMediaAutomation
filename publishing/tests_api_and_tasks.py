@@ -492,6 +492,34 @@ class PublishingTaskTests(TestCase):
         self.assertGreater(self.post.scheduled_for, before_schedule)
 
     @patch("publishing.tasks.publish_scheduled_post")
+    def test_publish_post_task_requeues_instagram_user_restricted_signal(self, mock_publish):
+        ig_account = ConnectedAccount.objects.create(
+            platform=INSTAGRAM,
+            page_id="17890007",
+            page_name="IG Restricted Signal",
+            ig_user_id="17890007",
+            access_token="token",
+        )
+        ig_post = ScheduledPost.objects.create(
+            account=ig_account,
+            platform=INSTAGRAM,
+            message="IG retry",
+            media_url="https://example.com/a.jpg",
+            scheduled_for=timezone.now(),
+            status="processing",
+        )
+        mock_publish.side_effect = MetaTransientError(
+            "User access is restricted (code=25, subcode=2207050, title=User is restricted, user_msg=The Instagram account is restricted.)"
+        )
+
+        result = publish_post_task(ig_post.id)
+
+        self.assertEqual(result["status"], "requeued_transient")
+        ig_post.refresh_from_db()
+        self.assertEqual(ig_post.status, POST_STATUS_PENDING)
+        self.assertIn("Auto-retry in", ig_post.error_message)
+
+    @patch("publishing.tasks.publish_scheduled_post")
     def test_publish_post_task_sets_per_account_ig_cooldown_on_code4(self, mock_publish):
         ig_account = ConnectedAccount.objects.create(
             platform=INSTAGRAM,
@@ -783,6 +811,17 @@ class PublishingServiceTests(TestCase):
         response = Response()
         response.status_code = 400
         response._content = b'{"error":{"message":"Application request limit reached","code":4}}'
+
+        with self.assertRaises(MetaTransientError):
+            MetaClient()._handle_response(response)
+
+    def test_handle_response_classifies_instagram_user_restricted_signal_as_transient(self):
+        response = Response()
+        response.status_code = 400
+        response._content = (
+            b'{"error":{"message":"User access is restricted","code":25,"error_subcode":2207050,'
+            b'"error_user_title":"User is restricted","error_user_msg":"The Instagram account is restricted."}}'
+        )
 
         with self.assertRaises(MetaTransientError):
             MetaClient()._handle_response(response)
