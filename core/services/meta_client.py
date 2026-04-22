@@ -803,7 +803,7 @@ class MetaClient:
             try:
                 token_debug = self.debug_token(page_access_token).get("data", {})
                 granted_scopes = set(token_debug.get("scopes") or [])
-                required_scopes = {"pages_read_engagement", "pages_read_user_content", "read_insights"}
+                required_scopes = {"pages_read_engagement", "read_insights"}
                 missing_scopes = sorted(required_scopes - granted_scopes)
                 if missing_scopes:
                     stats_error = f"{stats_error} | missing_scopes: {', '.join(missing_scopes)}"

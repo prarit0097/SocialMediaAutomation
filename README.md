@@ -109,7 +109,7 @@ Required scopes:
 - `pages_show_list`
 - `pages_read_engagement`
 - `pages_manage_posts`
-- `pages_read_user_content`
+- `read_insights`
 - `instagram_basic`
 - `instagram_content_publish`
 - `instagram_manage_insights`

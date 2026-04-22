@@ -12,7 +12,7 @@ router.get("/meta/start", (_req, res) => {
     client_id: process.env.META_APP_ID,
     redirect_uri: process.env.META_REDIRECT_URI,
     scope:
-      "pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish,instagram_manage_insights,pages_read_user_content",
+      "pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish,instagram_manage_insights",
     response_type: "code"
   });
 

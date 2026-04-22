@@ -580,6 +580,14 @@ This project includes local MCP servers under `mcp_servers/` so Codex or future 
 
 ## Operational Requirements
 - Meta app permissions must remain valid.
+- Current Meta scope set used by this app:
+  - `pages_show_list`
+  - `pages_read_engagement`
+  - `pages_manage_posts`
+  - `read_insights`
+  - `instagram_basic`
+  - `instagram_content_publish`
+  - `instagram_manage_insights`
 - `META_APP_ID`, `META_APP_SECRET`, and `META_REDIRECT_URI` must be set in `.env` or the deployed environment for Meta connect flows to work.
 - production must set an explicit `SECRET_KEY`; placeholder secrets are rejected outside debug mode
 - production must set `FERNET_KEY` or `FERNET_KEYS` so encrypted Meta tokens remain decryptable across restarts and rotations
