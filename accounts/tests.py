@@ -108,6 +108,8 @@ class AccountsLandingTests(TestCase):
         self.assertContains(response, "Postzyo Help Desk")
         self.assertContains(response, "Submit Help Request")
         self.assertContains(response, "Common Postzyo questions")
+        self.assertNotContains(response, "1995praritsidana@gmail.com")
+        self.assertNotContains(response, "Support mailbox")
 
     @override_settings(
         EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
