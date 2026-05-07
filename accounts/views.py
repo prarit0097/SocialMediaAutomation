@@ -7,10 +7,19 @@ from django.contrib.auth import get_user_model, login, logout
 from django.contrib.auth.views import LoginView
 from django.core.cache import cache
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from .models import UserProfile
 from .pixel import queue_pixel_event
+
+
+def _post_login_redirect_name(user) -> str:
+    profile, _ = UserProfile.objects.get_or_create(user=user)
+    profile.refresh_subscription_state()
+    if profile.subscription_status == UserProfile.SUBSCRIPTION_STATUS_ACTIVE:
+        return "dashboard:home"
+    return "dashboard:subscription"
 
 
 class AdminLoginView(LoginView):
@@ -28,10 +37,13 @@ class AdminLoginView(LoginView):
         queue_pixel_event(self.request, "Login", {"method": "password"}, custom=True)
         return response
 
+    def get_success_url(self):
+        return reverse(_post_login_redirect_name(self.request.user))
+
 
 def landing_page(request):
     if request.user.is_authenticated:
-        return redirect("dashboard:home")
+        return redirect(_post_login_redirect_name(request.user))
     return render(request, "accounts/landing.html")
 
 
@@ -213,7 +225,7 @@ def _set_persistent_session(request) -> None:
 
 def signup_view(request):
     if request.user.is_authenticated:
-        return redirect("dashboard:home")
+        return redirect(_post_login_redirect_name(request.user))
 
     return render(
         request,
@@ -227,7 +239,7 @@ def signup_view(request):
 
 def google_signup_start(request):
     if request.user.is_authenticated:
-        return redirect("dashboard:home")
+        return redirect(_post_login_redirect_name(request.user))
 
     cfg = _google_signup_config()
     if not (cfg["client_id"] and cfg["client_secret"] and cfg["redirect_uri"]):
@@ -253,7 +265,7 @@ def google_signup_start(request):
 
 def google_signup_callback(request):
     if request.user.is_authenticated:
-        return redirect("dashboard:home")
+        return redirect(_post_login_redirect_name(request.user))
 
     code = (request.GET.get("code") or "").strip()
     state = (request.GET.get("state") or "").strip()
@@ -361,7 +373,7 @@ def google_signup_callback(request):
         queue_pixel_event(request, "CompleteRegistration", {"method": "google"})
     else:
         queue_pixel_event(request, "Login", {"method": "google"}, custom=True)
-    return redirect("dashboard:home")
+    return redirect(_post_login_redirect_name(user))
 
 
 @require_POST

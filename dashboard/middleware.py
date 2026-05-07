@@ -45,8 +45,8 @@ class SubscriptionAccessMiddleware:
         if request.path in allowed_paths:
             return self.get_response(request)
 
-        if request.path.startswith("/dashboard/") and request.method == "GET":
-            return redirect("dashboard:subscription_expired")
+        if request.method == "GET" and not request.path.startswith("/api/"):
+            return redirect("dashboard:subscription")
 
         return JsonResponse(
             {

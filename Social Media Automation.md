@@ -97,7 +97,8 @@ Important runtime meaning:
 - checkout requires `.env` keys: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`
 - currency is controlled by `RAZORPAY_CURRENCY` (default `INR`)
 - order metadata is persisted in both cache and the `dashboard.SubscriptionOrder` table, so verified payments can still be mapped after cache loss and duplicate verification posts do not stack extra time
-- expired users are redirected to a dedicated locked page and can only access subscription/payment routes until payment reactivates the app
+- expired users are redirected directly to the Subscription payment page and can only access subscription/payment routes until payment reactivates the app
+- expired users are routed to the Subscription payment page after login or when opening the site root, so they can pay immediately without landing back on the public homepage or an extra locked interstitial
 
 ### Profile
 The Profile page is the logged-in user identity/settings workspace (`/dashboard/profile/`).
@@ -457,7 +458,7 @@ Behavior:
 - middleware resolves subscription state once per request path where access decisions matter and avoids mutating the profile through a property read
 - legacy `Starter` profile values are normalized to `Trial` during migration/runtime refresh so old placeholder plan names do not remain visible in Profile
 - expired users are blocked from dashboard pages and app APIs except subscription/payment routes
-- locked users are redirected to `/dashboard/subscription/expired/`, which only shows the expiry message and continue button
+- locked users are redirected to `/dashboard/subscription/` for immediate payment; `/dashboard/subscription/expired/` remains as a lightweight informational page but is no longer the primary redirect target
 
 ### Token Health UX
 - topbar Health indicator is red until at least one Meta account is connected

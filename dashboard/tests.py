@@ -677,7 +677,7 @@ class DashboardAuthTests(TestCase):
         user.refresh_from_db()
         self.assertEqual(user.profile.subscription_plan, "Yearly")
 
-    def test_expired_user_is_redirected_to_subscription_expired_page(self):
+    def test_expired_user_is_redirected_to_subscription_page(self):
         user_model = get_user_model()
         user = user_model.objects.create_user(username="expired1", password="pass12345")
         profile = UserProfile.objects.create(
@@ -691,7 +691,7 @@ class DashboardAuthTests(TestCase):
         response = self.client.get("/dashboard/accounts/")
 
         self.assertEqual(response.status_code, 302)
-        self.assertIn("/dashboard/subscription/expired/", response.url)
+        self.assertIn("/dashboard/subscription/", response.url)
         profile.refresh_from_db()
         self.assertEqual(profile.subscription_status, UserProfile.SUBSCRIPTION_STATUS_EXPIRED)
 
