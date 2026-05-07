@@ -21,6 +21,7 @@ from core.throttle import throttle_per_user
 from publishing.models import ScheduledPost
 
 from .models import ConnectedAccount, MetaUserToken
+from accounts.pixel import queue_pixel_event
 from .services import upsert_connected_accounts
 from .sync_state import SYNC_CACHE_KEY_TEMPLATE, build_account_sync_state
 
@@ -281,6 +282,15 @@ def meta_callback(request: HttpRequest) -> HttpResponse:
     request.session.modified = True
 
     logger.info("Meta accounts connected. total_pages=%s", len(pages))
+    queue_pixel_event(
+        request,
+        "MetaAccountConnected",
+        {
+            "facebook_pages": ConnectedAccount.objects.filter(user=request.user, is_active=True, platform=FACEBOOK).count(),
+            "instagram_accounts": ConnectedAccount.objects.filter(user=request.user, is_active=True, platform=INSTAGRAM).count(),
+        },
+        custom=True,
+    )
     return redirect("dashboard:accounts")
 
 

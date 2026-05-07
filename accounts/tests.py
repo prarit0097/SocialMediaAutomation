@@ -23,6 +23,20 @@ class AccountsLandingTests(TestCase):
         self.assertContains(response, "Login")
         self.assertContains(response, "Signup")
         self.assertContains(response, "What You Get")
+        self.assertContains(response, "1703024424409702")
+        self.assertContains(response, 'data-pixel-event="Lead"')
+
+    def test_queued_pixel_events_render_once(self):
+        session = self.client.session
+        session["pixel_events"] = [{"name": "CompleteRegistration", "payload": {"method": "google"}, "custom": False}]
+        session.save()
+
+        response = self.client.get("/login/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "queuedPixelEvents")
+        self.assertContains(response, "CompleteRegistration")
+        self.assertEqual(self.client.session.get("pixel_events"), None)
 
     def test_root_redirects_to_dashboard_for_authenticated_user(self):
         user_model = get_user_model()
@@ -101,6 +115,7 @@ class AccountsLandingTests(TestCase):
         user = get_user_model().objects.get(email="newoperator@gmail.com")
         self.assertEqual(user.profile.subscription_plan, UserProfile.SUBSCRIPTION_PLAN_TRIAL)
         self.assertEqual(user.profile.subscription_status, UserProfile.SUBSCRIPTION_STATUS_ACTIVE)
+        self.assertEqual(self.client.session["pixel_events"][0]["name"], "CompleteRegistration")
 
     @patch("accounts.views.requests.get")
     @patch("accounts.views.requests.post")
@@ -151,6 +166,7 @@ class AccountsLandingTests(TestCase):
         self.assertEqual(self.client.session.get_expiry_age(), 86400)
         self.assertEqual(int(response.cookies[settings.SESSION_COOKIE_NAME]["max-age"]), 86400)
         self.assertTrue(response.cookies[settings.SESSION_COOKIE_NAME]["expires"])
+        self.assertEqual(self.client.session["pixel_events"][0]["name"], "Login")
 
     def test_google_signup_start_redirects_to_google_auth(self):
         with self.settings(

@@ -8,7 +8,7 @@
     <p class="form-note" style="color:#b43b2f;">{{ error }}</p>
   {% endif %}
   {% if google_signup_ready %}
-    <a class="btn" href="{% url 'google_signup_start' %}">Continue with Google</a>
+    <a class="btn" href="{% url 'google_signup_start' %}" data-pixel-event="Lead" data-pixel-custom-event="GoogleSignupStart" data-pixel-source="signup_page">Continue with Google</a>
   {% else %}
     <p class="form-note">Google signup is not configured yet. Add Google OAuth credentials in environment settings.</p>
   {% endif %}

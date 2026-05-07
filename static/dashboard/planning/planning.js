@@ -15,6 +15,13 @@
   const aiStatus = document.getElementById("planningAiStatus");
   const aiResult = document.getElementById("planningAiResult");
 
+  function trackPixelEvent(eventName, payload = {}, custom = false) {
+    const name = String(eventName || "").trim();
+    if (!name || typeof window.fbq !== "function") return;
+    const safePayload = payload && typeof payload === "object" ? payload : {};
+    window.fbq(custom ? "trackCustom" : "track", name, safePayload);
+  }
+
   let cursor = new Date();
   cursor.setDate(1);
   let items = [];
@@ -264,6 +271,12 @@
           </div>
         `;
       }
+      trackPixelEvent("AIPlannerGenerated", {
+        platform: body.platform,
+        duration_days: body.duration_days,
+        has_account_context: Boolean(body.account_id),
+        generated_items: rows.length,
+      }, true);
     } catch (err) {
       if (aiStatus) aiStatus.textContent = `AI planner unavailable: ${err.message}`;
       if (aiResult) aiResult.innerHTML = "<p class='ai-output-empty'>Unable to generate AI content calendar.</p>";

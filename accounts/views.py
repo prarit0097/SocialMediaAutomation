@@ -10,6 +10,7 @@ from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
 
 from .models import UserProfile
+from .pixel import queue_pixel_event
 
 
 class AdminLoginView(LoginView):
@@ -24,6 +25,7 @@ class AdminLoginView(LoginView):
     def form_valid(self, form):
         response = super().form_valid(form)
         _set_persistent_session(self.request)
+        queue_pixel_event(self.request, "Login", {"method": "password"}, custom=True)
         return response
 
 
@@ -317,7 +319,8 @@ def google_signup_callback(request):
     first_name = str(profile.get("given_name") or "").strip()
     last_name = str(profile.get("family_name") or "").strip()
     profile_picture_url = str(profile.get("picture") or "").strip()
-    if not user:
+    is_new_user = not user
+    if is_new_user:
         username = email
         if user_model.objects.filter(username=username).exists():
             username = _build_unique_username_from_email(email)
@@ -354,6 +357,10 @@ def google_signup_callback(request):
 
     login(request, user, backend="django.contrib.auth.backends.ModelBackend")
     _set_persistent_session(request)
+    if is_new_user:
+        queue_pixel_event(request, "CompleteRegistration", {"method": "google"})
+    else:
+        queue_pixel_event(request, "Login", {"method": "google"}, custom=True)
     return redirect("dashboard:home")
 
 

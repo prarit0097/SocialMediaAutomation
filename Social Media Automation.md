@@ -39,6 +39,7 @@ What it shows:
 - public legal pages for Meta compliance: `Privacy Policy`, `Terms of Service`, and `User Data Deletion` available at `/privacy-policy/`, `/terms/`, and `/data-deletion/`
 - legal/deletion support mailbox on public compliance pages is `1995postzyo@gmail.com`
 - shared site template loads Meta Pixel `1703024424409702` and tracks `PageView` events across public and logged-in Django pages
+- Meta Pixel conversion events are now wired across major funnels: public signup/pricing CTAs (`Lead`, `ViewContent`), Google signup start (`Lead` + `GoogleSignupStart`), server-confirmed Google registration (`CompleteRegistration`), server-confirmed login (`Login`), successful Meta account connection (`MetaAccountConnected`), subscription page view (`ViewContent`), Razorpay checkout start (`InitiateCheckout`), Razorpay order creation (`PaymentOrderCreated`), verified payment (`Purchase` with INR value), scheduled post creation (`SchedulePost`), insights refresh (`InsightsRefresh`), AI profile report generation (`AIInsightsGenerated`), and AI planner generation (`AIPlannerGenerated`)
 
 What it does:
 - helps first-time users understand app value before authentication

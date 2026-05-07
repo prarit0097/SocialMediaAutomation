@@ -13,7 +13,7 @@
     {% csrf_token %}
     {% if google_signup_ready %}
       <div class="login-social-priority">
-        <a class="btn google-auth-btn google-auth-btn-priority" href="{% url 'google_signup_start' %}" aria-label="Continue with Google">
+        <a class="btn google-auth-btn google-auth-btn-priority" href="{% url 'google_signup_start' %}" aria-label="Continue with Google" data-pixel-event="Lead" data-pixel-custom-event="GoogleSignupStart" data-pixel-source="login_page_google">
           <span class="google-auth-icon" aria-hidden="true">
             <svg width="18" height="18" viewBox="0 0 24 24" role="img" focusable="false">
               <path fill="#EA4335" d="M12 10.2v3.9h5.4c-.2 1.2-1.4 3.6-5.4 3.6-3.3 0-5.9-2.7-5.9-6s2.6-6 5.9-6c1.9 0 3.1.8 3.8 1.5l2.6-2.5C16.7 3.2 14.6 2.4 12 2.4 6.9 2.4 2.8 6.5 2.8 11.6S6.9 20.8 12 20.8c6.9 0 9.1-4.8 9.1-7.3 0-.5-.1-.9-.1-1.3H12z"/>
@@ -33,7 +33,7 @@
     {% endif %}
     {{ form.as_p }}
     <button type="submit">Login</button>
-    <small class="form-note">New here? <a href="{% url 'signup' %}">Create account</a></small>
+    <small class="form-note">New here? <a href="{% url 'signup' %}" data-pixel-event="Lead" data-pixel-source="login_create_account_link">Create account</a></small>
   </form>
 </section>
 {% endblock %}

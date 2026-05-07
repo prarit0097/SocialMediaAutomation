@@ -22,6 +22,7 @@
       fbq('init', '1703024424409702');
       fbq('track', 'PageView');
     </script>
+    {{ pixel_events|json_script:"queuedPixelEvents" }}
     <!-- End Meta Pixel Code -->
   </head>
   <body class="page-{{ request.resolver_match.url_name|default:'workspace' }}">
@@ -98,5 +99,19 @@
       </div>
     </main>
     <script src="{% static 'dashboard/app.js' %}"></script>
+    <script>
+      (function () {
+        var eventsEl = document.getElementById("queuedPixelEvents");
+        if (!eventsEl || typeof window.fbq !== "function") return;
+        try {
+          var events = JSON.parse(eventsEl.textContent || "[]");
+          events.forEach(function (event) {
+            if (!event || !event.name) return;
+            var payload = event.payload && typeof event.payload === "object" ? event.payload : {};
+            window.fbq(event.custom ? "trackCustom" : "track", event.name, payload);
+          });
+        } catch (_err) {}
+      })();
+    </script>
   </body>
 </html>

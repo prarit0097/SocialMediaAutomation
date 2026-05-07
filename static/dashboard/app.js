@@ -13,6 +13,37 @@
 
   const csrfToken = getCookie("csrftoken");
 
+  function trackPixelEvent(eventName, payload = {}, custom = false) {
+    const name = String(eventName || "").trim();
+    if (!name || typeof window.fbq !== "function") return;
+    const safePayload = payload && typeof payload === "object" ? payload : {};
+    window.fbq(custom ? "trackCustom" : "track", name, safePayload);
+  }
+
+  function planValue(plan) {
+    const normalized = String(plan || "").trim().toLowerCase();
+    if (normalized === "monthly") return 6000;
+    if (normalized === "yearly") return 70000;
+    return 0;
+  }
+
+  document.addEventListener("click", (event) => {
+    const target = event.target instanceof Element ? event.target.closest("[data-pixel-event]") : null;
+    if (!target) return;
+    const eventName = target.getAttribute("data-pixel-event") || "";
+    const payload = {
+      source: target.getAttribute("data-pixel-source") || undefined,
+      content_name: target.getAttribute("data-pixel-content-name") || undefined,
+    };
+    Object.keys(payload).forEach((key) => payload[key] === undefined && delete payload[key]);
+    trackPixelEvent(eventName, payload);
+
+    const customEventName = target.getAttribute("data-pixel-custom-event") || "";
+    if (customEventName) {
+      trackPixelEvent(customEventName, payload, true);
+    }
+  });
+
   async function fetchJSON(url, options = {}) {
     const requestOptions = { ...options };
     if (!requestOptions.method || String(requestOptions.method).toUpperCase() === "GET") {
@@ -925,6 +956,7 @@
     connectBtn.addEventListener("click", async () => {
       await runWithConnectLoading(async () => {
         const data = await fetchJSON("/auth/meta/start");
+        trackPixelEvent("MetaConnectStart", { source: "accounts_page" }, true);
         window.location.href = data.auth_url;
       });
     });
@@ -1088,6 +1120,11 @@
         const message = `${data.message || "Force refresh request queued."} Queued at: ${queuedAt}`;
         if (accountsBulkRefreshStatus) accountsBulkRefreshStatus.textContent = message;
         showAppToast(message, "success");
+        trackPixelEvent("InsightsRefresh", {
+          source: "accounts_force_refresh_all",
+          status: data.status || "queued",
+          total_accounts: Number(data.total_accounts || 0),
+        }, true);
         renderForceRefreshProgress(data);
         forceRefreshPollFailureCount = 0;
         scheduleForceRefreshPoll(FORCE_REFRESH_STATUS_POLL_MS);
@@ -1421,6 +1458,13 @@
         } else {
           showAppToast("Your post is scheduled successfully.", "success");
         }
+        const scheduledCount = Array.isArray(data.posts) && data.posts.length ? data.posts.length : 1;
+        trackPixelEvent("SchedulePost", {
+          account_id: String(formData.get("account_id") || ""),
+          platform: String(formData.get("platform") || ""),
+          scheduled_count: scheduledCount,
+          has_media: Boolean(mediaUrl || (mediaFile instanceof File && mediaFile.size > 0)),
+        }, true);
         scheduleForm.reset();
         setSchedulerPageName("", null);
         await loadSchedulerAssist(null);
@@ -1671,6 +1715,12 @@
     const initialStatus = String(subscriptionShell.dataset.currentStatus || "").trim().toLowerCase();
     const isLocked = String(subscriptionShell.dataset.isLocked || "").trim().toLowerCase() === "true";
     const payButtons = Array.from(subscriptionShell.querySelectorAll(".subscription-pay-btn"));
+    trackPixelEvent("ViewContent", {
+      content_name: "Subscription",
+      content_category: "subscription",
+      status: initialStatus || "unknown",
+      plan: initialPlan || "none",
+    });
 
     const updateSubscriptionButtons = (plan, status) => {
       const normalizedPlan = String(plan || "").trim().toLowerCase();
@@ -1733,6 +1783,12 @@
       }
 
       try {
+        trackPixelEvent("InitiateCheckout", {
+          content_name: plan,
+          content_category: "subscription",
+          value: planValue(plan),
+          currency,
+        });
         const orderData = await fetchJSON("/dashboard/subscription/create-order/", {
           method: "POST",
           headers: {
@@ -1745,6 +1801,15 @@
         if (!orderData || !orderData.order_id) {
           throw new Error("Invalid order response from Razorpay.");
         }
+        const orderPlan = String(orderData.plan || plan);
+        const orderCurrency = String(orderData.currency || currency);
+        const orderValue = Number(orderData.amount || 0) / 100 || planValue(orderPlan);
+        trackPixelEvent("PaymentOrderCreated", {
+          plan: orderPlan,
+          value: orderValue,
+          currency: orderCurrency,
+          order_id: String(orderData.order_id || ""),
+        }, true);
 
         const checkout = new window.Razorpay({
           key: String(orderData.razorpay_key_id || razorpayKey),
@@ -1774,6 +1839,14 @@
               const msg = String(verify.message || "Payment successful and verified.");
               setSubscriptionMessage(msg, false);
               showAppToast(msg, "success");
+              const verifiedPlan = String(verify.subscription?.subscription_plan || orderPlan || plan);
+              trackPixelEvent("Purchase", {
+                content_name: verifiedPlan,
+                content_category: "subscription",
+                value: planValue(verifiedPlan) || orderValue,
+                currency: orderCurrency,
+                order_id: String(orderData.order_id || ""),
+              });
               if (verify.subscription) {
                 updateSubscriptionButtons(verify.subscription.subscription_plan, verify.subscription.subscription_status);
               }
@@ -2583,6 +2656,12 @@
       const data = await fetchJSON(`/api/insights/${accountId}/${suffix}`);
       if (insightError) insightError.textContent = "";
       renderInsights(data);
+      if (forceRefresh) {
+        trackPixelEvent("InsightsRefresh", {
+          source: "insights_page_force_refresh",
+          account_id: String(accountId),
+        }, true);
+      }
     } catch (err) {
       if (insightError) insightError.textContent = err.message;
       if (insightWarning) insightWarning.textContent = "";
@@ -2636,6 +2715,11 @@
       });
       if (aiInsightError) aiInsightError.textContent = "";
       renderAiInsights(data);
+      trackPixelEvent("AIInsightsGenerated", {
+        account_id: String(accountId),
+        force_refresh: forceRefresh,
+        has_focus: Boolean(focus),
+      }, true);
     } catch (err) {
       if (aiInsightError) aiInsightError.textContent = err.message;
       if (aiInsightResult) aiInsightResult.innerHTML = "<p class='ai-output-empty'>Unable to generate AI insights.</p>";
