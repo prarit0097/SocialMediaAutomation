@@ -38,6 +38,7 @@ What it shows:
 - pricing section aligned with app billing: exactly 2 cards (`INR 6,000 / month` and `INR 70,000 / year`)
 - public legal pages for Meta compliance: `Privacy Policy`, `Terms of Service`, and `User Data Deletion` available at `/privacy-policy/`, `/terms/`, and `/data-deletion/`
 - legal/deletion support mailbox on public compliance pages is `1995postzyo@gmail.com`
+- shared site template loads Meta Pixel `1703024424409702` and tracks `PageView` events across public and logged-in Django pages
 
 What it does:
 - helps first-time users understand app value before authentication
