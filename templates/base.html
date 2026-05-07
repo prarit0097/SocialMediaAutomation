@@ -8,6 +8,15 @@
     <link rel="icon" type="image/png" href="{% static 'postzyo-favicon.png' %}">
     <link rel="preload" as="image" href="{% static 'dashboard/brand/postzyo-icon-optimized.png' %}">
     <link rel="stylesheet" href="{% static 'dashboard/styles.css' %}">
+    <!-- Google Analytics Code -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-SCZT2H87S0"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-SCZT2H87S0');
+    </script>
+    <!-- End Google Analytics Code -->
     <!-- Meta Pixel Code -->
     <script>
       !function(f,b,e,v,n,t,s)
@@ -102,13 +111,18 @@
     <script>
       (function () {
         var eventsEl = document.getElementById("queuedPixelEvents");
-        if (!eventsEl || typeof window.fbq !== "function") return;
+        if (!eventsEl) return;
         try {
           var events = JSON.parse(eventsEl.textContent || "[]");
           events.forEach(function (event) {
             if (!event || !event.name) return;
             var payload = event.payload && typeof event.payload === "object" ? event.payload : {};
-            window.fbq(event.custom ? "trackCustom" : "track", event.name, payload);
+            if (typeof window.fbq === "function") {
+              window.fbq(event.custom ? "trackCustom" : "track", event.name, payload);
+            }
+            if (typeof window.gtag === "function") {
+              window.gtag("event", event.name, payload);
+            }
           });
         } catch (_err) {}
       })();

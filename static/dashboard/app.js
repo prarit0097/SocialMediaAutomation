@@ -15,9 +15,14 @@
 
   function trackPixelEvent(eventName, payload = {}, custom = false) {
     const name = String(eventName || "").trim();
-    if (!name || typeof window.fbq !== "function") return;
+    if (!name) return;
     const safePayload = payload && typeof payload === "object" ? payload : {};
-    window.fbq(custom ? "trackCustom" : "track", name, safePayload);
+    if (typeof window.fbq === "function") {
+      window.fbq(custom ? "trackCustom" : "track", name, safePayload);
+    }
+    if (typeof window.gtag === "function") {
+      window.gtag("event", name, safePayload);
+    }
   }
 
   function planValue(plan) {

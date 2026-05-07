@@ -26,6 +26,8 @@ class AccountsLandingTests(TestCase):
         self.assertContains(response, "Signup")
         self.assertContains(response, "What You Get")
         self.assertContains(response, "1703024424409702")
+        self.assertContains(response, "G-SCZT2H87S0")
+        self.assertContains(response, "googletagmanager.com/gtag/js")
         self.assertContains(response, 'data-pixel-event="Lead"')
 
     def test_queued_pixel_events_render_once(self):
@@ -38,6 +40,7 @@ class AccountsLandingTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "queuedPixelEvents")
         self.assertContains(response, "CompleteRegistration")
+        self.assertContains(response, 'window.gtag("event", event.name, payload)')
         self.assertEqual(self.client.session.get("pixel_events"), None)
 
     def test_root_redirects_to_dashboard_for_authenticated_user(self):
