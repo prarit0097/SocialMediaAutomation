@@ -9,7 +9,7 @@
   <div class="legal-meta-card">
     <strong>Postzyo Legal Desk</strong>
     <p>Production domain: <a href="https://postzyo.com/">postzyo.com</a></p>
-    <p>Support email: <a href="mailto:1995postzyo@gmail.com">1995postzyo@gmail.com</a></p>
+    <p>Support email: <a href="mailto:{{ support_email }}">{{ support_email }}</a></p>
   </div>
 </section>
 
@@ -36,7 +36,7 @@
       include the email linked to your Postzyo account.</p>
   </div>
   <div class="lp-cta-row">
-    <a class="btn" href="mailto:1995postzyo@gmail.com">Email Support</a>
+    <a class="btn" href="mailto:{{ support_email }}">Email Support</a>
     <a class="btn muted" href="{% url 'signup' %}">Back to Signup</a>
   </div>
 </section>

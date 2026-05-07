@@ -1,0 +1,136 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<section class="card hero-card hero-split help-hero">
+  <div class="hero-main">
+    <p class="eyebrow">Postzyo Help Desk</p>
+    <h1>Get support without leaving your workflow.</h1>
+    <p class="hero-copy">Send account, Meta connection, scheduling, analytics, billing, or access questions to the Postzyo support desk. Include enough context so the team can respond with the right next step.</p>
+    <div class="hero-pill-row">
+      <span class="hero-pill">24-hour response window</span>
+      <span class="hero-pill">Account-aware guidance</span>
+      <span class="hero-pill">Meta + billing support</span>
+    </div>
+  </div>
+  <aside class="hero-rail">
+    <div class="hero-stat">
+      <span class="hero-stat-label">Support mailbox</span>
+      <strong>{{ support_email }}</strong>
+      <p>Every submitted request is emailed to the support desk in a structured format.</p>
+    </div>
+    <div class="hero-stat">
+      <span class="hero-stat-label">Useful details</span>
+      <strong>Page URL, account ID, error text</strong>
+      <p>Adding these details helps support diagnose the issue faster.</p>
+    </div>
+  </aside>
+</section>
+
+{% if submitted %}
+<section class="card help-success-card" role="status" aria-live="polite">
+  <div class="help-success-icon" aria-hidden="true">OK</div>
+  <div>
+    <p class="eyebrow">Request Received</p>
+    <h2>Thank you. Our support team will review your request and contact you within 24 hours.</h2>
+    <p class="section-copy">Please keep an eye on the email address you provided. If the issue is urgent, include the affected Postzyo account email and the exact page where the issue happened.</p>
+  </div>
+</section>
+{% endif %}
+
+<section class="content-grid content-grid-aside help-grid">
+  <article class="card help-form-card">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">Submit a Request</p>
+        <h2>Tell us what you need help with.</h2>
+        <p class="section-copy">The form response will be sent to the Postzyo support mailbox with your reply email attached.</p>
+      </div>
+    </div>
+
+    <form method="post" class="form-grid help-form">
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+        <div class="help-form-error">{{ form.non_field_errors }}</div>
+      {% endif %}
+      <div class="help-form-2col">
+        <label>{{ form.name.label }}
+          {{ form.name }}
+          {{ form.name.errors }}
+        </label>
+        <label>{{ form.email.label }}
+          {{ form.email }}
+          {{ form.email.errors }}
+        </label>
+      </div>
+      <div class="help-form-2col">
+        <label>{{ form.topic.label }}
+          {{ form.topic }}
+          {{ form.topic.errors }}
+        </label>
+        <label>{{ form.priority.label }}
+          {{ form.priority }}
+          {{ form.priority.errors }}
+        </label>
+      </div>
+      <label>{{ form.page_url.label }}
+        {{ form.page_url }}
+        {{ form.page_url.errors }}
+      </label>
+      <label>{{ form.message.label }}
+        {{ form.message }}
+        {{ form.message.errors }}
+      </label>
+      <button type="submit">Submit Help Request</button>
+      <small class="form-note">We use your email only to respond to this request. Do not include passwords, OTPs, payment card numbers, or private access tokens.</small>
+    </form>
+  </article>
+
+  <aside class="card accent-card help-side-card">
+    <p class="eyebrow">Before You Submit</p>
+    <h2>Faster support starts with clear context.</h2>
+    <ul class="info-list">
+      <li>For Meta connection issues, include the Facebook Page or Instagram profile name.</li>
+      <li>For scheduler issues, include scheduled time, platform, and any visible error.</li>
+      <li>For billing issues, include plan type and checkout status.</li>
+      <li>For analytics or AI issues, include the connected account ID shown in Postzyo.</li>
+    </ul>
+  </aside>
+</section>
+
+<section class="card help-faq-card">
+  <div class="section-head lp-section-center">
+    <div>
+      <p class="eyebrow">FAQ</p>
+      <h2>Common Postzyo questions.</h2>
+      <p class="section-copy">These answers cover the workflows most users ask about first.</p>
+    </div>
+  </div>
+  <div class="lp-faq-grid help-faq-grid">
+    <details class="lp-faq-item" open>
+      <summary>Why do I need to connect Facebook before Instagram?</summary>
+      <p>Instagram Business profiles are discovered through linked Facebook Pages. Connect the Facebook Page that owns or manages the Instagram profile, then refresh the account list.</p>
+    </details>
+    <details class="lp-faq-item">
+      <summary>Why is an old account row marked stale?</summary>
+      <p>Postzyo only allows scheduling through accounts refreshed in the latest reconnect window. Reconnect Meta assets when Health warns about stale profiles or invalid tokens.</p>
+    </details>
+    <details class="lp-faq-item">
+      <summary>What happens after my trial expires?</summary>
+      <p>Expired users are routed to the Subscription page. Complete a monthly or yearly Razorpay payment to reactivate app access.</p>
+    </details>
+    <details class="lp-faq-item">
+      <summary>Why are insights sometimes not instant?</summary>
+      <p>Insights are snapshot-backed. If a profile has no fresh snapshot, Postzyo queues a background refresh so the dashboard stays responsive instead of waiting on slow Meta API calls.</p>
+    </details>
+    <details class="lp-faq-item">
+      <summary>Can failed posts recover automatically?</summary>
+      <p>Transient Meta errors, media readiness delays, and throttling are retried with backoff. Permanent token or permission errors require reconnecting the affected Meta account.</p>
+    </details>
+    <details class="lp-faq-item">
+      <summary>Which details should I include for billing support?</summary>
+      <p>Share your Postzyo account email, selected plan, Razorpay checkout status, and approximate payment time. Do not share card numbers, UPI PINs, OTPs, or passwords.</p>
+    </details>
+  </div>
+</section>
+
+{% endblock %}

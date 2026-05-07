@@ -14,6 +14,7 @@ Primary Git repository: `https://github.com/prarit0097/SocialMediaAutomation`
 - Allow new operator signup via Google OAuth only (Gmail-based signup flow).
 - Provide a dedicated Profile page for each logged-in user with Google-synced identity data and editable non-email fields.
 - Provide a dedicated Subscription page with Razorpay checkout for monthly/yearly plan purchase flow.
+- Provide a public Help page with FAQ and a support request form that emails submitted requests to the configured support mailbox.
 - Give every new user a 1-day trial and lock the app after expiry until payment is completed.
 - Isolate connected accounts, tokens, schedules, planning context, and analytics to the logged-in user who owns them.
 - Schedule Facebook, Instagram, or combined FB + IG posts.
@@ -37,7 +38,8 @@ What it shows:
 - redesigned premium marketing layout with: hero, capability bar, feature matrix, workflow steps, analytics highlight, AI value band, pricing cards, FAQ, and final CTA
 - pricing section aligned with app billing: exactly 2 cards (`INR 6,000 / month` and `INR 70,000 / year`)
 - public legal pages for Meta compliance: `Privacy Policy`, `Terms of Service`, and `User Data Deletion` available at `/privacy-policy/`, `/terms/`, and `/data-deletion/`
-- legal/deletion support mailbox on public compliance pages is `1995postzyo@gmail.com`
+- legal/deletion support mailbox on public compliance pages is driven by `HELP_SUPPORT_EMAIL` (currently `1995praritsidana@gmail.com`)
+- public Help page at `/help/` includes FAQ plus a structured support form; submitted requests are emailed to `HELP_SUPPORT_EMAIL` (currently `1995praritsidana@gmail.com`) and users see a professional 24-hour response confirmation after submission
 - shared site template loads Meta Pixel `1703024424409702` and Google Analytics 4 measurement ID `G-PFQEY58MYY`, tracking page views across public and logged-in Django pages
 - Meta Pixel and GA4 conversion events are now wired across major funnels: public signup/pricing CTAs (`Lead`, `ViewContent`), Google signup start (`Lead` + `GoogleSignupStart`), server-confirmed Google registration (`CompleteRegistration`), server-confirmed login (`Login`), successful Meta account connection (`MetaAccountConnected`), subscription page view (`ViewContent`), Razorpay checkout start (`InitiateCheckout`), Razorpay order creation (`PaymentOrderCreated`), verified payment (`Purchase` with INR value), scheduled post creation (`SchedulePost`), insights refresh (`InsightsRefresh`), AI profile report generation (`AIInsightsGenerated`), and AI planner generation (`AIPlannerGenerated`)
 
@@ -46,6 +48,7 @@ What it does:
 - routes new users to Google-based signup flow (local password signup is disabled)
 - login page now also includes `Continue with Google` so operators can sign in (or create account if first-time) via same Google OAuth flow
 - routes authenticated users directly to Dashboard Home to continue operations
+- keeps Help available from both public and authenticated top navigation, including expired users who may need billing/access support before reactivation
 - uses project media logos across UI touchpoints: Postzyo logo in global brand/top identity and Meta/Instagram logos in platform badges and Meta-connect CTA where context is platform-specific
 - global topbar now uses horizontal Postzyo lockup logo (contain fit) so branding stays clear and non-cropped across desktop/mobile
 - production reverse-proxy chain preserves the original HTTPS protocol header through both host Nginx and container Nginx so Django secure redirects do not loop on live deployment
@@ -612,6 +615,11 @@ This project includes local MCP servers under `mcp_servers/` so Codex or future 
   - `RAZORPAY_KEY_ID`
   - `RAZORPAY_KEY_SECRET`
   - optional `RAZORPAY_CURRENCY` (default `INR`)
+- Help form email delivery requires SMTP/email environment values in production:
+  - `HELP_SUPPORT_EMAIL` (default `1995praritsidana@gmail.com`)
+  - `DEFAULT_FROM_EMAIL`
+  - `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`
+  - `EMAIL_USE_TLS` / `EMAIL_USE_SSL` based on the mail provider
 - local Docker Compose now expects env-driven Postgres and Redis credentials; Redis uses password auth and host port bindings stay on loopback
 - reconnecting a subset of pages does not automatically refresh every older stored account row.
 - SQLite can still hit transient write locks under high parallel activity; PostgreSQL is strongly recommended for production workloads.

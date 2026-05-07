@@ -1,6 +1,7 @@
 from datetime import timedelta
 from django.contrib.auth import get_user_model
 from django.conf import settings
+from django.core import mail
 from django.test import TestCase, override_settings
 from django.core.cache import cache
 from django.utils import timezone
@@ -87,7 +88,7 @@ class AccountsLandingTests(TestCase):
         response = self.client.get("/privacy-policy/")
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Privacy Policy")
-        self.assertContains(response, "1995postzyo@gmail.com")
+        self.assertContains(response, "1995praritsidana@gmail.com")
 
     def test_terms_page_loads(self):
         response = self.client.get("/terms/")
@@ -99,6 +100,64 @@ class AccountsLandingTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "User Data Deletion")
         self.assertContains(response, "Postzyo Data Deletion Request")
+
+    def test_help_page_loads_for_anonymous_user(self):
+        response = self.client.get("/help/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Postzyo Help Desk")
+        self.assertContains(response, "Submit Help Request")
+        self.assertContains(response, "Common Postzyo questions")
+
+    @override_settings(
+        EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",
+        DEFAULT_FROM_EMAIL="Postzyo Support <support@postzyo.com>",
+        HELP_SUPPORT_EMAIL="1995praritsidana@gmail.com",
+    )
+    def test_help_form_emails_support_and_shows_success(self):
+        response = self.client.post(
+            "/help/",
+            {
+                "name": "Test User",
+                "email": "testuser@example.com",
+                "topic": "scheduler",
+                "priority": "urgent",
+                "page_url": "https://postzyo.com/dashboard/scheduler/",
+                "message": "My scheduled post did not publish.",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, "/help/?submitted=1")
+        self.assertEqual(len(mail.outbox), 1)
+        email = mail.outbox[0]
+        self.assertEqual(email.to, ["1995praritsidana@gmail.com"])
+        self.assertEqual(email.reply_to, ["testuser@example.com"])
+        self.assertIn("[Postzyo Help] Scheduling or publishing - Test User", email.subject)
+        self.assertIn("My scheduled post did not publish.", email.body)
+        self.assertEqual(email.alternatives[0][1], "text/html")
+
+        success_response = self.client.get(response.url)
+        self.assertContains(
+            success_response,
+            "Thank you. Our support team will review your request and contact you within 24 hours.",
+        )
+
+    def test_help_page_remains_available_for_expired_user(self):
+        user_model = get_user_model()
+        user = user_model.objects.create_user(username="expiredhelp", email="expiredhelp@example.com", password="pass12345")
+        UserProfile.objects.create(
+            user=user,
+            subscription_plan=UserProfile.SUBSCRIPTION_PLAN_TRIAL,
+            subscription_status=UserProfile.SUBSCRIPTION_STATUS_ACTIVE,
+            subscription_expires_on=timezone.now().date() - timedelta(days=1),
+        )
+        self.client.login(username="expiredhelp", password="pass12345")
+
+        response = self.client.get("/help/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "expiredhelp@example.com")
 
     @patch("accounts.views.requests.get")
     @patch("accounts.views.requests.post")

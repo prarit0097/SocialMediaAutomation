@@ -6,10 +6,13 @@ from django.conf import settings
 from django.contrib.auth import get_user_model, login, logout
 from django.contrib.auth.views import LoginView
 from django.core.cache import cache
+from django.core.mail import EmailMultiAlternatives
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils.html import escape
 from django.views.decorators.http import require_POST
 
+from .forms import HelpRequestForm
 from .models import UserProfile
 from .pixel import queue_pixel_event
 
@@ -48,6 +51,7 @@ def landing_page(request):
 
 
 def _legal_page_context(page_key: str) -> dict:
+    support_email = settings.HELP_SUPPORT_EMAIL
     pages = {
         "privacy_policy": {
             "eyebrow": "Legal | Privacy",
@@ -148,7 +152,7 @@ def _legal_page_context(page_key: str) -> dict:
                 {
                     "heading": "How to Request Deletion",
                     "points": [
-                        "Send a deletion request from the email address associated with your Postzyo account to 1995postzyo@gmail.com.",
+                        f"Send a deletion request from the email address associated with your Postzyo account to {support_email}.",
                         "Use the subject line: Postzyo Data Deletion Request.",
                         "Include your account email address and any connected workspace identifiers that help us locate the correct account.",
                     ],
@@ -178,7 +182,9 @@ def _legal_page_context(page_key: str) -> dict:
             ],
         },
     }
-    return pages[page_key]
+    context = pages[page_key]
+    context["support_email"] = support_email
+    return context
 
 
 def privacy_policy_view(request):
@@ -191,6 +197,90 @@ def terms_view(request):
 
 def data_deletion_view(request):
     return render(request, "accounts/legal_page.html", _legal_page_context("data_deletion"))
+
+
+def _help_request_email_body(form: HelpRequestForm) -> tuple[str, str]:
+    data = form.cleaned_data
+    topic = dict(form.fields["topic"].choices).get(data["topic"], data["topic"])
+    priority = dict(form.fields["priority"].choices).get(data["priority"], data["priority"])
+    page_url = data.get("page_url") or "Not provided"
+    html_data = {key: escape(value) for key, value in data.items()}
+    html_topic = escape(topic)
+    html_priority = escape(priority)
+    html_page_url = escape(page_url)
+    plain = (
+        "New Postzyo help request\n\n"
+        f"Name: {data['name']}\n"
+        f"Email: {data['email']}\n"
+        f"Topic: {topic}\n"
+        f"Priority: {priority}\n"
+        f"Page or issue URL: {page_url}\n\n"
+        "Message:\n"
+        f"{data['message']}\n"
+    )
+    html = f"""
+      <div style="font-family:Arial,sans-serif;background:#f5f7fa;padding:24px;color:#172432;">
+        <div style="max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #dfe7ee;border-radius:18px;overflow:hidden;">
+          <div style="background:#173548;color:#ffffff;padding:22px 26px;">
+            <p style="margin:0 0 6px;font-size:12px;letter-spacing:1.6px;text-transform:uppercase;color:#d8e8f2;">Postzyo Help Desk</p>
+            <h1 style="margin:0;font-size:24px;line-height:1.2;">New support request</h1>
+          </div>
+          <div style="padding:24px 26px;">
+            <table style="width:100%;border-collapse:collapse;font-size:14px;">
+              <tr><td style="padding:10px;border-bottom:1px solid #edf1f5;font-weight:700;">Name</td><td style="padding:10px;border-bottom:1px solid #edf1f5;">{html_data['name']}</td></tr>
+              <tr><td style="padding:10px;border-bottom:1px solid #edf1f5;font-weight:700;">Email</td><td style="padding:10px;border-bottom:1px solid #edf1f5;">{html_data['email']}</td></tr>
+              <tr><td style="padding:10px;border-bottom:1px solid #edf1f5;font-weight:700;">Topic</td><td style="padding:10px;border-bottom:1px solid #edf1f5;">{html_topic}</td></tr>
+              <tr><td style="padding:10px;border-bottom:1px solid #edf1f5;font-weight:700;">Priority</td><td style="padding:10px;border-bottom:1px solid #edf1f5;">{html_priority}</td></tr>
+              <tr><td style="padding:10px;border-bottom:1px solid #edf1f5;font-weight:700;">Page URL</td><td style="padding:10px;border-bottom:1px solid #edf1f5;">{html_page_url}</td></tr>
+            </table>
+            <h2 style="margin:24px 0 10px;font-size:16px;color:#173548;">Message</h2>
+            <div style="white-space:pre-wrap;line-height:1.7;background:#f8fafc;border:1px solid #e5edf3;border-radius:14px;padding:16px;">{html_data['message']}</div>
+          </div>
+        </div>
+      </div>
+    """
+    return plain, html
+
+
+def help_view(request):
+    submitted = request.GET.get("submitted") == "1"
+    if request.method == "POST":
+        form = HelpRequestForm(request.POST)
+        if form.is_valid():
+            plain, html = _help_request_email_body(form)
+            topic = dict(form.fields["topic"].choices).get(form.cleaned_data["topic"], "Help request")
+            email = EmailMultiAlternatives(
+                subject=f"[Postzyo Help] {topic} - {form.cleaned_data['name']}",
+                body=plain,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=[settings.HELP_SUPPORT_EMAIL],
+                reply_to=[form.cleaned_data["email"]],
+            )
+            email.attach_alternative(html, "text/html")
+            try:
+                email.send()
+            except Exception:
+                form.add_error(None, "We could not send your request right now. Please try again in a few minutes.")
+            else:
+                return redirect(f"{reverse('help')}?submitted=1")
+    else:
+        form = HelpRequestForm(
+            initial={
+                "name": request.user.get_full_name() if request.user.is_authenticated else "",
+                "email": request.user.email if request.user.is_authenticated else "",
+                "priority": "normal",
+            }
+        )
+
+    return render(
+        request,
+        "accounts/help.html",
+        {
+            "form": form,
+            "submitted": submitted,
+            "support_email": settings.HELP_SUPPORT_EMAIL,
+        },
+    )
 
 
 def _google_signup_config() -> dict:

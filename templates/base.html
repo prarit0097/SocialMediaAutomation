@@ -87,6 +87,7 @@
           <a class="{% if current == 'ai_insights' %}is-active{% endif %}" href="{% url 'dashboard:ai_insights' %}">AI Insights</a>
           <a class="{% if current == 'subscription' %}is-active{% endif %}" href="{% url 'dashboard:subscription' %}">Subscription</a>
           <a class="{% if current == 'profile' %}is-active{% endif %}" href="{% url 'dashboard:profile' %}">Profile</a>
+          <a class="{% if current == 'help' %}is-active{% endif %}" href="{% url 'help' %}">Help</a>
           <form action="{% url 'logout' %}" method="post" class="logout-form">
             {% csrf_token %}
             <button type="submit" class="logout-link logout-button">Logout</button>
@@ -96,6 +97,7 @@
         <nav class="topnav topnav-public">
           <a class="{% if current == 'landing' %}is-active{% endif %}" href="{% url 'landing' %}">Home</a>
           <a class="{% if current == 'login' %}is-active{% endif %}" href="{% url 'login' %}">Login</a>
+          <a class="{% if current == 'help' %}is-active{% endif %}" href="{% url 'help' %}">Help</a>
           <a class="logout-link" href="{% url 'signup' %}">Signup</a>
         </nav>
         {% endif %}

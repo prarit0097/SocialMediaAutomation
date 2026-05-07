@@ -5,6 +5,7 @@ from .views import (
     data_deletion_view,
     google_signup_callback,
     google_signup_start,
+    help_view,
     logout_view,
     privacy_policy_view,
     signup_view,
@@ -20,4 +21,5 @@ urlpatterns = [
     path("privacy-policy/", privacy_policy_view, name="privacy_policy"),
     path("terms/", terms_view, name="terms"),
     path("data-deletion/", data_deletion_view, name="data_deletion"),
+    path("help/", help_view, name="help"),
 ]

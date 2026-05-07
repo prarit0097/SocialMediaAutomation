@@ -1135,6 +1135,85 @@ textarea {
 }
 .lp-legal-links a:hover { color: var(--ink); }
 
+.help-hero {
+  border-color: rgba(23, 53, 72, 0.16);
+  background:
+    linear-gradient(132deg, rgba(255, 252, 247, 0.98), rgba(248, 243, 235, 0.9) 50%, rgba(237, 245, 240, 0.92) 100%);
+}
+
+.help-success-card {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  border-color: rgba(30, 122, 88, 0.24);
+  background:
+    linear-gradient(145deg, rgba(247, 255, 251, 0.98), rgba(238, 249, 244, 0.92)),
+    radial-gradient(circle at 100% 0%, rgba(30, 122, 88, 0.1), transparent 44%);
+}
+
+.help-success-icon {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  color: #fff;
+  background: linear-gradient(135deg, #1b7a58 0%, #0f5e43 100%);
+  font-size: 24px;
+  font-weight: 900;
+  box-shadow: 0 14px 24px rgba(27, 122, 88, 0.2);
+}
+
+.help-grid {
+  align-items: stretch;
+}
+
+.help-form-card {
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(246, 239, 231, 0.9)),
+    radial-gradient(circle at 100% 0%, rgba(191, 116, 65, 0.08), transparent 44%);
+}
+
+.help-form {
+  display: grid;
+  gap: 4px;
+}
+
+.help-form-2col {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.help-form-error,
+.help-form .errorlist {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--danger);
+  font-size: 12.5px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.help-side-card {
+  min-height: 100%;
+}
+
+.help-side-card .info-list {
+  margin-top: 12px;
+}
+
+.help-faq-card {
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.94), rgba(243, 247, 250, 0.9));
+}
+
+.help-faq-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .hero-card::after {
   content: "";
   position: absolute;
@@ -4250,7 +4329,8 @@ pre {
   .home-start-grid,
   .home-module-grid,
   .home-confidence-shell,
-  .home-confidence-stat-grid {
+  .home-confidence-stat-grid,
+  .help-faq-grid {
     grid-template-columns: 1fr;
   }
 
@@ -4320,7 +4400,8 @@ pre {
   .lp-feature-card,
   .home-module-card,
   .home-work-card,
-  .home-visual-grid {
+  .home-visual-grid,
+  .help-form-2col {
     grid-template-columns: 1fr;
   }
 
