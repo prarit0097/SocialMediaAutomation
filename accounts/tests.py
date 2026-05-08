@@ -27,7 +27,7 @@ class AccountsLandingTests(TestCase):
         self.assertContains(response, "Signup")
         self.assertContains(response, "What You Get")
         self.assertContains(response, "1703024424409702")
-        self.assertContains(response, "G-PFQEY58MYY")
+        self.assertContains(response, "G-SCZT2H8750")
         self.assertContains(response, "googletagmanager.com/gtag/js")
         self.assertContains(response, 'data-pixel-event="Lead"')
 
