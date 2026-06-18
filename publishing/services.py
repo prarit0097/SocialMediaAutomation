@@ -26,12 +26,22 @@ def _check_meta_usage_and_throttle() -> None:
     If usage is high, sleeps to avoid pushing into rate limits.
     """
     import time as _time
+    from django.conf import settings as _settings
     from django.core.cache import cache
 
+    stop_pct = int(getattr(_settings, "META_APP_USAGE_STOP_PCT", 100) or 100)
     for header in ("X-App-Usage", "X-Business-Use-Case-Usage", "X-Page-Usage"):
         peak = cache.get(f"meta_usage:{header}")
         if peak is None:
             continue
+        # Hard stop: when Meta already reports us at/over the app budget, do not
+        # fire another call (it would draw error #4 and extend the block). Raise a
+        # transient error so the Celery publish task reschedules via its retry path.
+        if peak >= stop_pct:
+            logger.warning("Meta usage at %.0f%% >= stop %s%% — deferring publish", peak, stop_pct)
+            raise MetaTransientError(
+                f"Meta app usage at {peak:.0f}% (>= {stop_pct}%); deferring to respect rate limit"
+            )
         if peak >= 90:
             logger.warning("Meta usage at %.0f%% — throttling 15s", peak)
             _time.sleep(15)

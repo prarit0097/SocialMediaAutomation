@@ -17,6 +17,33 @@ TRANSIENT_GRAPH_ERROR_CODES = {2, 4, 17, 32, 613}
 TRANSIENT_GRAPH_ERROR_SUBCODES = {2207003, 2207027, 2207051}
 MAX_PAGING_REQUESTS = 100
 
+
+def meta_app_usage_peak() -> float | None:
+    """Return the most recent cached Meta X-App-Usage peak percentage, or None.
+
+    Populated by MetaClient._check_usage_headers on every Graph response.
+    Used as a lightweight, shared app-level rate-limit signal.
+    """
+    from django.core.cache import cache as _cache
+
+    peak = _cache.get("meta_usage:X-App-Usage")
+    try:
+        return float(peak) if peak is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def meta_app_over_budget(stop_pct: int | None = None) -> bool:
+    """True when cached Meta X-App-Usage is at/above the stop threshold.
+
+    A cache miss (no recent usage signal) is treated as NOT over budget so
+    existing behavior is preserved when the cache is empty (e.g. in tests).
+    """
+    if stop_pct is None:
+        stop_pct = int(getattr(settings, "META_APP_USAGE_STOP_PCT", 100) or 100)
+    peak = meta_app_usage_peak()
+    return peak is not None and peak >= stop_pct
+
 _MIME_TYPES = {
     ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
     ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp",
@@ -877,6 +904,8 @@ class MetaClient:
                     time.sleep(1.0 + attempt * 0.5)
                     continue
                 raise
+        # Safety fallback; execution should have already returned or raised above.
+        raise MetaTransientError("Meta transient retry exhausted")
 
     def _get(self, path: str, params: dict, timeout: int = 20) -> dict:
         response = self._request_with_retry(
@@ -920,6 +949,11 @@ class MetaClient:
         import json as _json
         from django.core.cache import cache as _cache
 
+        # Percentage keys Meta reports in usage headers. estimated_time_to_regain_access
+        # is in MINUTES (not a percentage) and must NOT be treated as a usage %.
+        _PCT_KEYS = ("call_count", "total_cputime", "total_time")
+        ttl = int(getattr(settings, "META_USAGE_CACHE_TTL", 300) or 300)
+        regain_minutes = 0.0
         for header in ("X-App-Usage", "X-Business-Use-Case-Usage", "X-Page-Usage"):
             raw = response.headers.get(header)
             if not raw:
@@ -928,8 +962,9 @@ class MetaClient:
                 usage = _json.loads(raw)
             except (ValueError, TypeError):
                 continue
-            # X-App-Usage is {"call_count":N, "total_cputime":N, "total_time":N}
-            # X-Page-Usage has the same shape but may be nested per page-id.
+            # X-App-Usage / X-Page-Usage are flat {"call_count":N, "total_cputime":N, "total_time":N}.
+            # X-Business-Use-Case-Usage is keyed by business-id -> list of per-type dicts that also
+            # carry estimated_time_to_regain_access (minutes); parse percentages by key name only.
             pcts: list[float] = []
             if isinstance(usage, dict):
                 for v in usage.values():
@@ -937,20 +972,28 @@ class MetaClient:
                         pcts.append(float(v))
                     elif isinstance(v, list):
                         for item in v:
-                            if isinstance(item, dict):
-                                for vv in item.values():
-                                    if isinstance(vv, (int, float)):
-                                        pcts.append(float(vv))
+                            if not isinstance(item, dict):
+                                continue
+                            for key in _PCT_KEYS:
+                                val = item.get(key)
+                                if isinstance(val, (int, float)):
+                                    pcts.append(float(val))
+                            regain = item.get("estimated_time_to_regain_access")
+                            if isinstance(regain, (int, float)):
+                                regain_minutes = max(regain_minutes, float(regain))
             if not pcts:
                 continue
             peak = max(pcts)
             # Just cache the peak usage; publishing tasks will check it
             # and throttle themselves. Don't block the web request.
-            _cache.set(f"meta_usage:{header}", peak, timeout=60)
+            _cache.set(f"meta_usage:{header}", peak, timeout=ttl)
             if peak >= self._APP_USAGE_HARD_PCT:
                 logger.warning("Meta %s at %.0f%% (cached for publishing throttle)", header, peak)
             elif peak >= self._APP_USAGE_THROTTLE_PCT:
                 logger.info("Meta %s at %.0f%% (cached for publishing throttle)", header, peak)
+        # Persist Meta's authoritative cooldown (minutes) so retry logic can honor it.
+        if regain_minutes > 0:
+            _cache.set("meta_buc_regain_minutes", regain_minutes, timeout=ttl)
 
     def _handle_response(self, response: requests.Response) -> dict:
         # Track X-App-Usage to proactively throttle when approaching limits.

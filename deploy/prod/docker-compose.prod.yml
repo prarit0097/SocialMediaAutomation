@@ -5,7 +5,10 @@ services:
     build:
       context: ../..
       dockerfile: Dockerfile
-    command: gunicorn social_automation.wsgi:application --bind 0.0.0.0:8000 --workers 3 --threads 2 --timeout 120
+    # --max-requests recycles workers to release accumulated RSS (OOM mitigation).
+    # --timeout 310 sits just above nginx proxy_read_timeout (300s) so slow-but-legit
+    # insight refreshes complete instead of being SIGKILLed mid-request at 120s.
+    command: gunicorn social_automation.wsgi:application --bind 0.0.0.0:8000 --workers 3 --threads 2 --timeout 310 --max-requests 800 --max-requests-jitter 200
     env_file:
       - ../../.env
     volumes:
@@ -20,7 +23,10 @@ services:
     build:
       context: ../..
       dockerfile: Dockerfile
-    command: celery -A social_automation worker -l info --pool=gevent --concurrency=20 -n worker_main@%h
+    # concurrency lowered 20->8: caps simultaneous heavy insight payloads in the single
+    # gevent process (reduces RAM peak / OOM) and flattens the parallel Meta Graph burst
+    # that was driving X-App-Usage to 142%. Raise again only if RAM + Meta quota allow.
+    command: celery -A social_automation worker -l info --pool=gevent --concurrency=8 -n worker_main@%h
     env_file:
       - ../../.env
     volumes:

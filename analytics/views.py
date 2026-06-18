@@ -16,6 +16,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from core.constants import FACEBOOK, INSTAGRAM
 from core.exceptions import MetaAPIError
+from core.services.meta_client import meta_app_usage_peak
 from integrations.models import ConnectedAccount
 from publishing.models import ScheduledPost
 
@@ -1112,6 +1113,42 @@ def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
                 guard_payload["can_override"] = True
                 return JsonResponse(guard_payload, status=409)
 
+            # Per-user cooldown: prevent back-to-back full-fleet force refreshes that
+            # stack on the daily job and exhaust Meta's shared app quota. Cache-miss
+            # (e.g. in tests) skips this gate so existing behavior is preserved.
+            cooldown_key = f"force-refresh-all-cooldown:{request.user.id}"
+            if cache.get(cooldown_key):
+                cooldown_seconds = int(getattr(settings, "FORCE_REFRESH_ALL_COOLDOWN_SECONDS", 1800) or 1800)
+                return JsonResponse(
+                    {
+                        "error": "Force refresh on cooldown",
+                        "details": (
+                            "A full force refresh was run recently. To protect Meta rate limits, "
+                            f"please wait up to {cooldown_seconds // 60} minutes before running it again."
+                        ),
+                        "cooldown_seconds": cooldown_seconds,
+                    },
+                    status=429,
+                )
+
+            # Non-overridable Meta app-usage gate: if the shared app budget is already
+            # near its limit, refuse to launch a full live re-pull (would trigger (#4)
+            # across all accounts). Cache-miss skips this gate.
+            usage_peak = meta_app_usage_peak()
+            block_pct = int(getattr(settings, "FORCE_REFRESH_APP_USAGE_BLOCK_PCT", 90) or 90)
+            if usage_peak is not None and usage_peak >= block_pct:
+                return JsonResponse(
+                    {
+                        "error": "Meta app usage too high",
+                        "details": (
+                            "Meta's app rate budget is near its limit. Force refresh is blocked to "
+                            "avoid rate-limit (#4) errors across all profiles. Try again shortly."
+                        ),
+                        "app_usage_pct": usage_peak,
+                    },
+                    status=429,
+                )
+
             accounts = list(ConnectedAccount.objects.filter(is_active=True, user=request.user).order_by("id"))
             run = BulkInsightRefreshRun.objects.create(
                 user=request.user,
@@ -1157,8 +1194,18 @@ def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
                 str(exc),
             )
 
+    inline_deferred = 0
     if inline_queue_fallback and enqueue_failed_accounts:
-        for account in enqueue_failed_accounts:
+        max_inline = int(getattr(settings, "FORCE_REFRESH_INLINE_FALLBACK_MAX", 5) or 5)
+        inline_targets = enqueue_failed_accounts[:max_inline]
+        deferred_accounts = enqueue_failed_accounts[max_inline:]
+        inline_deferred = len(deferred_accounts)
+        if deferred_accounts:
+            logger.warning(
+                "bulk force refresh inline fallback capped user_id=%s run_id=%s processed=%s deferred=%s",
+                request.user.id, run.id, len(inline_targets), inline_deferred,
+            )
+        for account in inline_targets:
             try:
                 fetch_and_store_insights(
                     account,
@@ -1192,7 +1239,7 @@ def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
                     str(exc),
                 )
 
-    unresolved_enqueue_failed = enqueue_failed if not inline_queue_fallback else inline_failed
+    unresolved_enqueue_failed = enqueue_failed if not inline_queue_fallback else (inline_failed + inline_deferred)
 
     run.queued_count = queued
     run.skipped_no_token = skipped_no_token
@@ -1217,6 +1264,11 @@ def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
             "updated_at",
         ]
     )
+
+    # Arm the per-user cooldown so the next full force-refresh waits out the window.
+    cooldown_seconds = int(getattr(settings, "FORCE_REFRESH_ALL_COOLDOWN_SECONDS", 1800) or 1800)
+    if cooldown_seconds > 0:
+        cache.set(f"force-refresh-all-cooldown:{request.user.id}", timezone.now().isoformat(), timeout=cooldown_seconds)
 
     logger.info(
         "bulk force refresh queued user_id=%s run_id=%s total_accounts=%s queued=%s skipped_no_token=%s enqueue_failed=%s",

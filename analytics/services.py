@@ -549,6 +549,35 @@ def build_insight_response(
     return response
 
 
+def _throttle_insights_if_high() -> None:
+    """Sleep-only backpressure for the heavy insights fan-out (never raises).
+
+    Reads the shared Meta usage peak cached by MetaClient and paces the next
+    account refresh when usage is elevated. A cache miss is a no-op, so tests
+    (which clear the cache) and low-usage runs are unaffected. Gated by
+    META_INSIGHTS_USAGE_THROTTLE so it can be disabled via env.
+    """
+    import time as _time
+    from django.conf import settings as _settings
+    from django.core.cache import cache as _cache
+
+    if not getattr(_settings, "META_INSIGHTS_USAGE_THROTTLE", True):
+        return
+    peak = _cache.get("meta_usage:X-App-Usage")
+    if peak is None:
+        return
+    try:
+        peak = float(peak)
+    except (TypeError, ValueError):
+        return
+    if peak >= 90:
+        logger.warning("insights throttle: Meta app usage at %.0f%% — pacing 15s", peak)
+        _time.sleep(15)
+    elif peak >= 75:
+        logger.info("insights throttle: Meta app usage at %.0f%% — pacing 5s", peak)
+        _time.sleep(5)
+
+
 def fetch_and_store_insights(
     account: ConnectedAccount,
     include_post_stats: bool = True,
@@ -556,6 +585,7 @@ def fetch_and_store_insights(
     post_stats_limit: int | None = None,
     payload_metadata: dict | None = None,
 ) -> dict:
+    _throttle_insights_if_high()
     client = MetaClient()
     total_post_share_override = None
 

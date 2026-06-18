@@ -893,6 +893,26 @@ Step 9:
   - in-app onboarding checklist
   - health dashboard with one-click remediation actions
 
+## Rate-Limit & Memory Hardening (Meta App-Usage + OOM)
+This layer was added after a production incident where Meta `X-App-Usage` reached 142-144% (error `(#4) Application request limit reached` across all profiles) and gunicorn workers were recurringly OOM-killed (`Worker was sent SIGKILL`). All controls are additive and env-tunable; defaults preserve prior behavior.
+
+Meta app-usage protection:
+- `MetaClient._check_usage_headers` now parses `X-Business-Use-Case-Usage` by key (`call_count`/`total_cputime`/`total_time`) instead of flattening every numeric value, so `estimated_time_to_regain_access` (minutes) is no longer mistaken for a usage percentage; the regain minutes are cached separately (`meta_buc_regain_minutes`).
+- usage peak cache TTL is now `META_USAGE_CACHE_TTL` (default `300s`) instead of a hardcoded `60s`, so a brief lull no longer makes the throttle forget a near-limit state on the rolling 1-hour window.
+- `meta_app_usage_peak()` / `meta_app_over_budget()` helpers expose the shared cached app-usage signal.
+- publishing self-throttle now hard-stops (defers via transient retry) when usage `>= META_APP_USAGE_STOP_PCT` (default `100`), instead of sleeping briefly and calling anyway.
+- the heavy insights refresh (`analytics.tasks.refresh_account_insights_snapshot`) now defers when over budget and applies a long, quota-aware backoff (`META_RATE_LIMIT_RETRY_COUNTDOWN`, default `900s`) to rate-limit transients (`#4/#17/#32/#613`) instead of retrying the full fan-out at a flat 300s into a still-saturated window.
+- `fetch_and_store_insights` paces (sleep-only, never raises) when usage is elevated, gated by `META_INSIGHTS_USAGE_THROTTLE` (default `True`).
+- manual force-refresh-all (`POST /api/insights/force-refresh-all/`) now has a non-overridable app-usage gate (`429` when cached usage `>= FORCE_REFRESH_APP_USAGE_BLOCK_PCT`, default `90`) and a per-user cooldown (`FORCE_REFRESH_ALL_COOLDOWN_SECONDS`, default `1800s`) so repeated full-fleet runs cannot stack on the daily job and exhaust the shared app quota.
+- the force-refresh-all inline (queue-down) fallback is bounded to `FORCE_REFRESH_INLINE_FALLBACK_MAX` accounts (default `5`) so a degraded broker cannot push the whole fleet through synchronous Meta pulls inside one web worker.
+- per-account Meta call volume is the dominant quota driver; lower `DAILY_INSIGHTS_POST_STATS_LIMIT` / `DAILY_INSIGHTS_POST_LIMIT` in production to cut it.
+
+Memory / OOM protection:
+- new `analytics.tasks.prune_insight_snapshots` Celery beat task keeps only the latest `INSIGHT_SNAPSHOT_RETENTION_PER_ACCOUNT` (default `30`) snapshots per account and deletes the rest in id-batches; scheduled daily at `INSIGHT_SNAPSHOT_PRUNE_HOUR:MINUTE` (default `04:30`). Only the newest snapshot per account is ever read, so older rows were unbounded dead weight bloating Postgres.
+- production gunicorn now recycles workers (`--max-requests 800 --max-requests-jitter 200`) to release accumulated RSS, and `--timeout` was raised to `310s` (just above the container Nginx `300s` proxy_read_timeout) so a slow-but-legitimate insight refresh completes instead of being SIGKILLed mid-request at `120s`.
+- production Celery worker concurrency was lowered from gevent `20` to `8`, capping simultaneous heavy insight payloads in the single worker process (RAM peak) and flattening the parallel Meta Graph burst.
+- note: `CELERY_WORKER_MAX_TASKS_PER_CHILD` only recycles memory under the prefork pool; under gevent it is a no-op. If worker RSS still climbs after these changes, the recommended follow-up is a dedicated insights worker on `--pool=prefork --concurrency=4 --max-tasks-per-child=100 --max-memory-per-child`, and per-container `mem_limit` values tuned against live `docker stats`.
+
 ## Maintenance Rule
 This file must be updated whenever project behavior, workflow, automation, stored data, or important UI meaning changes.
 

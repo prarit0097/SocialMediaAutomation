@@ -215,6 +215,41 @@ class AnalyticsApiTests(TestCase):
         self.assertEqual(mock_apply_async.call_count, 1)
 
     @patch("analytics.views.refresh_account_insights_snapshot.apply_async")
+    def test_force_refresh_all_blocked_when_meta_app_usage_high(self, mock_apply_async):
+        cache.set("meta_usage:X-App-Usage", 95, timeout=300)
+
+        response = self.client.post(
+            "/api/insights/force-refresh-all/",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(response.json()["error"], "Meta app usage too high")
+        mock_apply_async.assert_not_called()
+
+    @patch("analytics.views.refresh_account_insights_snapshot.apply_async")
+    def test_force_refresh_all_second_run_blocked_by_cooldown(self, mock_apply_async):
+        # First run completes immediately (no token -> nothing queued) and arms cooldown.
+        ConnectedAccount.objects.filter(id=self.account.id).update(access_token="")
+        first = self.client.post(
+            "/api/insights/force-refresh-all/",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(first.json()["status"], "completed")
+
+        # Second run is refused by the per-user cooldown window.
+        second = self.client.post(
+            "/api/insights/force-refresh-all/",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        self.assertEqual(second.status_code, 429)
+        self.assertEqual(second.json()["error"], "Force refresh on cooldown")
+
+    @patch("analytics.views.refresh_account_insights_snapshot.apply_async")
     def test_force_refresh_all_accounts_status_endpoint_returns_current_run(self, mock_apply_async):
         self.client.post(
             "/api/insights/force-refresh-all/",
@@ -1014,6 +1049,39 @@ class AnalyticsAutomationTaskTests(TestCase):
         snapshot = InsightSnapshot.objects.get(id=result["snapshot_id"])
         self.assertEqual(snapshot.payload["metadata"]["collection_mode"], DAILY_HEAVY_COLLECTION_MODE)
         self.assertEqual(snapshot.payload["metadata"]["collection_source"], "test")
+
+    def test_meta_app_over_budget_reads_cached_usage(self):
+        from core.services.meta_client import meta_app_over_budget, meta_app_usage_peak
+
+        self.assertIsNone(meta_app_usage_peak())
+        self.assertFalse(meta_app_over_budget())
+
+        cache.set("meta_usage:X-App-Usage", 100, timeout=60)
+        self.assertEqual(meta_app_usage_peak(), 100.0)
+        self.assertTrue(meta_app_over_budget())          # default stop threshold = 100
+        self.assertFalse(meta_app_over_budget(stop_pct=101))
+
+    def test_prune_insight_snapshots_keeps_latest_n_per_account(self):
+        from analytics.tasks import prune_insight_snapshots
+
+        base = timezone.now() - timedelta(days=10)
+        created_ids = []
+        for i in range(5):
+            snap = InsightSnapshot.objects.create(
+                account=self.account, platform=FACEBOOK, payload={"i": i}
+            )
+            InsightSnapshot.objects.filter(id=snap.id).update(fetched_at=base + timedelta(days=i))
+            created_ids.append(snap.id)
+
+        result = prune_insight_snapshots.apply(kwargs={"retention_per_account": 2}).result
+
+        self.assertEqual(result["deleted"], 3)
+        self.assertEqual(result["keep_per_account"], 2)
+        remaining = set(
+            InsightSnapshot.objects.filter(account=self.account).values_list("id", flat=True)
+        )
+        # The two newest (days 3 and 4) are retained.
+        self.assertEqual(remaining, {created_ids[3], created_ids[4]})
 
 
 class PublishedPostsStatsFallbackTests(TestCase):
