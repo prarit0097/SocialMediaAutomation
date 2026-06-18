@@ -9,6 +9,7 @@ from django.db import close_old_connections, transaction
 from django.utils import timezone
 
 from core.exceptions import MetaAPIError, MetaTransientError
+from core.services.meta_client import meta_app_over_budget
 from integrations.models import ConnectedAccount
 
 from .models import BulkInsightRefreshRun, InsightSnapshot
@@ -20,6 +21,31 @@ DAILY_HEAVY_COLLECTION_MODE = "daily_heavy"
 
 OUTCOME_SUCCESS = {"stored", "skipped_existing"}
 OUTCOME_FAILURE = {"missing", "failed"}
+
+_RATE_LIMIT_MARKERS = (
+    "request limit reached",
+    "rate limit",
+    "too many requests",
+    "over budget",
+    "code=4",
+    "code=17",
+    "code=32",
+    "code=613",
+)
+
+
+def _transient_retry_countdown(exc: Exception) -> int | None:
+    """Long, quota-aware backoff for app-level rate-limit transients; else None.
+
+    Returning None means "use Celery's default_retry_delay" (existing behavior).
+    """
+    message = str(exc).lower()
+    if any(marker in message for marker in _RATE_LIMIT_MARKERS):
+        try:
+            return int(getattr(settings, "META_RATE_LIMIT_RETRY_COUNTDOWN", 900) or 900)
+        except (TypeError, ValueError):
+            return 900
+    return None
 
 
 def _record_bulk_run_outcome(run_id: int | None, outcome: str) -> None:
@@ -165,6 +191,14 @@ def refresh_account_insights_snapshot(self, account_id: int, force: bool = False
             outcome = "skipped_existing"
             return {"status": "skipped_existing", "account_id": account.id}
 
+        # App-level Meta rate-limit backpressure. If Meta already reports us at/over
+        # the configured stop threshold, defer rather than spend more quota now.
+        # Cache-miss (no recent usage signal, e.g. in tests) is treated as under budget.
+        if meta_app_over_budget():
+            raise MetaTransientError(
+                f"Meta app usage over budget; deferring insights refresh for account {account.id}"
+            )
+
         data = fetch_and_store_insights(
             account,
             include_post_stats=True,
@@ -186,20 +220,19 @@ def refresh_account_insights_snapshot(self, account_id: int, force: bool = False
             "snapshot_id": data.get("snapshot_id"),
         }
     except MetaTransientError as exc:
-        if account is None:
-            logger.warning(
-                "daily heavy insights transient error account_id=%s retry=%s error=%s",
-                account_id,
-                self.request.retries + 1,
-                str(exc),
-            )
-            raise self.retry(exc=exc)
+        # Rate-limit / over-budget transients get a much longer backoff so we do not
+        # retry the heavy fan-out back into a still-saturated rolling-hour window.
+        countdown = _transient_retry_countdown(exc)
+        target_id = account_id if account is None else account.id
         logger.warning(
-            "daily heavy insights transient error account_id=%s retry=%s error=%s",
-            account.id,
+            "daily heavy insights transient error account_id=%s retry=%s retry_in=%ss error=%s",
+            target_id,
             self.request.retries + 1,
+            countdown if countdown is not None else "default",
             str(exc),
         )
+        if countdown is not None:
+            raise self.retry(exc=exc, countdown=countdown)
         raise self.retry(exc=exc)
     except MetaAPIError as exc:
         logger.warning("daily heavy insights failed account_id=%s error=%s", account.id if account else account_id, str(exc))
@@ -213,3 +246,54 @@ def refresh_account_insights_snapshot(self, account_id: int, force: bool = False
         _record_bulk_run_outcome(bulk_run_id, outcome or "")
         cache.delete(lock_key)
         close_old_connections()
+
+
+@shared_task(name="analytics.tasks.prune_insight_snapshots")
+def prune_insight_snapshots(retention_per_account: int | None = None, batch_size: int = 500):
+    """Keep only the latest N InsightSnapshot rows per account; delete the rest.
+
+    Only the most-recent snapshot per account is ever read for responses, so older
+    rows are dead weight that bloat Postgres (and every multi-row reader). This task
+    is purely additive: it touches no read path. Deletes in id-batches to bound memory.
+    """
+    close_old_connections()
+    if retention_per_account is None:
+        retention_per_account = getattr(settings, "INSIGHT_SNAPSHOT_RETENTION_PER_ACCOUNT", 30)
+    try:
+        retention_per_account = max(1, int(retention_per_account))
+    except (TypeError, ValueError):
+        retention_per_account = 30
+
+    deleted_total = 0
+    accounts_pruned = 0
+    account_ids = list(InsightSnapshot.objects.values_list("account_id", flat=True).distinct())
+    for account_id in account_ids:
+        keep_ids = list(
+            InsightSnapshot.objects.filter(account_id=account_id)
+            .order_by("-fetched_at")
+            .values_list("id", flat=True)[:retention_per_account]
+        )
+        stale_qs = InsightSnapshot.objects.filter(account_id=account_id).exclude(id__in=keep_ids)
+        pruned_this_account = False
+        while True:
+            batch_ids = list(stale_qs.values_list("id", flat=True)[:batch_size])
+            if not batch_ids:
+                break
+            deleted, _ = InsightSnapshot.objects.filter(id__in=batch_ids).delete()
+            deleted_total += deleted
+            pruned_this_account = True
+            if len(batch_ids) < batch_size:
+                break
+        if pruned_this_account:
+            accounts_pruned += 1
+
+    logger.info(
+        "prune_insight_snapshots done accounts_pruned=%s deleted=%s keep_per_account=%s",
+        accounts_pruned, deleted_total, retention_per_account,
+    )
+    close_old_connections()
+    return {
+        "accounts_pruned": accounts_pruned,
+        "deleted": deleted_total,
+        "keep_per_account": retention_per_account,
+    }
