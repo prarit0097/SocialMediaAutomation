@@ -93,6 +93,21 @@ class IntegrationsViewTests(TestCase):
         self.assertEqual(row["last_post_at"], newer)
         self.assertFalse(row["last_post_is_stale"])
 
+    @patch("integrations.views.get_recent_sync_time")
+    def test_list_accounts_resolves_sync_time_once_for_many_accounts(self, mock_sync_time):
+        # Regression: recent_sync_time is account-independent and must be resolved once,
+        # not once per account (the N+1 that made the accounts page slow).
+        mock_sync_time.return_value = timezone.now()
+        for i in range(5):
+            ConnectedAccount.objects.create(
+                user=self.user, platform="facebook", page_id=str(100 + i),
+                page_name=f"Page {i}", access_token="token",
+            )
+        response = self.client.get("/api/accounts/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()), 5)
+        self.assertEqual(mock_sync_time.call_count, 1)  # one lookup, not one per account
+
     def test_list_accounts_uses_latest_snapshot_for_higher_account_ids(self):
         older_account = ConnectedAccount.objects.create(
             user=self.user,

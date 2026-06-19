@@ -12,6 +12,10 @@ from .models import ConnectedAccount
 SYNC_CACHE_KEY_TEMPLATE = "meta_last_sync:{user_id}"
 SYNC_FRESHNESS_WINDOW = timedelta(minutes=10)
 
+# Sentinel so callers can pass an already-resolved recent_sync_time (including a
+# legitimate None) and skip the per-account lookup.
+_SYNC_TIME_UNSET = object()
+
 
 def get_recent_sync_time(user_id: int | None):
     if user_id:
@@ -36,7 +40,7 @@ def get_recent_sync_time(user_id: int | None):
     return latest_updated_at
 
 
-def build_account_sync_state(account, user_id: int | None) -> dict:
+def build_account_sync_state(account, user_id: int | None, recent_sync_time=_SYNC_TIME_UNSET) -> dict:
     if getattr(account, "is_active", True) is False:
         return {
             "is_sync_stale": True,
@@ -47,7 +51,10 @@ def build_account_sync_state(account, user_id: int | None) -> dict:
             ),
         }
 
-    recent_sync_time = get_recent_sync_time(user_id)
+    # recent_sync_time is account-independent, so list views resolve it once and pass it
+    # in to avoid an N+1 lookup (one cache/DB hit per account).
+    if recent_sync_time is _SYNC_TIME_UNSET:
+        recent_sync_time = get_recent_sync_time(user_id)
     if not recent_sync_time:
         return {
             "is_sync_stale": False,
