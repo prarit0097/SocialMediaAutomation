@@ -1316,7 +1316,7 @@
     const loadSchedulerAssist = async (accountId) => {
       if (!accountId) {
         if (schedulerAssistStatus) {
-          schedulerAssistStatus.textContent = "Enter Account ID to load profile-wise best posting guidance.";
+          schedulerAssistStatus.textContent = "Select an account to load profile-wise best posting guidance.";
           schedulerAssistStatus.classList.remove("loading");
         }
         if (assistContent) assistContent.classList.add("hidden");

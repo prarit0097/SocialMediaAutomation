@@ -192,8 +192,8 @@ Supported publishing modes:
 - Both Facebook + Instagram together
 
 What happens:
-- user enters account, platform, content, media, and schedule time
-- scheduler form now auto-resolves and shows `Page Name` from entered `Account ID`; for linked profiles it uses merged format (`FB page + IG profile`) same as Accounts page
+- user selects account, platform, content, media, and schedule time
+- Scheduler, Insights, and AI Insights no longer require typing a raw account ID: each shows a searchable account picker (dropdown) listing connected accounts by page name + thumbnail + FB/IG badge. Selecting a page sets the underlying account id internally and drives page-name/assist autofill; the list comes from the same connected-accounts source as the Accounts page, and stored `profile_picture_url` (populated on Meta connect/sync, backfillable via `manage.py backfill_account_pictures`) supplies the thumbnails.
 - app validates account freshness and rejects stale account rows
 - scheduler list, retry, stale-processing recovery, and publish-health checks only operate on the logged-in user's rows
 - local Instagram image uploads are auto-optimized to a lighter JPG variant for more reliable Meta download

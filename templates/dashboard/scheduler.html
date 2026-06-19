@@ -26,14 +26,14 @@
       <div>
         <p class="eyebrow">Compose</p>
         <h2>Create Scheduled Post</h2>
-        <p class="section-copy">Use a connected account ID and pick the exact platform behavior you want before the job enters the queue.</p>
+        <p class="section-copy">Pick a connected account and choose the exact platform behavior you want before the job enters the queue.</p>
       </div>
     </div>
     <form id="scheduleForm" class="form-grid">
       {% csrf_token %}
-      <label>Account ID<input type="number" name="account_id" required></label>
-      <label>Page Name (auto from Account ID)
-        <input type="text" name="account_page_name" id="scheduleAccountPageName" readonly placeholder="Type/select Account ID to view page name">
+      <label>Account
+        <input type="hidden" name="account_id" id="scheduleAccountId" required>
+        <div data-account-picker data-target="scheduleAccountId"></div>
       </label>
       <label>Platform
         <select name="platform" required>
@@ -58,13 +58,13 @@
     <p class="eyebrow">Execution Notes</p>
     <h2>Queue with fewer surprises.</h2>
     <ul class="info-list">
-      <li>Use the connected account ID shown in the Accounts workspace.</li>
+      <li>Pick the connected account from the dropdown — search by page name.</li>
       <li>Instagram and combined publishing generally require a public media URL or uploaded file.</li>
       <li>Failed jobs stay traceable in the queue and can be retried from the same screen.</li>
     </ul>
     <div class="scheduler-assist-block">
       <p class="eyebrow">&#x1F9E0; Smart Posting Assist</p>
-      <p id="schedulerAssistStatus" class="assist-status">Enter Account ID to load profile-wise best posting guidance.</p>
+      <p id="schedulerAssistStatus" class="assist-status">Select an account to load profile-wise best posting guidance.</p>
       <div id="schedulerAssistContent" class="assist-content">
         <div id="schedulerCadenceAssist" class="assist-panel"></div>
         <div id="schedulerBestTimeAssist" class="assist-panel"></div>
