@@ -22,6 +22,7 @@ from publishing.models import ScheduledPost
 
 from .models import ConnectedAccount, MetaUserToken
 from accounts.pixel import queue_pixel_event
+from core.fields import decrypt_text, encrypt_text
 from .services import upsert_connected_accounts
 from .sync_state import SYNC_CACHE_KEY_TEMPLATE, build_account_sync_state
 
@@ -36,7 +37,7 @@ def _persist_user_access_token(user_id: int | None, token: str) -> None:
     if not user_id or not normalized:
         return
 
-    cache.set(f"meta_user_access_token:{user_id}", normalized, timeout=META_USER_ACCESS_TOKEN_TTL)
+    cache.set(f"meta_user_access_token:{user_id}", encrypt_text(normalized), timeout=META_USER_ACCESS_TOKEN_TTL)
     try:
         MetaUserToken.objects.update_or_create(
             user_id=user_id,
@@ -168,7 +169,7 @@ def _resolve_user_access_token(request: HttpRequest, user_id: int | None) -> str
         return session_token
 
     if user_id:
-        cached_user_token = str(cache.get(f"meta_user_access_token:{user_id}") or "").strip()
+        cached_user_token = str(decrypt_text(cache.get(f"meta_user_access_token:{user_id}")) or "").strip()
         if cached_user_token:
             _persist_user_access_token(user_id, cached_user_token)
             return cached_user_token
@@ -180,7 +181,7 @@ def _resolve_user_access_token(request: HttpRequest, user_id: int | None) -> str
         )
         db_token = str(db_token or "").strip()
         if db_token:
-            cache.set(f"meta_user_access_token:{user_id}", db_token, timeout=META_USER_ACCESS_TOKEN_TTL)
+            cache.set(f"meta_user_access_token:{user_id}", encrypt_text(db_token), timeout=META_USER_ACCESS_TOKEN_TTL)
             return db_token
 
     return ""

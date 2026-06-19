@@ -40,3 +40,12 @@ class HelpRequestForm(forms.Form):
             }
         ),
     )
+    # Honeypot: real users never see/fill this; bots that auto-fill every field do.
+    # A non-empty value marks the submission as spam (handled in the view).
+    website = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={"autocomplete": "off", "tabindex": "-1", "style": "display:none"}),
+    )
+
+    def is_spam(self) -> bool:
+        return bool((self.data.get("website") or "").strip())

@@ -1,6 +1,7 @@
 import json
 import hashlib
 import hmac
+import logging
 import os
 import re
 import uuid
@@ -20,6 +21,7 @@ from django.views.decorators.http import require_http_methods
 from accounts.models import UserProfile
 from core.exceptions import MetaAPIError
 from core.services.meta_client import MetaClient
+from core.throttle import throttle_per_user
 from dashboard.models import SubscriptionOrder
 from integrations.models import ConnectedAccount
 from integrations.sync_state import SYNC_FRESHNESS_WINDOW, get_recent_sync_time
@@ -33,6 +35,56 @@ ENV_META_KEYS = ("META_APP_ID", "META_APP_SECRET", "META_REDIRECT_URI")
 ENV_SIMPLE_VALUE_RE = re.compile(r"^[A-Za-z0-9_./:@+-]+$")
 SUBSCRIPTION_MONTHLY_AMOUNT_PAISE = 600000
 SUBSCRIPTION_YEARLY_AMOUNT_PAISE = 7000000
+
+logger = logging.getLogger("dashboard")
+
+
+def _razorpay_capture_verified(order_id: str, payment_id: str, billing_cycle: str) -> tuple[bool, str | None]:
+    """Defense-in-depth payment capture check. No-op unless RAZORPAY_VERIFY_CAPTURE=True.
+
+    When enabled, fetches the payment from Razorpay and requires it to be CAPTURED for
+    the right order/amount/currency. Fails OPEN on a Razorpay API hiccup (the HMAC has
+    already proven authenticity) so a transient outage never blocks a genuine payment;
+    fails CLOSED only on a definitive mismatch (e.g. not captured, wrong amount).
+    """
+    if not getattr(settings, "RAZORPAY_VERIFY_CAPTURE", False):
+        return True, None
+    plan = SUBSCRIPTION_PLAN_CONFIG.get(billing_cycle)
+    if not plan:
+        return True, None
+    key_id = str(getattr(settings, "RAZORPAY_KEY_ID", "") or "").strip()
+    key_secret = str(getattr(settings, "RAZORPAY_KEY_SECRET", "") or "").strip()
+    expected_currency = str(getattr(settings, "RAZORPAY_CURRENCY", "INR") or "INR").strip().upper()
+    try:
+        resp = requests.get(
+            f"https://api.razorpay.com/v1/payments/{payment_id}",
+            auth=(key_id, key_secret),
+            timeout=20,
+        )
+    except requests.RequestException as exc:
+        logger.warning("razorpay capture fetch failed (fail-open) order=%s error=%s", order_id, exc)
+        return True, None
+    if resp.status_code >= 400:
+        logger.warning("razorpay capture fetch http %s (fail-open) order=%s", resp.status_code, order_id)
+        return True, None
+    try:
+        data = resp.json()
+    except ValueError:
+        return True, None
+    if str(data.get("order_id") or "") != order_id:
+        return False, "Payment does not match this order."
+    # Accept both 'captured' and 'authorized'. With auto-capture enabled, an authorized
+    # payment is captured automatically within the configured window, so accepting it
+    # avoids rejecting a genuine payment during the brief authorize->capture lag. Only
+    # outright-bad states (failed/created/refunded) are rejected.
+    status = str(data.get("status") or "").lower()
+    if status not in ("captured", "authorized"):
+        return False, "Payment is not in a successful state. Please try again."
+    if int(data.get("amount") or 0) != int(plan["amount_paise"]):
+        return False, "Payment amount does not match the selected plan."
+    if str(data.get("currency") or "").upper() != expected_currency:
+        return False, "Payment currency does not match."
+    return True, None
 SUBSCRIPTION_ORDER_CACHE_TTL = 3600
 SUBSCRIPTION_PLAN_CONFIG = {
     "monthly": {
@@ -379,7 +431,8 @@ def _token_health_payload(user):
     for token, grouped_accounts in token_groups.items():
         # Cache debug_token results per unique token to avoid repeated
         # live Meta API calls on every health check refresh.
-        token_hash = hashlib.sha256(token.encode()).hexdigest()[:16]
+        # Full sha256 (not truncated) so distinct tokens can never collide on the cache key.
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
         dt_cache_key = f"{_DEBUG_TOKEN_CACHE_PREFIX}:{token_hash}"
         cached_data = cache.get(dt_cache_key)
         if cached_data is not None:
@@ -659,6 +712,7 @@ def profile_data(request):
 
 @login_required
 @require_http_methods(["POST"])
+@throttle_per_user("10/m", scope="subscription_create_order")
 def subscription_create_order(request):
     if not _is_razorpay_configured():
         return JsonResponse(
@@ -749,6 +803,7 @@ def subscription_create_order(request):
 
 @login_required
 @require_http_methods(["POST"])
+@throttle_per_user("20/m", scope="subscription_verify_payment")
 def subscription_verify_payment(request):
     if not _is_razorpay_configured():
         return JsonResponse(
@@ -816,6 +871,13 @@ def subscription_verify_payment(request):
         billing_cycle = str(order.billing_cycle or "").strip().lower()
         if billing_cycle not in SUBSCRIPTION_PLAN_CONFIG:
             return JsonResponse({"error": "Payment verification context is incomplete. Please retry checkout."}, status=400)
+
+        # Optional defense-in-depth (off by default): confirm the payment is actually
+        # CAPTURED for the right order/amount/currency, closing the authorized-but-not-
+        # captured gap. Enable only after confirming the Razorpay merchant capture mode.
+        capture_ok, capture_error = _razorpay_capture_verified(order_id, payment_id, billing_cycle)
+        if not capture_ok:
+            return JsonResponse({"error": capture_error or "Payment is not captured yet."}, status=400)
 
         profile, _ = UserProfile.objects.select_for_update().get_or_create(user=request.user)
         try:

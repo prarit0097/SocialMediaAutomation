@@ -9,3 +9,5 @@ class ConnectedAccountAdmin(admin.ModelAdmin):
     search_fields = ("page_name", "page_id", "ig_user_id")
     list_filter = ("platform",)
     readonly_fields = ("created_at", "updated_at")
+    # Never render the decrypted Meta page access token in the admin change form.
+    exclude = ("access_token",)

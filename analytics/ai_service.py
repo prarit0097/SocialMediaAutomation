@@ -25,6 +25,7 @@ def _openai_json_completion(system_prompt: str, user_prompt: str, temperature: f
 
     model = (settings.OPENAI_MODEL or "").strip() or "gpt-4o-mini"
     timeout = int(settings.OPENAI_TIMEOUT_SECONDS or 45)
+    max_tokens = int(getattr(settings, "OPENAI_MAX_TOKENS", 1500) or 1500)
 
     try:
         response = requests.post(
@@ -36,6 +37,7 @@ def _openai_json_completion(system_prompt: str, user_prompt: str, temperature: f
             json={
                 "model": model,
                 "temperature": temperature,
+                "max_tokens": max_tokens,
                 "response_format": {"type": "json_object"},
                 "messages": [
                     {"role": "system", "content": system_prompt},

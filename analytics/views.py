@@ -17,6 +17,7 @@ from django.views.decorators.http import require_GET, require_POST
 from core.constants import FACEBOOK, INSTAGRAM
 from core.exceptions import MetaAPIError
 from core.services.meta_client import meta_app_usage_peak
+from core.throttle import throttle_per_user
 from integrations.models import ConnectedAccount
 from publishing.models import ScheduledPost
 
@@ -1021,6 +1022,7 @@ def scheduler_assist(request: HttpRequest, account_id: int) -> JsonResponse:
 
 @require_POST
 @login_required
+@throttle_per_user("5/m", scope="ai_insights")
 def ai_profile_insights(request: HttpRequest, account_id: int) -> JsonResponse:
     account = ConnectedAccount.objects.filter(id=account_id, user=request.user).first()
     if not account:

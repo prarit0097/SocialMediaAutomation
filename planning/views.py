@@ -9,6 +9,7 @@ from django.views.decorators.http import require_GET, require_http_methods
 from analytics.ai_service import AIInsightsError, generate_content_calendar_plan
 from analytics.models import InsightSnapshot
 from analytics.views import _next_post_recommendation, _normalize_posts_for_ai
+from core.throttle import throttle_per_user
 from integrations.models import ConnectedAccount
 
 from .models import CalendarContentItem, ContentTag
@@ -264,6 +265,7 @@ def update_calendar_item(request: HttpRequest, item_id: int) -> JsonResponse:
 
 @require_http_methods(["POST"])
 @login_required
+@throttle_per_user("5/m", scope="ai_calendar")
 def generate_ai_calendar_plan(request: HttpRequest) -> JsonResponse:
     payload = _parse_json(request)
     if payload is None:
