@@ -70,18 +70,25 @@ def _latest_published_post_times(account_ids: list[int]) -> dict[int, datetime |
         .annotate(latest_published_at=Max("published_at"))
     }
 
-    unresolved = set(account_ids)
-    snapshots = (
+    if not account_ids:
+        return latest_by_account
+
+    # Only inspect each account's MOST RECENT snapshot, not its whole history. Loading
+    # every snapshot's JSON payload for the entire fleet (~30 per account) was the bulk
+    # of this endpoint's latency and a memory spike. The latest daily snapshot already
+    # carries the account's recent posts. Stream with an iterator so peak memory stays
+    # bounded even across many accounts.
+    latest_ids = list(
         InsightSnapshot.objects.filter(account_id__in=account_ids)
-        .only("account_id", "payload", "fetched_at")
-        .order_by("-fetched_at")
+        .values("account_id")
+        .annotate(mid=Max("id"))
+        .values_list("mid", flat=True)
+    )
+    snapshots = (
+        InsightSnapshot.objects.filter(id__in=latest_ids).only("account_id", "payload").iterator(chunk_size=25)
     )
     for snapshot in snapshots:
-        account_id = snapshot.account_id
-        if account_id not in unresolved:
-            continue
-        payload = snapshot.payload or {}
-        posts = payload.get("published_posts") or []
+        posts = (snapshot.payload or {}).get("published_posts") or []
         latest_post = None
         for post in posts:
             published_at = _parse_snapshot_datetime(post.get("published_at")) or _parse_snapshot_datetime(post.get("scheduled_for"))
@@ -90,14 +97,9 @@ def _latest_published_post_times(account_ids: list[int]) -> dict[int, datetime |
             if latest_post is None or published_at > latest_post:
                 latest_post = published_at
         if latest_post is not None:
-            current = latest_by_account.get(account_id)
-            latest_by_account[account_id] = latest_post if current is None or latest_post > current else current
-            # Only mark as resolved when we actually found a post time.
-            # Empty snapshots (e.g. from failed Meta fetch) should not
-            # prevent checking older snapshots that may have data.
-            unresolved.discard(account_id)
-        if not unresolved:
-            break
+            current = latest_by_account.get(snapshot.account_id)
+            if current is None or latest_post > current:
+                latest_by_account[snapshot.account_id] = latest_post
     return latest_by_account
 
 

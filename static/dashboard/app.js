@@ -980,6 +980,10 @@
   let forceRefreshPollFailureCount = 0;
   let lastAutoReconciledRunId = null;
   let lastCompletedForceRefreshRunId = null;
+  // Only auto-reload the accounts list when a run actually finished while we were
+  // watching it — not for a stale already-completed run found on page load (that was
+  // causing a second full /api/accounts/?refresh=1 fetch on every visit).
+  let forceRefreshSawRunning = false;
   const forceRefreshLabel = "Force Refresh All Profiles";
   if (refreshAccountsBtn) {
     const runWithRefreshAccountsLoading = withButtonLoading(refreshAccountsBtn, "Refresh List", "Refreshing...");
@@ -1031,6 +1035,7 @@
         renderForceRefreshProgress(status);
         const running = Boolean(status && status.has_active_run);
         if (running) {
+          forceRefreshSawRunning = true;
           scheduleForceRefreshPoll(FORCE_REFRESH_STATUS_POLL_MS);
         }
         if (!running) {
@@ -1046,8 +1051,14 @@
             status.status !== "idle" &&
             status.run_id !== lastCompletedForceRefreshRunId
           ) {
+            const justFinished = forceRefreshSawRunning;
             lastCompletedForceRefreshRunId = status.run_id;
-            loadAccounts({ refreshAccounts: true });
+            forceRefreshSawRunning = false;
+            // Reload the table only if the run completed during this session; a stale
+            // completed run found on page load should not trigger a second fetch.
+            if (justFinished) {
+              loadAccounts({ refreshAccounts: true });
+            }
           }
           if (status && status.status && status.status !== "idle" && accountsBulkRefreshStatus) {
             const finalPct = Number(status.progress_percent || 0);
