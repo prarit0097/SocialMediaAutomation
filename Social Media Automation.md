@@ -347,7 +347,10 @@ What it supports:
 Important runtime meaning:
 - AI advice is generated from available snapshot/post data; missing metrics are marked as unavailable
 - operator focus text is treated as untrusted preference input and sanitized/truncated before prompt assembly
-- OpenAI key must be configured in `.env` (`OPENAI_API_KEY`) for AI insights generation
+- AI generation (AI Insights report + AI content planner) is provider-configurable via `.env`:
+  - `AI_PROVIDER=openai` (default) uses `OPENAI_API_KEY` + `OPENAI_MODEL`
+  - `AI_PROVIDER=openrouter` routes the same OpenAI-compatible call through OpenRouter using `OPENROUTER_API_KEY` + `OPENROUTER_MODEL` (e.g. `deepseek/deepseek-chat` and other DeepSeek slugs); base URLs are overridable via `OPENAI_BASE_URL` / `OPENROUTER_BASE_URL`
+  - the AI Insights response reports the actual active model
 
 ## Background Automation
 

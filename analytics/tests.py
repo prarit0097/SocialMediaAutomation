@@ -1135,3 +1135,28 @@ class PublishedPostsStatsFallbackTests(TestCase):
         self.assertEqual(rows[0]["total_comments"], 9)
         self.assertEqual(rows[0]["total_shares"], 5)
         self.assertIn("showing last cached stats", str(rows[0].get("reason", "")).lower())
+
+
+class AIProviderConfigTests(TestCase):
+    def test_default_provider_is_openai(self):
+        from analytics.ai_service import _resolve_ai_config
+
+        cfg = _resolve_ai_config()
+        self.assertEqual(cfg["provider"], "openai")
+        self.assertIn("openai.com", cfg["base_url"])
+
+    @override_settings(
+        AI_PROVIDER="openrouter",
+        OPENROUTER_API_KEY="test-key",
+        OPENROUTER_MODEL="deepseek/deepseek-chat",
+    )
+    def test_openrouter_provider_resolves(self):
+        from analytics.ai_service import _resolve_ai_config, active_ai_model
+
+        cfg = _resolve_ai_config()
+        self.assertEqual(cfg["provider"], "openrouter")
+        self.assertEqual(cfg["key"], "test-key")
+        self.assertEqual(cfg["model"], "deepseek/deepseek-chat")
+        self.assertIn("openrouter.ai", cfg["base_url"])
+        self.assertEqual(cfg["extra_headers"].get("X-Title"), "Postzyo")
+        self.assertEqual(active_ai_model(), "deepseek/deepseek-chat")
