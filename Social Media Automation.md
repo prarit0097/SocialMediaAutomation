@@ -284,6 +284,7 @@ Important runtime meaning:
 - planning items are editorial plans, separate from `ScheduledPost` publish queue
 - this allows teams to plan first, then schedule approved items into the publishing engine
 - AI planner can generate ready-to-schedule calendars without writing directly into the publish queue, so operators can review first and then schedule selectively
+- clicking a planned calendar item opens the Scheduler pre-filled with that item's account, platform, caption, and planned time (no manual re-entry); after the post is scheduled, the calendar item is automatically moved to `scheduled` status, linking the plan to the publish queue (calendar status colors already distinguish draft / review / approved / scheduled / published)
 
 ### Insights
 The Insights page is the reporting view for account-level Meta data and recent post performance.

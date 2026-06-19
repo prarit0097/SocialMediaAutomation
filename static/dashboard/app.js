@@ -1219,6 +1219,9 @@
     const scheduleParams = new URLSearchParams(window.location.search);
     const prefillAccountId = scheduleParams.get("account_id");
     const prefillPlatform = scheduleParams.get("platform");
+    const prefillMessage = scheduleParams.get("message");
+    const prefillScheduledFor = scheduleParams.get("scheduled_for");
+    const planningItemId = scheduleParams.get("planning_item");
     const accountIdInput = scheduleForm.querySelector("[name='account_id']");
     const platformInput = scheduleForm.querySelector("[name='platform']");
     const pageNameInput = document.getElementById("scheduleAccountPageName");
@@ -1418,6 +1421,11 @@
 
     if (accountIdInput && prefillAccountId) accountIdInput.value = prefillAccountId;
     if (platformInput && prefillPlatform) platformInput.value = prefillPlatform;
+    // Planning -> Scheduler prefill (caption + planned time).
+    const prefillMessageInput = scheduleForm.querySelector("[name='message']");
+    const prefillScheduledForInput = scheduleForm.querySelector("[name='scheduled_for']");
+    if (prefillMessageInput && prefillMessage) prefillMessageInput.value = prefillMessage;
+    if (prefillScheduledForInput && prefillScheduledFor) prefillScheduledForInput.value = prefillScheduledFor;
     if (accountIdInput) {
       accountIdInput.addEventListener("input", () => {
         if (schedulerAssistTimer) window.clearTimeout(schedulerAssistTimer);
@@ -1479,6 +1487,15 @@
           scheduled_count: scheduledCount,
           has_media: Boolean(mediaUrl || (mediaFile instanceof File && mediaFile.size > 0)),
         }, true);
+        // If this post came from a planning calendar item, mark it Scheduled (link the two).
+        if (planningItemId) {
+          fetch(`/api/planning/calendar/${encodeURIComponent(planningItemId)}/`, {
+            method: "PATCH",
+            headers: { "X-CSRFToken": csrfToken, "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({ status: "scheduled" }),
+          }).catch(() => {});
+        }
         scheduleForm.reset();
         setSchedulerPageName("", null);
         await loadSchedulerAssist(null);

@@ -46,6 +46,20 @@
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
 
+  // Build a Scheduler URL pre-filled from a planned calendar item (no double entry).
+  const schedulerUrlForItem = (item) => {
+    const p = new URLSearchParams();
+    if (item.platform) p.set("platform", item.platform);
+    if (item.connected_account_id) p.set("account_id", String(item.connected_account_id));
+    if (item.caption) p.set("message", item.caption);
+    if (item.start_at) {
+      const sf = fmtLocalInput(item.start_at);
+      if (sf && sf.indexOf("NaN") === -1) p.set("scheduled_for", sf);
+    }
+    p.set("planning_item", String(item.id));
+    return "/dashboard/scheduler/?" + p.toString();
+  };
+
   async function fetchJSON(url, options = {}) {
     const response = await fetch(url, options);
     const body = await response.json().catch(() => ({}));
@@ -92,10 +106,17 @@
           badge.className = `planning-item ${statusClass(item.status)}`;
           badge.draggable = true;
           badge.dataset.id = String(item.id);
-          badge.title = `${item.title}\n${item.platform} | ${item.status}`;
+          badge.title = `${item.title}\n${item.platform} | ${item.status}\nClick to schedule this`;
           badge.textContent = `${item.title}`;
           badge.addEventListener("dragstart", (ev) => {
+            badge.dataset.dragging = "1";
             ev.dataTransfer.setData("text/plain", String(item.id));
+          });
+          badge.addEventListener("dragend", () => { delete badge.dataset.dragging; });
+          badge.addEventListener("click", () => {
+            // Ignore the click that can fire at the end of a drag-to-move.
+            if (badge.dataset.dragging === "1") return;
+            window.location.href = schedulerUrlForItem(item);
           });
           itemsWrap.appendChild(badge);
         });
