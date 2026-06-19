@@ -125,7 +125,7 @@ class MetaClient:
         pages: list[dict] = []
         params = {
             "access_token": user_access_token,
-            "fields": "id,name,access_token,instagram_business_account",
+            "fields": "id,name,access_token,picture,instagram_business_account{id,profile_picture_url,username}",
             "limit": 100,
         }
         response = self._get("/me/accounts", params)
@@ -138,6 +138,17 @@ class MetaClient:
             next_url = (response.get("paging") or {}).get("next")
 
         return pages
+
+    def fetch_profile_picture_url(self, platform: str, target_id: str, page_access_token: str) -> str:
+        """Fetch a profile/page picture URL. Returns "" on any error (best-effort)."""
+        try:
+            if str(platform).lower() == "instagram":
+                data = self._get(f"/{target_id}", {"access_token": page_access_token, "fields": "profile_picture_url"})
+                return str(data.get("profile_picture_url") or "")
+            data = self._get(f"/{target_id}", {"access_token": page_access_token, "fields": "picture"})
+            return str(((data.get("picture") or {}).get("data") or {}).get("url") or "")
+        except MetaAPIError:
+            return ""
 
     def fetch_facebook_published_posts(self, page_id: str, page_access_token: str, limit: int = 50) -> list[dict]:
         # Some pages reject richer field sets depending on role/permissions.

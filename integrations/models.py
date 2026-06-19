@@ -11,6 +11,7 @@ class ConnectedAccount(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True, blank=True, related_name='connected_accounts')
     page_name = models.CharField(max_length=255)
     ig_user_id = models.CharField(max_length=100, blank=True, null=True)
+    profile_picture_url = models.URLField(max_length=1000, blank=True, default="")
     access_token = EncryptedTextField()
     is_active = models.BooleanField(default=True)
     token_expires_at = models.DateTimeField(blank=True, null=True)

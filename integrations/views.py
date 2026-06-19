@@ -314,6 +314,7 @@ def list_accounts(request: HttpRequest) -> JsonResponse:
             "page_id",
             "page_name",
             "ig_user_id",
+            "profile_picture_url",
             "is_active",
             "created_at",
             "updated_at",
