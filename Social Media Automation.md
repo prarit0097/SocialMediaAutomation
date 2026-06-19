@@ -183,6 +183,18 @@ Important runtime meaning:
 - if older connected rows still exist outside the latest reconnect window, Health turns red and asks for reconnect
 - profiles not returned in the latest reconnect are marked inactive and excluded from active account lists
 
+### All Accounts Overview
+The Overview page (`/dashboard/overview/`, top-nav "Overview") is the portfolio view across every connected account.
+
+What it shows (one sortable/searchable table, snapshot-backed so it loads fast):
+- account (page name + thumbnail + FB/IG badge), followers, 7-day follower change (green up / red down), reach (7d), engagement (7d), last post (relative), queued posts (with a ⚠ flag + count when any are failed), and a health badge (`OK` / `Stale` if the latest snapshot is older than ~36h / `No data`)
+- sortable by any column; searchable by page name; filterable by platform
+- clicking any row opens that account's Insights (`/dashboard/insights/?account_id=...`)
+
+What it does:
+- served by `GET /api/insights/overview/` (per-user throttled `30/m`), which reads each account's latest stored `InsightSnapshot` (no live Meta calls) and aggregates follower/reach/engagement plus pending/failed publish counts and last-published time
+- metrics are extracted from stored snapshots one account at a time, so only ~2 snapshot payloads are resident at once (memory-safe for large fleets); the 7-day follower change compares the latest snapshot to the newest snapshot at least 7 days old
+
 ### Scheduler
 The Scheduler page creates publishing jobs and monitors scheduled, published, and failed rows.
 
