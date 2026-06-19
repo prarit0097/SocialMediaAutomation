@@ -193,8 +193,9 @@ textarea {
 .topnav {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .health-nav {
@@ -316,7 +317,7 @@ textarea {
   text-decoration: none;
   color: var(--ink-soft);
   min-height: 38px;
-  padding: 0 14px;
+  padding: 0 10px;
   border-radius: 999px;
   font-size: 13px;
   font-weight: 800;
