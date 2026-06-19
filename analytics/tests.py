@@ -107,8 +107,8 @@ class AnalyticsApiTests(TestCase):
         self.assertEqual(row["follower_change_7d"], 200)
 
     def test_accounts_overview_metric_sources(self):
-        # FB: engagement from page_post_engagements day-series; reach surfaced from
-        # page_impressions_unique when a page still returns it (else None).
+        # FB: engagement from page_post_engagements day-series; reach is Instagram-only
+        # (None for FB) even if a legacy page_impressions_unique value is present.
         InsightSnapshot.objects.create(
             account=self.account, platform=FACEBOOK,
             payload={"insights": [
@@ -145,7 +145,7 @@ class AnalyticsApiTests(TestCase):
         rows = {r["page_name"]: r for r in body["accounts"]}
         fb = rows["Page"]
         self.assertEqual(fb["engagement_7d"], 3)       # 2+1 from day-series
-        self.assertEqual(fb["reach_7d"], 9)            # surfaced when page still returns it
+        self.assertIsNone(fb["reach_7d"])              # reach is Instagram-only (FB -> N/A)
         igr = rows["ig (IG)"]
         self.assertEqual(igr["reach_7d"], 15)          # 10+5
         self.assertEqual(igr["engagement_7d"], 18)     # recent post 10+5+2+1; old + 999999 ignored

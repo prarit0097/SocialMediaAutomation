@@ -47,6 +47,7 @@
   .ov-table th, .ov-table td { padding:10px 12px; text-align:left; border-bottom:1px solid rgba(120,120,140,.18); white-space:nowrap }
   .ov-table th { cursor:pointer; user-select:none; font-size:12px; letter-spacing:.03em; color:#6b7280; text-transform:uppercase }
   .ov-table th.ov-num, .ov-table td.ov-num { text-align:right }
+  .ov-table td.ov-na { color:#b4b4bd; font-style:italic; font-weight:500 }
   .ov-table th:hover { color:#4338ca }
   .ov-table tbody tr { cursor:pointer }
   .ov-table tbody tr:hover { background:rgba(99,102,241,.08) }
@@ -163,7 +164,10 @@
 
       const fol = document.createElement("td"); fol.className="ov-num"; fol.textContent = fmtNum(r.followers); tr.appendChild(fol);
       const chg = document.createElement("td"); chg.className="ov-num"; chg.appendChild(fmtChange(r.follower_change_7d)); tr.appendChild(chg);
-      const rch = document.createElement("td"); rch.className="ov-num"; rch.textContent = fmtNum(r.reach_7d); tr.appendChild(rch);
+      const rch = document.createElement("td"); rch.className="ov-num";
+      if (r.platform === "facebook") { rch.classList.add("ov-na"); rch.textContent = "N/A"; rch.title = "Reach is Instagram-only — Meta no longer provides Facebook page reach"; }
+      else { rch.textContent = fmtNum(r.reach_7d); }
+      tr.appendChild(rch);
       const eng = document.createElement("td"); eng.className="ov-num"; eng.textContent = fmtNum(r.engagement_7d); tr.appendChild(eng);
       const lp = document.createElement("td"); lp.textContent = relTime(r.last_post_at); tr.appendChild(lp);
 
