@@ -1052,10 +1052,10 @@ def _overview_reach(insights: list, platform: str):
     if platform == INSTAGRAM:
         # IG `reach` is a real period=day time-series; sum the last 7 days.
         return _metric_value(insights, ["reach"], strategy="sum")
-    # Facebook page reach (page_impressions_unique) was removed by Meta for most pages,
-    # so this is usually absent -> None ("—"). Still surface it for any page that does
-    # return it, rather than hard-coding None and hiding real data.
-    return _metric_value(insights, ["page_impressions_unique"], strategy="sum")
+    # Reach is an Instagram-only column: Meta removed Facebook page reach
+    # (page_impressions_unique), so FB has no comparable metric. FB rows render "N/A"
+    # on the client rather than a misleading dash or proxy.
+    return None
 
 
 def _parse_post_time(value):
