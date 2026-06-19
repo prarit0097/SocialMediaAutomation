@@ -2,14 +2,6 @@
 {% load static %}
 {% block content %}
 
-<!-- ===== OVERVIEW BANNER ===== -->
-<section class="card home-overview-banner" style="padding:0;overflow:hidden">
-  <img src="{% static 'dashboard/illustrations/dashboard-overview.png' %}"
-       alt="Postzyo — from connection to growth: connect, plan, schedule, queue, insights, AI recommendations"
-       style="display:block;width:100%;height:auto;border-radius:inherit"
-       loading="eager">
-</section>
-
 <!-- ===== HERO: COMMAND CENTER ===== -->
 <section class="card home-hero-shell">
   <div class="home-command-main">
@@ -37,36 +29,11 @@
   </div>
 
   <div class="home-command-visual">
-    <div class="home-visual-frame">
-      <div class="home-visual-head">
-        <p>Quick Glance</p>
-        <span>Live stats from your workspace</span>
-      </div>
-      <div class="home-visual-grid">
-        <div class="home-visual-module">
-          <img src="{% static 'dashboard/illustrations/connect.svg' %}" alt="Accounts">
-          <strong id="homeStatAccounts">-</strong>
-          <span>Connected Accounts</span>
-        </div>
-        <div class="home-visual-module">
-          <img src="{% static 'dashboard/illustrations/schedule.svg' %}" alt="Published">
-          <strong id="homeStatPublished">-</strong>
-          <span>Posts Published</span>
-        </div>
-        <div class="home-visual-module">
-          <img src="{% static 'dashboard/illustrations/insights.svg' %}" alt="Pending">
-          <strong id="homeStatPending">-</strong>
-          <span>In Queue</span>
-        </div>
-        <div class="home-visual-module">
-          <img src="{% static 'dashboard/illustrations/ai.svg' %}" alt="Plan">
-          <strong id="homeStatPlan">-</strong>
-          <span>Subscription</span>
-        </div>
-      </div>
-      <div class="home-visual-footer">
-        <span id="homeStatMember">Loading workspace data...</span>
-      </div>
+    <div class="home-visual-frame" style="padding:12px">
+      <img src="{% static 'dashboard/illustrations/dashboard-overview.png' %}"
+           alt="Postzyo workflow: connect, plan, schedule, queue, insights, AI recommendations"
+           style="display:block;width:100%;height:auto;border-radius:12px"
+           loading="lazy">
     </div>
   </div>
 </section>
@@ -343,22 +310,22 @@
     .then(r => r.ok ? r.json() : Promise.reject())
     .then(d => {
       const s = d.stats || {};
-      const el = id => document.getElementById(id);
+      const set = (id, v) => { const n = document.getElementById(id); if (n) n.textContent = v; };
 
-      // Hero visual grid
-      el("homeStatAccounts").textContent = d.connected_accounts ?? "-";
-      el("homeStatPublished").textContent = s.published ?? "-";
-      el("homeStatPending").textContent = s.pending ?? "-";
-      el("homeStatPlan").textContent = (d.subscription_plan || "Trial").replace(/_/g," ").replace(/\b\w/g,c=>c.toUpperCase());
-      el("homeStatMember").textContent = d.member_since ? "Member since " + d.member_since : "";
+      // Hero quick-glance (may be absent if replaced by the workflow visual)
+      set("homeStatAccounts", d.connected_accounts ?? "-");
+      set("homeStatPublished", s.published ?? "-");
+      set("homeStatPending", s.pending ?? "-");
+      set("homeStatPlan", (d.subscription_plan || "Trial").replace(/_/g," ").replace(/\b\w/g,c=>c.toUpperCase()));
+      set("homeStatMember", d.member_since ? "Member since " + d.member_since : "");
 
       // Stats bar
-      el("homeBarAccounts").textContent = d.connected_accounts ?? "0";
-      el("homeBarFB").textContent = d.fb_accounts ?? "0";
-      el("homeBarIG").textContent = d.ig_accounts ?? "0";
-      el("homeBarPublished").textContent = s.published ?? "0";
-      el("homeBarPending").textContent = s.pending ?? "0";
-      el("homeBarDays").textContent = d.days_left != null ? d.days_left : "-";
+      set("homeBarAccounts", d.connected_accounts ?? "0");
+      set("homeBarFB", d.fb_accounts ?? "0");
+      set("homeBarIG", d.ig_accounts ?? "0");
+      set("homeBarPublished", s.published ?? "0");
+      set("homeBarPending", s.pending ?? "0");
+      set("homeBarDays", d.days_left != null ? d.days_left : "-");
     })
     .catch(() => {});
 })();
