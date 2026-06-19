@@ -74,8 +74,8 @@
   const refreshEl = document.getElementById("ovRefresh");
 
   let allRows = [];
-  let sortKey = "followers";
-  let sortDir = -1; // -1 desc, 1 asc
+  let sortKey = "page_name"; // default: alphabetical A->Z, same brand grouped (FB before IG)
+  let sortDir = 1; // -1 desc, 1 asc
 
   const fmtNum = (v) => {
     if (v == null || v === "") return "—";
@@ -127,8 +127,14 @@
       return true;
     });
     rows.sort((a, b) => {
+      if (sortKey === "page_name") {
+        const an = cleanName(a).toLowerCase(), bn = cleanName(b).toLowerCase();
+        if (an < bn) return -1 * sortDir;
+        if (an > bn) return 1 * sortDir;
+        // same brand name -> Facebook before Instagram (regardless of sort direction)
+        return (a.platform === "instagram" ? 1 : 0) - (b.platform === "instagram" ? 1 : 0);
+      }
       let av = a[sortKey], bv = b[sortKey];
-      if (sortKey === "page_name") { av = cleanName(a).toLowerCase(); bv = cleanName(b).toLowerCase(); }
       if (av == null) return 1; if (bv == null) return -1;
       if (av < bv) return -1 * sortDir; if (av > bv) return 1 * sortDir; return 0;
     });
