@@ -570,6 +570,11 @@ def scheduler_page(request):
 
 
 @login_required
+def overview_page(request):
+    return render(request, "dashboard/overview.html")
+
+
+@login_required
 def insights_page(request):
     return render(request, "dashboard/insights.html")
 

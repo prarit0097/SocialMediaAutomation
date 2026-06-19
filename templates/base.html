@@ -81,6 +81,7 @@
             </div>
           </div>
           <a class="{% if current == 'accounts' %}is-active{% endif %}" href="{% url 'dashboard:accounts' %}">Accounts</a>
+          <a class="{% if current == 'overview' %}is-active{% endif %}" href="{% url 'dashboard:overview' %}">Overview</a>
           <a class="{% if current == 'scheduler' %}is-active{% endif %}" href="{% url 'dashboard:scheduler' %}">Scheduler</a>
           <a class="{% if current == 'planning' %}is-active{% endif %}" href="{% url 'dashboard:planning' %}">Planning</a>
           <a class="{% if current == 'insights' %}is-active{% endif %}" href="{% url 'dashboard:insights' %}">Insights</a>

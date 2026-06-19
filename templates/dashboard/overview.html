@@ -1,0 +1,206 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block content %}
+
+<section class="card">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">Portfolio</p>
+      <h1>All Accounts Overview</h1>
+      <p class="section-copy">Every connected profile's key numbers in one place — from the latest stored snapshot, so it loads fast. Sort, search, and click any row to open its full Insights.</p>
+    </div>
+  </div>
+  <div class="toolbar-surface">
+    <div class="inline-controls">
+      <input type="text" id="ovSearch" placeholder="Search by page name…" autocomplete="off" style="flex:1 1 220px;min-width:200px">
+      <select id="ovPlatform" aria-label="Filter by platform">
+        <option value="all">All platforms</option>
+        <option value="facebook">Facebook</option>
+        <option value="instagram">Instagram</option>
+      </select>
+      <button id="ovRefresh" class="btn muted">Refresh</button>
+    </div>
+  </div>
+  <p id="ovStatus" class="result-note">Loading overview…</p>
+  <div class="ov-table-wrap" style="overflow-x:auto">
+    <table class="ov-table" id="ovTable" hidden>
+      <thead>
+        <tr>
+          <th data-sort="page_name">Account</th>
+          <th data-sort="platform">Platform</th>
+          <th data-sort="followers" class="ov-num">Followers</th>
+          <th data-sort="follower_change_7d" class="ov-num">7d &Delta;</th>
+          <th data-sort="reach_7d" class="ov-num">Reach (7d)</th>
+          <th data-sort="engagement_7d" class="ov-num">Engagement (7d)</th>
+          <th data-sort="last_post_at">Last post</th>
+          <th data-sort="pending_count" class="ov-num">Queued</th>
+          <th data-sort="health">Health</th>
+        </tr>
+      </thead>
+      <tbody id="ovBody"></tbody>
+    </table>
+  </div>
+</section>
+
+<style>
+  .ov-table { width:100%; border-collapse:collapse; font-size:14px }
+  .ov-table th, .ov-table td { padding:10px 12px; text-align:left; border-bottom:1px solid rgba(120,120,140,.18); white-space:nowrap }
+  .ov-table th { cursor:pointer; user-select:none; font-size:12px; letter-spacing:.03em; color:#6b7280; text-transform:uppercase }
+  .ov-table th.ov-num, .ov-table td.ov-num { text-align:right }
+  .ov-table th:hover { color:#4338ca }
+  .ov-table tbody tr { cursor:pointer }
+  .ov-table tbody tr:hover { background:rgba(99,102,241,.08) }
+  .ov-acct { display:flex; align-items:center; gap:10px }
+  .ov-avatar { width:30px; height:30px; border-radius:50%; overflow:hidden; flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; background:#e5e7ef; color:#4b5563; font-size:11px; font-weight:700 }
+  .ov-avatar img { width:100%; height:100%; object-fit:cover; display:block }
+  .ov-badge { font-size:10px; font-weight:800; letter-spacing:.04em; padding:2px 7px; border-radius:999px; color:#fff }
+  .ov-badge.fb { background:#1877f2 } .ov-badge.ig { background:linear-gradient(45deg,#f09433,#dc2743,#bc1888) }
+  .ov-up { color:#15803d; font-weight:700 } .ov-down { color:#b91c1c; font-weight:700 } .ov-flat { color:#9ca3af }
+  .ov-health { font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px }
+  .ov-health.ok { background:#dcfce7; color:#15803d } .ov-health.stale { background:#fef3c7; color:#92400e } .ov-health.no_data { background:#f1f1f4; color:#6b7280 }
+  .ov-pending-flag { color:#b45309; font-weight:700 }
+</style>
+
+<script>
+(function(){
+  const body = document.getElementById("ovBody");
+  if (!body) return;
+  const table = document.getElementById("ovTable");
+  const statusEl = document.getElementById("ovStatus");
+  const searchEl = document.getElementById("ovSearch");
+  const platformEl = document.getElementById("ovPlatform");
+  const refreshEl = document.getElementById("ovRefresh");
+
+  let allRows = [];
+  let sortKey = "followers";
+  let sortDir = -1; // -1 desc, 1 asc
+
+  const fmtNum = (v) => {
+    if (v == null || v === "") return "—";
+    const n = Number(v);
+    if (!isFinite(n)) return "—";
+    const abs = Math.abs(n);
+    if (abs >= 1000000) return (n/1000000).toFixed(1).replace(/\.0$/,"") + "M";
+    if (abs >= 1000) return (n/1000).toFixed(1).replace(/\.0$/,"") + "K";
+    return String(n);
+  };
+  const fmtChange = (v) => {
+    if (v == null) { const s = document.createElement("span"); s.className="ov-flat"; s.textContent="—"; return s; }
+    const n = Number(v);
+    const s = document.createElement("span");
+    s.className = n > 0 ? "ov-up" : n < 0 ? "ov-down" : "ov-flat";
+    s.textContent = (n > 0 ? "+" : "") + fmtNum(n);
+    return s;
+  };
+  const relTime = (iso) => {
+    if (!iso) return "Never";
+    const d = new Date(iso); if (isNaN(d)) return "—";
+    const hrs = Math.floor((Date.now() - d.getTime()) / 3600000);
+    if (hrs < 1) return "Just now";
+    if (hrs < 24) return hrs + "h ago";
+    const days = Math.floor(hrs/24);
+    return days + "d ago";
+  };
+  const cleanName = (r) => String(r.page_name || "").replace(/\s*\(IG\)\s*$/i,"").trim() || ("Account #" + r.account_id);
+  const initials = (name) => (name.trim().split(/\s+/).slice(0,2).map(p=>p[0]).join("") || "?").toUpperCase();
+
+  function avatarCell(r) {
+    const wrap = document.createElement("span");
+    wrap.className = "ov-avatar";
+    const url = String(r.profile_picture_url || "").trim();
+    if (url) {
+      const img = document.createElement("img"); img.src = url; img.alt=""; img.loading="lazy";
+      img.addEventListener("error", () => { wrap.textContent = initials(cleanName(r)); });
+      wrap.appendChild(img);
+    } else { wrap.textContent = initials(cleanName(r)); }
+    return wrap;
+  }
+
+  function render() {
+    const q = searchEl.value.trim().toLowerCase();
+    const plat = platformEl.value;
+    let rows = allRows.filter((r) => {
+      if (plat !== "all" && r.platform !== plat) return false;
+      if (q && cleanName(r).toLowerCase().indexOf(q) === -1) return false;
+      return true;
+    });
+    rows.sort((a, b) => {
+      let av = a[sortKey], bv = b[sortKey];
+      if (sortKey === "page_name") { av = cleanName(a).toLowerCase(); bv = cleanName(b).toLowerCase(); }
+      if (av == null) return 1; if (bv == null) return -1;
+      if (av < bv) return -1 * sortDir; if (av > bv) return 1 * sortDir; return 0;
+    });
+
+    body.textContent = "";
+    rows.forEach((r) => {
+      const tr = document.createElement("tr");
+      tr.addEventListener("click", () => {
+        window.location.href = "/dashboard/insights/?account_id=" + encodeURIComponent(r.account_id);
+      });
+
+      const acct = document.createElement("td");
+      const wrap = document.createElement("div"); wrap.className = "ov-acct";
+      wrap.appendChild(avatarCell(r));
+      const nm = document.createElement("span"); nm.textContent = cleanName(r); wrap.appendChild(nm);
+      acct.appendChild(wrap); tr.appendChild(acct);
+
+      const plt = document.createElement("td");
+      const badge = document.createElement("span");
+      badge.className = "ov-badge " + (r.platform === "instagram" ? "ig" : "fb");
+      badge.textContent = r.platform === "instagram" ? "IG" : "FB";
+      plt.appendChild(badge); tr.appendChild(plt);
+
+      const fol = document.createElement("td"); fol.className="ov-num"; fol.textContent = fmtNum(r.followers); tr.appendChild(fol);
+      const chg = document.createElement("td"); chg.className="ov-num"; chg.appendChild(fmtChange(r.follower_change_7d)); tr.appendChild(chg);
+      const rch = document.createElement("td"); rch.className="ov-num"; rch.textContent = fmtNum(r.reach_7d); tr.appendChild(rch);
+      const eng = document.createElement("td"); eng.className="ov-num"; eng.textContent = fmtNum(r.engagement_7d); tr.appendChild(eng);
+      const lp = document.createElement("td"); lp.textContent = relTime(r.last_post_at); tr.appendChild(lp);
+
+      const pend = document.createElement("td"); pend.className="ov-num";
+      const pc = Number(r.pending_count||0), fc = Number(r.failed_count||0);
+      pend.textContent = String(pc);
+      if (fc > 0) { const f = document.createElement("span"); f.className="ov-pending-flag"; f.textContent = " ⚠"+fc; pend.appendChild(f); pend.title = fc+" failed"; }
+      tr.appendChild(pend);
+
+      const h = document.createElement("td");
+      const hb = document.createElement("span");
+      hb.className = "ov-health " + (r.health || "no_data");
+      hb.textContent = r.health === "ok" ? "OK" : r.health === "stale" ? "Stale" : "No data";
+      h.appendChild(hb); tr.appendChild(h);
+
+      body.appendChild(tr);
+    });
+
+    statusEl.textContent = rows.length ? (rows.length + " account(s)") : "No matching accounts.";
+    table.hidden = rows.length === 0;
+  }
+
+  document.querySelectorAll(".ov-table th[data-sort]").forEach((th) => {
+    th.addEventListener("click", () => {
+      const key = th.getAttribute("data-sort");
+      if (sortKey === key) { sortDir *= -1; } else { sortKey = key; sortDir = (key === "page_name" || key === "platform") ? 1 : -1; }
+      render();
+    });
+  });
+  searchEl.addEventListener("input", render);
+  platformEl.addEventListener("change", render);
+
+  async function load() {
+    statusEl.textContent = "Loading overview…";
+    table.hidden = true;
+    try {
+      const res = await fetch("/api/insights/overview/", { headers: { "X-Requested-With": "XMLHttpRequest" }, credentials: "same-origin" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      allRows = Array.isArray(data.accounts) ? data.accounts : [];
+      render();
+    } catch (err) {
+      statusEl.textContent = "Could not load overview: " + err.message;
+    }
+  }
+  refreshEl.addEventListener("click", load);
+  load();
+})();
+</script>
+
+{% endblock %}

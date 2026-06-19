@@ -10,11 +10,18 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
 from django.db import OperationalError, transaction
+from django.db.models import Count, Max
 from django.http import HttpRequest, JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
-from core.constants import FACEBOOK, INSTAGRAM
+from core.constants import (
+    FACEBOOK,
+    INSTAGRAM,
+    POST_STATUS_FAILED,
+    POST_STATUS_PENDING,
+    POST_STATUS_PROCESSING,
+)
 from core.exceptions import MetaAPIError
 from core.services.meta_client import meta_app_usage_peak
 from core.throttle import throttle_per_user
@@ -23,7 +30,14 @@ from publishing.models import ScheduledPost
 
 from .ai_service import AIInsightsError, active_ai_model, generate_profile_ai_insights
 from .models import BulkInsightRefreshRun, InsightSnapshot
-from .services import build_comparison_rows, build_insight_response, build_post_stats_summary, fetch_and_store_insights
+from .services import (
+    _first_metric_value,
+    _metric_value,
+    build_comparison_rows,
+    build_insight_response,
+    build_post_stats_summary,
+    fetch_and_store_insights,
+)
 from .tasks import refresh_account_insights_snapshot
 
 logger = logging.getLogger("analytics")
@@ -1018,6 +1032,117 @@ def scheduler_assist(request: HttpRequest, account_id: int) -> JsonResponse:
     if error_response:
         return error_response
     return JsonResponse(_build_scheduler_assist_payload(payload))
+
+
+def _overview_followers(insights: list, platform: str):
+    if platform == INSTAGRAM:
+        return _first_metric_value(insights, ["followers_count", "follower_count"])
+    value = _first_metric_value(insights, ["followers_count"])
+    return value if value is not None else _first_metric_value(insights, ["fan_count"])
+
+
+def _overview_reach(insights: list, platform: str):
+    names = ["reach"] if platform == INSTAGRAM else ["page_impressions_unique"]
+    return _metric_value(insights, names, strategy="sum")
+
+
+def _overview_engagement(insights: list, platform: str):
+    names = ["total_interactions", "accounts_engaged"] if platform == INSTAGRAM else ["page_post_engagements", "page_engaged_users"]
+    return _metric_value(insights, names, strategy="sum")
+
+
+def _snapshot_insights(snapshot) -> list:
+    if snapshot and isinstance(snapshot.payload, dict):
+        value = snapshot.payload.get("insights")
+        if isinstance(value, list):
+            return value
+    return []
+
+
+@require_GET
+@login_required
+@throttle_per_user("30/m", scope="accounts_overview")
+def accounts_overview(request: HttpRequest) -> JsonResponse:
+    """Portfolio view: key metrics for every connected account from stored snapshots.
+
+    Snapshot-backed (no live Meta calls). Each account is processed one at a time so
+    only ~2 snapshot payloads are resident at once (memory-safe for large fleets).
+    """
+    user = request.user
+    accounts = list(
+        ConnectedAccount.objects.filter(is_active=True, user=user).order_by("page_name", "id")
+    )
+    account_ids = [a.id for a in accounts]
+
+    pending_counts: dict[int, int] = defaultdict(int)
+    failed_counts: dict[int, int] = defaultdict(int)
+    for row in (
+        ScheduledPost.objects.filter(account_id__in=account_ids)
+        .values("account_id", "status")
+        .annotate(c=Count("id"))
+    ):
+        if row["status"] in (POST_STATUS_PENDING, POST_STATUS_PROCESSING):
+            pending_counts[row["account_id"]] += row["c"]
+        elif row["status"] == POST_STATUS_FAILED:
+            failed_counts[row["account_id"]] += row["c"]
+
+    last_post_map = {
+        r["account_id"]: r["m"]
+        for r in (
+            ScheduledPost.objects.filter(account_id__in=account_ids, published_at__isnull=False)
+            .values("account_id")
+            .annotate(m=Max("published_at"))
+        )
+    }
+
+    now = timezone.now()
+    week_ago = now - timedelta(days=7)
+    stale_cutoff = now - timedelta(hours=36)
+    rows = []
+    for account in accounts:
+        latest = InsightSnapshot.objects.filter(account=account).order_by("-fetched_at", "-id").first()
+        insights = _snapshot_insights(latest)
+        followers = _overview_followers(insights, account.platform)
+
+        follower_change = None
+        if followers is not None:
+            prior = (
+                InsightSnapshot.objects.filter(account=account, fetched_at__lte=week_ago)
+                .order_by("-fetched_at", "-id")
+                .first()
+            )
+            prior_followers = _overview_followers(_snapshot_insights(prior), account.platform) if prior else None
+            if prior_followers is not None:
+                follower_change = followers - prior_followers
+
+        fetched_at = latest.fetched_at if latest else None
+        if not latest:
+            health = "no_data"
+        elif fetched_at and fetched_at < stale_cutoff:
+            health = "stale"
+        else:
+            health = "ok"
+
+        last_post = last_post_map.get(account.id)
+        rows.append(
+            {
+                "account_id": account.id,
+                "page_name": account.page_name,
+                "platform": account.platform,
+                "profile_picture_url": account.profile_picture_url,
+                "followers": followers,
+                "follower_change_7d": follower_change,
+                "reach_7d": _overview_reach(insights, account.platform),
+                "engagement_7d": _overview_engagement(insights, account.platform),
+                "last_post_at": last_post.isoformat() if last_post else None,
+                "pending_count": pending_counts.get(account.id, 0),
+                "failed_count": failed_counts.get(account.id, 0),
+                "snapshot_at": fetched_at.isoformat() if fetched_at else None,
+                "health": health,
+            }
+        )
+
+    return JsonResponse({"accounts": rows, "total": len(rows), "generated_at": now.isoformat()})
 
 
 @require_POST

@@ -57,6 +57,23 @@ class AnalyticsApiTests(TestCase):
         self.assertIn("low_distribution_alerts", body)
         self.assertIn("early_engagement_monitor", body)
 
+    def test_accounts_overview_returns_metrics(self):
+        InsightSnapshot.objects.create(
+            account=self.account,
+            platform=FACEBOOK,
+            payload={"insights": [{"name": "followers_count", "values": [{"value": 1234}]}]},
+        )
+        response = self.client.get("/api/insights/overview/")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["total"], 1)
+        row = body["accounts"][0]
+        self.assertEqual(row["account_id"], self.account.id)
+        self.assertEqual(row["followers"], 1234)
+        self.assertEqual(row["platform"], FACEBOOK)
+        self.assertIn("health", row)
+        self.assertIn("pending_count", row)
+
     @patch("analytics.views.refresh_account_insights_snapshot.apply_async")
     @patch("analytics.views.fetch_and_store_insights")
     def test_fetch_insights_without_snapshot_returns_placeholder_and_queues_background_refresh(
