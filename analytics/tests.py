@@ -107,8 +107,8 @@ class AnalyticsApiTests(TestCase):
         self.assertEqual(row["follower_change_7d"], 200)
 
     def test_accounts_overview_metric_sources(self):
-        # FB: engagement from page_post_engagements day-series; reach is always None
-        # (Meta removed the page reach metric) even if a legacy metric is present.
+        # FB: engagement from page_post_engagements day-series; reach surfaced from
+        # page_impressions_unique when a page still returns it (else None).
         InsightSnapshot.objects.create(
             account=self.account, platform=FACEBOOK,
             payload={"insights": [
@@ -145,7 +145,7 @@ class AnalyticsApiTests(TestCase):
         rows = {r["page_name"]: r for r in body["accounts"]}
         fb = rows["Page"]
         self.assertEqual(fb["engagement_7d"], 3)       # 2+1 from day-series
-        self.assertIsNone(fb["reach_7d"])              # FB page reach unavailable
+        self.assertEqual(fb["reach_7d"], 9)            # surfaced when page still returns it
         igr = rows["ig (IG)"]
         self.assertEqual(igr["reach_7d"], 15)          # 10+5
         self.assertEqual(igr["engagement_7d"], 18)     # recent post 10+5+2+1; old + 999999 ignored
@@ -165,6 +165,24 @@ class AnalyticsApiTests(TestCase):
         row = self.client.get("/api/insights/overview/").json()["accounts"][0]
         self.assertEqual(row["followers"], 1500)
         self.assertIsNone(row["follower_change_7d"])  # prior is 40d old -> not a 7D delta
+
+    def test_accounts_overview_survives_malformed_post_timestamp(self):
+        # A regex-valid but impossible date in untrusted Meta data must not 500 the page.
+        ig = ConnectedAccount.objects.create(
+            user=self.user, platform=INSTAGRAM, page_id="ig9", page_name="ig9 (IG)",
+            ig_user_id="ig9", access_token="t",
+        )
+        InsightSnapshot.objects.create(
+            account=ig, platform=INSTAGRAM,
+            payload={
+                "insights": [{"name": "followers_count", "values": [{"value": 10}]}],
+                "published_posts": [{"published_at": "2026-02-30T10:00:00", "total_likes": 5}],
+            },
+        )
+        resp = self.client.get("/api/insights/overview/")
+        self.assertEqual(resp.status_code, 200)  # malformed date degrades, does not 500
+        row = {r["page_name"]: r for r in resp.json()["accounts"]}["ig9 (IG)"]
+        self.assertIsNone(row["last_post_at"])
 
     @patch("analytics.views.refresh_account_insights_snapshot.apply_async")
     @patch("analytics.views.fetch_and_store_insights")

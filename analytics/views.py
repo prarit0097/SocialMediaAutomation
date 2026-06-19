@@ -1052,17 +1052,23 @@ def _overview_reach(insights: list, platform: str):
     if platform == INSTAGRAM:
         # IG `reach` is a real period=day time-series; sum the last 7 days.
         return _metric_value(insights, ["reach"], strategy="sum")
-    # Facebook page reach (page_impressions_unique) was deprecated/removed by Meta, so
-    # snapshots carry no reliable page-level 7-day reach. Report None ("—") rather than
-    # surface a misleading proxy.
-    return None
+    # Facebook page reach (page_impressions_unique) was removed by Meta for most pages,
+    # so this is usually absent -> None ("—"). Still surface it for any page that does
+    # return it, rather than hard-coding None and hiding real data.
+    return _metric_value(insights, ["page_impressions_unique"], strategy="sum")
 
 
 def _parse_post_time(value):
     if isinstance(value, datetime):
         return value if value.tzinfo else value.replace(tzinfo=dt_timezone.utc)
     if isinstance(value, str) and value:
-        parsed = parse_datetime(value)
+        # parse_datetime returns None for unmatched strings but RAISES ValueError for
+        # regex-valid yet impossible dates (e.g. "2026-02-30T10:00:00"). published_at
+        # is untrusted Meta data, so degrade to None instead of 500-ing the endpoint.
+        try:
+            parsed = parse_datetime(value)
+        except (ValueError, TypeError):
+            return None
         if parsed is not None and parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=dt_timezone.utc)
         return parsed
@@ -1162,7 +1168,6 @@ def accounts_overview(request: HttpRequest) -> JsonResponse:
     }
 
     now = timezone.now()
-    week_ago = now - timedelta(days=7)
     stale_cutoff = now - timedelta(hours=36)
     rows = []
     # Snapshots are read per-account (one at a time) on purpose: batch-loading every
@@ -1176,20 +1181,26 @@ def accounts_overview(request: HttpRequest) -> JsonResponse:
         posts = _snapshot_posts(latest)
         followers = _overview_followers(insights, account.platform)
 
+        # Anchor the 7-day windows to the snapshot's own capture time, not now(): a stale
+        # snapshot's "last 7 days" ended when it was captured, so anchoring to now() would
+        # both mislabel the follower delta and miss recent posts.
+        latest_ts = latest.fetched_at if (latest and latest.fetched_at) else now
+        window_start = latest_ts - timedelta(days=7)
+
         follower_change = None
         if followers is not None:
             # exclude(latest) so a lone snapshot older than a week doesn't diff against
             # itself and report a fake "0" change.
             prior = (
-                InsightSnapshot.objects.filter(account=account, fetched_at__lte=week_ago)
+                InsightSnapshot.objects.filter(account=account, fetched_at__lte=window_start)
                 .exclude(pk=latest.pk)
                 .order_by("-fetched_at", "-id")
                 .first()
             )
             # Only call it a "7D" change when the prior snapshot is genuinely ~a week
-            # old. Sparse snapshots (e.g. one 60 days ago) would otherwise show a
-            # months-long change mislabeled as 7 days.
-            if prior and prior.fetched_at and prior.fetched_at >= now - timedelta(days=14):
+            # before the latest. Sparse snapshots (e.g. one 60 days ago) would otherwise
+            # show a months-long change mislabeled as 7 days.
+            if prior and prior.fetched_at and prior.fetched_at >= latest_ts - timedelta(days=14):
                 prior_followers = _overview_followers(_snapshot_insights(prior), account.platform)
                 if prior_followers is not None:
                     follower_change = followers - prior_followers
@@ -1219,7 +1230,7 @@ def accounts_overview(request: HttpRequest) -> JsonResponse:
                 "followers": followers,
                 "follower_change_7d": follower_change,
                 "reach_7d": _overview_reach(insights, account.platform),
-                "engagement_7d": _overview_engagement(insights, posts, account.platform, week_ago),
+                "engagement_7d": _overview_engagement(insights, posts, account.platform, window_start),
                 "last_post_at": last_post.isoformat() if last_post else None,
                 "pending_count": pending_counts.get(account.id, 0),
                 "failed_count": failed_counts.get(account.id, 0),
