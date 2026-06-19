@@ -1178,6 +1178,15 @@
   const scheduledStatusFilter = document.getElementById("scheduledStatusFilter");
   if (scheduledTable) {
     if (scheduledStatusFilter) {
+      // Honor ?status=<value> (e.g. the dashboard "Review failed posts" alert links here).
+      try {
+        const wanted = new URLSearchParams(window.location.search).get("status");
+        if (wanted && wanted !== scheduledStatusFilter.value &&
+            Array.from(scheduledStatusFilter.options).some((o) => o.value === wanted)) {
+          scheduledStatusFilter.value = wanted;
+          loadScheduledPosts();
+        }
+      } catch (e) { /* no-op */ }
       scheduledStatusFilter.addEventListener("change", () => loadScheduledPosts());
     }
     scheduledTable.addEventListener("click", async (event) => {

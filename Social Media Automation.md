@@ -216,6 +216,8 @@ What happens:
 - publish task now uses a per-post execution lock (`publish_task_lock:<post_id>`) so duplicate deliveries do not run in parallel
 - failed jobs can be retried if the account row is current
 - invalid Meta token failures are stored with reconnect guidance so the operator knows to reconnect before retrying
+- the Dashboard Home shows a one-click "Review failed posts" alert whenever any scheduled posts are in the failed state, so permanent failures are surfaced proactively instead of only being discoverable on the Profile page; the alert deep-links to the Scheduler queue pre-filtered to `failed` (via `?status=failed`)
+- public/marketing copy no longer claims failures always auto-recover: messaging is "most failed posts auto-recover; anything that can't is flagged for one-click retry"
 - Instagram video / reel publishing prefers direct resumable upload from locally stored media when available, then waits for container processing before final publish
 - if Instagram resumable video upload fails during container setup, publish flow now falls back to `video_url` container creation instead of immediately failing the whole post
 - Meta media download timeouts are treated as transient and automatically retried

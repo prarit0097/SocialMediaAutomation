@@ -2,6 +2,16 @@
 {% load static %}
 {% block content %}
 
+<!-- ===== FAILED-POST ALERT (shown only when posts need attention) ===== -->
+<section class="card home-failed-alert" id="homeFailedAlert" hidden
+         style="border-left:4px solid #dc2743;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
+  <div>
+    <strong id="homeFailedAlertText">Some scheduled posts need attention.</strong>
+    <span style="display:block;color:#8b8b9a;font-size:13px;margin-top:2px">A few posts couldn't auto-recover (e.g. expired token or rejected media). Review the reason and retry in one click.</span>
+  </div>
+  <a class="btn" href="{% url 'dashboard:scheduler' %}?status=failed">Review failed posts</a>
+</section>
+
 <!-- ===== HERO: COMMAND CENTER ===== -->
 <section class="card home-hero-shell">
   <div class="home-command-main">
@@ -265,7 +275,7 @@
       </article>
       <article class="home-confidence-item">
         <strong>Queue-Safe Publishing</strong>
-        <span>Smart retry handling protects scheduled work when Meta is noisy. Failed posts auto-recover.</span>
+        <span>Smart retry handling protects scheduled work when Meta is noisy. Most failed posts auto-recover; anything that can't is flagged for one-click retry.</span>
       </article>
       <article class="home-confidence-item">
         <strong>Encrypted Token Storage</strong>
@@ -326,6 +336,16 @@
       set("homeBarPublished", s.published ?? "0");
       set("homeBarPending", s.pending ?? "0");
       set("homeBarDays", d.days_left != null ? d.days_left : "-");
+
+      // Failed-post alert: only surface when something actually needs attention.
+      const failed = Number(s.failed || 0);
+      if (failed > 0) {
+        set("homeFailedAlertText", failed + (failed === 1
+          ? " scheduled post failed and needs attention."
+          : " scheduled posts failed and need attention."));
+        const alertEl = document.getElementById("homeFailedAlert");
+        if (alertEl) alertEl.hidden = false;
+      }
     })
     .catch(() => {});
 })();
