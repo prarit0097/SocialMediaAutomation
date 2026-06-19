@@ -1,0 +1,38 @@
+# Secrets — must NOT be baked into the image (config is injected at runtime via env_file)
+.env
+.env.*
+!.env.example
+
+# Version control / tooling
+.git
+.gitignore
+.github
+.omx
+.code-review-graph
+
+# Python caches / local virtualenv
+__pycache__
+*.pyc
+*.pyo
+.venv
+venv
+
+# Local databases / build artifacts (prod uses Postgres + volumes)
+*.sqlite3
+db.sqlite3
+test_db.sqlite3
+staticfiles/
+media/
+celerybeat-schedule*
+*.log
+
+# Local-only Node prototype (not used by the Django app)
+backend/node_modules
+frontend/node_modules
+
+# Misc local files
+backups/
+mcp_outputs/
+*.md
+!README.md
+ChatGPT Image*.png
