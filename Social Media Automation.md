@@ -15,7 +15,7 @@ Primary Git repository: `https://github.com/prarit0097/SocialMediaAutomation`
 - Provide a dedicated Profile page for each logged-in user with Google-synced identity data and editable non-email fields.
 - Provide a dedicated Subscription page with Razorpay checkout for monthly/yearly plan purchase flow.
 - Provide a public Help page with FAQ and a support request form that emails submitted requests to the configured support mailbox.
-- Give every new user a 1-day trial and lock the app after expiry until payment is completed.
+- Give every new user a 3-day trial and lock the app after expiry until payment is completed.
 - Isolate connected accounts, tokens, schedules, planning context, and analytics to the logged-in user who owns them.
 - Schedule Facebook, Instagram, or combined FB + IG posts.
 - Publish due posts automatically through Celery workers.
@@ -79,7 +79,7 @@ What it shows:
 - locked-access warning when a user has expired and needs payment to continue
 
 What it does:
-- new Google-signup users start on `Trial` plan with 1-day app access
+- new Google-signup users start on `Trial` plan with 3-day app access
 - starts checkout by creating Razorpay order via backend `POST /dashboard/subscription/create-order/`
 - opens Razorpay checkout popup from UI (`checkout.js`)
 - verifies payment signature via backend `POST /dashboard/subscription/verify-payment/`
@@ -429,7 +429,7 @@ Operational meaning:
 ### User Account Signup Mode
 - `/signup/` is Google-only onboarding UI.
 - Google OAuth callback creates user with unusable password and logs in via Django session.
-- Google OAuth callback also upserts `UserProfile` seed data (first name, last name, profile picture URL) and initializes a 1-day `Trial` subscription.
+- Google OAuth callback also upserts `UserProfile` seed data (first name, last name, profile picture URL) and initializes a 3-day `Trial` subscription.
 - Google OAuth state is bound to the browser session, so a cached state token alone is not enough to complete login
 - Existing users can continue to use login flow; new account creation happens only through Google OAuth.
 - `/login/` shows both classic login form and Google button (`Continue with Google`) when OAuth env is configured.
