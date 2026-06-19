@@ -241,6 +241,21 @@ def publish_post_task(self, post_id: int):
         if post.status not in {POST_STATUS_PENDING, POST_STATUS_PROCESSING}:
             return {"status": "skipped_state", "post_id": post.id, "state": post.status}
 
+        # Subscription enforcement: a lapsed owner's queued posts must not keep
+        # publishing to Meta. Pause (don't fail) and re-check after a hold window so
+        # publishing resumes automatically once they renew. Fail-open for ownerless rows.
+        if getattr(settings, "ENFORCE_SUBSCRIPTION_IN_TASKS", True):
+            from accounts.models import is_user_subscription_active
+
+            if not is_user_subscription_active(getattr(post.account, "user_id", None)):
+                hold = max(300, int(getattr(settings, "SUBSCRIPTION_HOLD_SECONDS", 21600)))
+                post.status = POST_STATUS_PENDING
+                post.scheduled_for = timezone.now() + timedelta(seconds=hold)
+                post.error_message = "Paused: subscription expired. Renew to resume publishing."
+                post.save(update_fields=["status", "scheduled_for", "error_message", "updated_at"])
+                logger.info("publish paused (subscription inactive) post id=%s user=%s", post.id, getattr(post.account, "user_id", None))
+                return {"status": "paused_subscription", "post_id": post.id}
+
         if post.platform == INSTAGRAM:
             # Per-account lock: different IG accounts publish in parallel.
             # Only guards against duplicate publishes for the same account.

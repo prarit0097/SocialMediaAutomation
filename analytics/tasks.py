@@ -187,6 +187,15 @@ def refresh_account_insights_snapshot(self, account_id: int, force: bool = False
             outcome = "missing"
             return {"status": "missing", "account_id": account_id}
 
+        # Subscription enforcement: don't spend Meta/OpenAI quota refreshing insights
+        # for a lapsed owner. Counts as a benign skip so any bulk run still finalizes.
+        if getattr(settings, "ENFORCE_SUBSCRIPTION_IN_TASKS", True):
+            from accounts.models import is_user_subscription_active
+
+            if not is_user_subscription_active(getattr(account, "user_id", None)):
+                outcome = "skipped_existing"
+                return {"status": "skipped_inactive_subscription", "account_id": account.id}
+
         if not force and _has_daily_heavy_snapshot(account):
             outcome = "skipped_existing"
             return {"status": "skipped_existing", "account_id": account.id}

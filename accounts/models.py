@@ -132,3 +132,20 @@ class UserProfile(models.Model):
         self.subscription_status = self.SUBSCRIPTION_STATUS_ACTIVE
         if commit:
             self.save(update_fields=["subscription_plan", "subscription_status", "subscription_expires_on", "updated_at"])
+
+
+def is_user_subscription_active(user_id) -> bool:
+    """Shared helper for Celery tasks: True when the owning user may consume paid work.
+
+    Fail-OPEN: an account with no owner, or any unexpected error, resolves to True so
+    background publishing/insights are never wrongly blocked. A brand-new profile is
+    created with an active 1-day trial, so freshly-created users (incl. tests) pass.
+    """
+    if not user_id:
+        return True
+    try:
+        profile, _ = UserProfile.objects.get_or_create(user_id=user_id)
+        profile.refresh_subscription_state()
+        return profile.subscription_status == UserProfile.SUBSCRIPTION_STATUS_ACTIVE
+    except Exception:  # noqa: BLE001 - never block background work on a lookup error
+        return True

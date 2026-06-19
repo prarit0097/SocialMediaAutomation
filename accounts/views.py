@@ -12,6 +12,13 @@ from django.urls import reverse
 from django.utils.html import escape
 from django.views.decorators.http import require_POST
 
+from core.throttle import (
+    is_ip_rate_limited,
+    is_login_locked,
+    note_login_failure,
+    reset_login_failures,
+)
+
 from .forms import HelpRequestForm
 from .models import UserProfile
 from .pixel import queue_pixel_event
@@ -34,11 +41,27 @@ class AdminLoginView(LoginView):
         context["google_signup_ready"] = _google_signup_ready()
         return context
 
+    def post(self, request, *args, **kwargs):
+        # Brute-force lockout: too many failed attempts from one IP within the window.
+        if is_login_locked(request):
+            form = self.get_form()
+            form.add_error(
+                None,
+                "Too many failed login attempts. Please wait a few minutes and try again.",
+            )
+            return self.render_to_response(self.get_context_data(form=form))
+        return super().post(request, *args, **kwargs)
+
     def form_valid(self, form):
+        reset_login_failures(self.request)
         response = super().form_valid(form)
         _set_persistent_session(self.request)
         queue_pixel_event(self.request, "Login", {"method": "password"}, custom=True)
         return response
+
+    def form_invalid(self, form):
+        note_login_failure(self.request)
+        return super().form_invalid(form)
 
     def get_success_url(self):
         return reverse(_post_login_redirect_name(self.request.user))
@@ -247,6 +270,11 @@ def help_view(request):
     if request.method == "POST":
         form = HelpRequestForm(request.POST)
         if form.is_valid():
+            # Anti-abuse: honeypot-tripped bots and over-limit IPs get the same
+            # generic success page but no email is sent (silent drop).
+            help_rate = str(getattr(settings, "HELP_FORM_RATE", "5/h"))
+            if form.is_spam() or is_ip_rate_limited(request, "help_form", help_rate):
+                return redirect(f"{reverse('help')}?submitted=1")
             plain, html = _help_request_email_body(form)
             topic = dict(form.fields["topic"].choices).get(form.cleaned_data["topic"], "Help request")
             email = EmailMultiAlternatives(
@@ -418,6 +446,14 @@ def google_signup_callback(request):
 
     user_model = get_user_model()
     user = user_model.objects.filter(email__iexact=email).first() or user_model.objects.filter(username=email).first()
+    # Account-takeover guard: never let Google email-matching log into a PRIVILEGED
+    # (staff/superuser) account — those unlock the admin + runtime Meta-credential
+    # management, so they must authenticate with their password, not an email match.
+    # Regular operator accounts logging in via Google is an intended app feature.
+    if user is not None and (user.is_staff or user.is_superuser):
+        return redirect(
+            "/signup/?error=This+is+an+admin+account.+Please+sign+in+with+your+password."
+        )
     first_name = str(profile.get("given_name") or "").strip()
     last_name = str(profile.get("family_name") or "").strip()
     profile_picture_url = str(profile.get("picture") or "").strip()

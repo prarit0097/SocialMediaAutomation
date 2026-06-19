@@ -84,6 +84,14 @@ env = environ.Env(
     INSIGHT_SNAPSHOT_PRUNE_ENABLED=(bool, True),
     INSIGHT_SNAPSHOT_PRUNE_HOUR=(int, 4),
     INSIGHT_SNAPSHOT_PRUNE_MINUTE=(int, 30),
+    # --- Security hardening (additive) ---
+    LOGIN_FAILURE_LIMIT=(int, 10),
+    LOGIN_FAILURE_WINDOW_SECONDS=(int, 900),
+    HELP_FORM_RATE=(str, "5/h"),
+    OPENAI_MAX_TOKENS=(int, 1500),
+    ENFORCE_SUBSCRIPTION_IN_TASKS=(bool, True),
+    SUBSCRIPTION_HOLD_SECONDS=(int, 21600),
+    RAZORPAY_VERIFY_CAPTURE=(bool, False),
 )
 environ.Env.read_env(BASE_DIR / ".env")
 
@@ -272,6 +280,13 @@ INSIGHT_SNAPSHOT_RETENTION_PER_ACCOUNT = env("INSIGHT_SNAPSHOT_RETENTION_PER_ACC
 INSIGHT_SNAPSHOT_PRUNE_ENABLED = env("INSIGHT_SNAPSHOT_PRUNE_ENABLED")
 INSIGHT_SNAPSHOT_PRUNE_HOUR = env("INSIGHT_SNAPSHOT_PRUNE_HOUR")
 INSIGHT_SNAPSHOT_PRUNE_MINUTE = env("INSIGHT_SNAPSHOT_PRUNE_MINUTE")
+LOGIN_FAILURE_LIMIT = env("LOGIN_FAILURE_LIMIT")
+LOGIN_FAILURE_WINDOW_SECONDS = env("LOGIN_FAILURE_WINDOW_SECONDS")
+HELP_FORM_RATE = env("HELP_FORM_RATE")
+OPENAI_MAX_TOKENS = env("OPENAI_MAX_TOKENS")
+ENFORCE_SUBSCRIPTION_IN_TASKS = env("ENFORCE_SUBSCRIPTION_IN_TASKS")
+SUBSCRIPTION_HOLD_SECONDS = env("SUBSCRIPTION_HOLD_SECONDS")
+RAZORPAY_VERIFY_CAPTURE = env("RAZORPAY_VERIFY_CAPTURE")
 CELERY_BEAT_SCHEDULE = {
     "process-due-posts-every-minute": {
         "task": "publishing.tasks.process_due_posts",
@@ -354,6 +369,16 @@ else:
 
 if not DEBUG and (not SESSION_COOKIE_SECURE or not CSRF_COOKIE_SECURE):
     raise ImproperlyConfigured("SESSION_COOKIE_SECURE and CSRF_COOKIE_SECURE must be enabled in production.")
+
+# A shared cache is required in production: per-IP/per-user rate limits, login
+# lockout, OAuth state, and subscription-order recovery all depend on it. LocMem
+# is per-process, so multi-worker prod would silently multiply every limit by the
+# worker count and split OAuth/order state across workers.
+if not DEBUG and CACHE_BACKEND != "redis":
+    raise ImproperlyConfigured(
+        "CACHE_BACKEND=redis is required in production (rate limiting, login lockout, "
+        "OAuth state, and subscription-order recovery rely on a shared cache)."
+    )
 
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"

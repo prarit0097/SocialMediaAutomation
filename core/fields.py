@@ -39,6 +39,22 @@ def _decrypt_if_encrypted(value):
             return normalized
 
 
+def encrypt_text(value):
+    """Encrypt a string with the configured Fernet keys (for at-rest cache/session use)."""
+    if value in (None, ""):
+        return value
+    return _get_fernet().encrypt(str(value).encode()).decode()
+
+
+def decrypt_text(value):
+    """Decrypt a value produced by encrypt_text; returns plaintext as-is if not encrypted.
+
+    The plaintext fallback keeps any pre-existing unencrypted cache entries working
+    through the transition window.
+    """
+    return _decrypt_if_encrypted(value)
+
+
 class EncryptedTextField(models.TextField):
     description = "Encrypted text field"
 

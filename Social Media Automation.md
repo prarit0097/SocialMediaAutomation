@@ -913,6 +913,19 @@ Memory / OOM protection:
 - production Celery worker concurrency was lowered from gevent `20` to `8`, capping simultaneous heavy insight payloads in the single worker process (RAM peak) and flattening the parallel Meta Graph burst.
 - note: `CELERY_WORKER_MAX_TASKS_PER_CHILD` only recycles memory under the prefork pool; under gevent it is a no-op. If worker RSS still climbs after these changes, the recommended follow-up is a dedicated insights worker on `--pool=prefork --concurrency=4 --max-tasks-per-child=100 --max-memory-per-child`, and per-container `mem_limit` values tuned against live `docker stats`.
 
+## Security Hardening (auth, payment, abuse)
+Added after a focused security audit. All controls are additive and behavior-preserving by default.
+
+- Login brute-force lockout: the password login view blocks an IP after `LOGIN_FAILURE_LIMIT` (default `10`) failed attempts within `LOGIN_FAILURE_WINDOW_SECONDS` (default `900`). The limiter is IP-based (the per-user throttle is a no-op for anonymous requests) and fails open on cache errors so real users are never wrongly locked out.
+- Google OAuth account-takeover guard: Google email-matching login now refuses to sign into an existing **staff/superuser** account (those would unlock admin + runtime Meta-credential management). Regular operator accounts logging in via Google remains a supported flow; only privileged accounts must use their password.
+- Celery subscription enforcement (`ENFORCE_SUBSCRIPTION_IN_TASKS`, default on): scheduled publishing pauses (does not fail) and daily insight refresh skips for accounts whose owner's subscription has lapsed, so expired users cannot keep publishing to Meta or burning Meta/OpenAI quota. Publishing resumes automatically after renewal (paused posts re-checked after `SUBSCRIPTION_HOLD_SECONDS`, default 6h). Fails open for ownerless rows.
+- Public Help form abuse controls: a hidden honeypot field silently drops bots, and submissions are per-IP rate limited (`HELP_FORM_RATE`, default `5/h`); over-limit/bot submissions return the same generic success page but send no email.
+- AI endpoints (`ai_profile_insights`, `generate_ai_calendar_plan`) are now per-user throttled (`5/m`) and every OpenAI call is capped by `OPENAI_MAX_TOKENS` (default `1500`) to prevent shared-key cost drain.
+- Razorpay: create-order and verify-payment are per-user throttled. An optional capture-status check (`RAZORPAY_VERIFY_CAPTURE`, default off) fetches the payment and requires `status=captured` plus matching order/amount/currency before activating a plan — closing the authorized-but-not-captured gap; it fails open on a Razorpay API hiccup so genuine payments are never blocked. Enable only after confirming the merchant is on auto-capture.
+- Meta user OAuth token is now Fernet-encrypted in the cache (it was previously stored in plaintext in Redis for 30 days); decryption tolerates any pre-existing plaintext entries during the transition.
+- Production startup now also requires `CACHE_BACKEND=redis` (a shared cache is mandatory for rate limiting, login lockout, OAuth state, and subscription-order recovery; LocMem would silently multiply limits by worker count).
+- Django admin no longer renders the decrypted Meta page access token in the change form; the debug-token health cache key uses a full SHA-256 (no truncation) so distinct tokens can never collide.
+
 ## Maintenance Rule
 This file must be updated whenever project behavior, workflow, automation, stored data, or important UI meaning changes.
 
