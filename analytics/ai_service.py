@@ -18,24 +18,61 @@ def _sanitize_focus_text(value: str | None) -> str:
     return sanitized[:240]
 
 
-def _openai_json_completion(system_prompt: str, user_prompt: str, temperature: float = 0.25) -> dict[str, Any]:
-    api_key = (settings.OPENAI_API_KEY or "").strip()
-    if not api_key:
-        raise AIInsightsError("OPENAI_API_KEY is missing. Add it in .env and restart Django.")
+def _resolve_ai_config() -> dict[str, Any]:
+    """Resolve the active AI provider config (OpenAI by default, OpenRouter optional).
 
-    model = (settings.OPENAI_MODEL or "").strip() or "gpt-4o-mini"
+    Both providers use the OpenAI-compatible /chat/completions schema, so only the
+    base URL, key, model, and a couple of optional headers change.
+    """
+    provider = str(getattr(settings, "AI_PROVIDER", "openai") or "openai").strip().lower()
+    if provider == "openrouter":
+        base = (str(getattr(settings, "OPENROUTER_BASE_URL", "") or "").strip() or "https://openrouter.ai/api/v1").rstrip("/")
+        model = str(getattr(settings, "OPENROUTER_MODEL", "") or "").strip() or "deepseek/deepseek-chat"
+        # OpenRouter recommends identifying the calling app (optional, non-breaking).
+        extra_headers = {"X-Title": "Postzyo"}
+        referer = str(getattr(settings, "PUBLIC_BASE_URL", "") or "").strip() or "https://postzyo.com"
+        extra_headers["HTTP-Referer"] = referer
+        return {
+            "provider": "openrouter",
+            "base_url": base,
+            "key": str(getattr(settings, "OPENROUTER_API_KEY", "") or "").strip(),
+            "model": model,
+            "extra_headers": extra_headers,
+            "key_name": "OPENROUTER_API_KEY",
+        }
+
+    base = (str(getattr(settings, "OPENAI_BASE_URL", "") or "").strip() or "https://api.openai.com/v1").rstrip("/")
+    return {
+        "provider": "openai",
+        "base_url": base,
+        "key": str(getattr(settings, "OPENAI_API_KEY", "") or "").strip(),
+        "model": str(getattr(settings, "OPENAI_MODEL", "") or "").strip() or "gpt-4o-mini",
+        "extra_headers": {},
+        "key_name": "OPENAI_API_KEY",
+    }
+
+
+def active_ai_model() -> str:
+    """The model string actually used for AI calls (for display in responses)."""
+    return _resolve_ai_config()["model"]
+
+
+def _openai_json_completion(system_prompt: str, user_prompt: str, temperature: float = 0.25) -> dict[str, Any]:
+    cfg = _resolve_ai_config()
+    if not cfg["key"]:
+        raise AIInsightsError(f"{cfg['key_name']} is missing. Add it in .env and restart Django.")
+
     timeout = int(settings.OPENAI_TIMEOUT_SECONDS or 45)
     max_tokens = int(getattr(settings, "OPENAI_MAX_TOKENS", 1500) or 1500)
+    headers = {"Authorization": f"Bearer {cfg['key']}", "Content-Type": "application/json"}
+    headers.update(cfg["extra_headers"])
 
     try:
         response = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
+            f"{cfg['base_url']}/chat/completions",
+            headers=headers,
             json={
-                "model": model,
+                "model": cfg["model"],
                 "temperature": temperature,
                 "max_tokens": max_tokens,
                 "response_format": {"type": "json_object"},
@@ -47,20 +84,20 @@ def _openai_json_completion(system_prompt: str, user_prompt: str, temperature: f
             timeout=timeout,
         )
     except requests.RequestException as exc:
-        raise AIInsightsError(f"OpenAI request failed: {exc}") from exc
+        raise AIInsightsError(f"AI request failed: {exc}") from exc
 
     if response.status_code >= 400:
         try:
             err_payload = response.json()
         except ValueError:
             err_payload = {"error": {"message": response.text}}
-        message = str((err_payload.get("error") or {}).get("message") or "OpenAI API returned an error.")
+        message = str((err_payload.get("error") or {}).get("message") or "AI API returned an error.")
         raise AIInsightsError(message)
 
     try:
         content = response.json()["choices"][0]["message"]["content"]
     except Exception as exc:  # noqa: BLE001
-        raise AIInsightsError("OpenAI response format was unexpected.") from exc
+        raise AIInsightsError("AI response format was unexpected.") from exc
 
     return _json_from_text(content)
 

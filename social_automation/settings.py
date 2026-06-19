@@ -19,6 +19,12 @@ env = environ.Env(
     OPENAI_IMAGE_MODEL=(str, "gpt-image-1"),
     OPENAI_IMAGE_TIMEOUT_SECONDS=(int, 90),
     OPENAI_TIMEOUT_SECONDS=(int, 45),
+    # AI provider: "openai" (default) or "openrouter". OpenRouter is OpenAI-compatible,
+    # so DeepSeek (and other models) work via the same chat/completions path.
+    AI_PROVIDER=(str, "openai"),
+    OPENAI_BASE_URL=(str, "https://api.openai.com/v1"),
+    OPENROUTER_BASE_URL=(str, "https://openrouter.ai/api/v1"),
+    OPENROUTER_MODEL=(str, "deepseek/deepseek-chat"),
     GOOGLE_OAUTH_CLIENT_ID=(str, ""),
     GOOGLE_OAUTH_CLIENT_SECRET=(str, ""),
     GOOGLE_OAUTH_REDIRECT_URI=(str, ""),
@@ -241,6 +247,11 @@ OPENAI_MODEL = env("OPENAI_MODEL")
 OPENAI_IMAGE_MODEL = env("OPENAI_IMAGE_MODEL")
 OPENAI_IMAGE_TIMEOUT_SECONDS = env("OPENAI_IMAGE_TIMEOUT_SECONDS")
 OPENAI_TIMEOUT_SECONDS = env("OPENAI_TIMEOUT_SECONDS")
+AI_PROVIDER = env("AI_PROVIDER")
+OPENAI_BASE_URL = env("OPENAI_BASE_URL")
+OPENROUTER_API_KEY = env("OPENROUTER_API_KEY", default="")
+OPENROUTER_BASE_URL = env("OPENROUTER_BASE_URL")
+OPENROUTER_MODEL = env("OPENROUTER_MODEL")
 GOOGLE_OAUTH_CLIENT_ID = env("GOOGLE_OAUTH_CLIENT_ID")
 GOOGLE_OAUTH_CLIENT_SECRET = env("GOOGLE_OAUTH_CLIENT_SECRET")
 GOOGLE_OAUTH_REDIRECT_URI = env("GOOGLE_OAUTH_REDIRECT_URI")

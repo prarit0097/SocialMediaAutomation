@@ -25,12 +25,13 @@
     <div>
       <p class="eyebrow">Lookup</p>
       <h2>Load Page Insights</h2>
-      <p class="section-copy">Enter a connected account ID to fetch the latest stored snapshot or request a fresh pull from Meta.</p>
+      <p class="section-copy">Pick a connected account to fetch the latest stored snapshot or request a fresh pull from Meta.</p>
     </div>
   </div>
   <div class="toolbar-surface">
     <div class="inline-controls">
-      <input type="number" id="insightAccountId" placeholder="Enter Account ID">
+      <input type="hidden" id="insightAccountId">
+      <div data-account-picker data-target="insightAccountId" style="width:auto;flex:1 1 220px;min-width:200px;max-width:360px"></div>
       <button id="fetchInsightsBtn" class="btn">Fetch Cached/Latest</button>
       <button id="refreshInsightsBtn" class="btn muted">Force Refresh</button>
     </div>

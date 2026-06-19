@@ -21,7 +21,7 @@ from core.throttle import throttle_per_user
 from integrations.models import ConnectedAccount
 from publishing.models import ScheduledPost
 
-from .ai_service import AIInsightsError, generate_profile_ai_insights
+from .ai_service import AIInsightsError, active_ai_model, generate_profile_ai_insights
 from .models import BulkInsightRefreshRun, InsightSnapshot
 from .services import build_comparison_rows, build_insight_response, build_post_stats_summary, fetch_and_store_insights
 from .tasks import refresh_account_insights_snapshot
@@ -1062,7 +1062,7 @@ def ai_profile_insights(request: HttpRequest, account_id: int) -> JsonResponse:
             "fetched_at": insight_data.get("fetched_at"),
             "cached": bool(insight_data.get("cached")),
             "generated_at": timezone.now().isoformat(),
-            "model": settings.OPENAI_MODEL,
+            "model": active_ai_model(),
             "analysis": ai_analysis,
             "source_overview": {
                 "posting_cadence": ai_context.get("posting_cadence"),

@@ -6,8 +6,11 @@ from django.db import models
 from django.utils import timezone
 
 
+TRIAL_PERIOD_DAYS = 3
+
+
 def _default_subscription_expiry():
-    return timezone.now().date() + timedelta(days=1)
+    return timezone.now().date() + timedelta(days=TRIAL_PERIOD_DAYS)
 
 
 class UserProfile(models.Model):
@@ -107,7 +110,7 @@ class UserProfile(models.Model):
 
     def activate_trial(self, commit: bool = True):
         self.subscription_plan = self.SUBSCRIPTION_PLAN_TRIAL
-        self.subscription_expires_on = timezone.now().date() + timedelta(days=1)
+        self.subscription_expires_on = timezone.now().date() + timedelta(days=TRIAL_PERIOD_DAYS)
         self.subscription_status = self.SUBSCRIPTION_STATUS_ACTIVE
         if commit:
             self.save(update_fields=["subscription_plan", "subscription_status", "subscription_expires_on", "updated_at"])

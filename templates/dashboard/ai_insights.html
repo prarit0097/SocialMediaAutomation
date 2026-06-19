@@ -25,13 +25,14 @@
     <div>
       <p class="eyebrow">Run Analysis</p>
       <h2>Profile AI Insights</h2>
-      <p class="section-copy">Enter connected account ID and optional business goal, then generate profile analysis.</p>
+      <p class="section-copy">Pick a connected account and add an optional business goal, then generate profile analysis.</p>
     </div>
   </div>
   <div class="ai-form-grid">
     <div class="ai-form-row-2col">
-      <label>Account ID
-        <input type="number" id="aiInsightAccountId" placeholder="Enter account id">
+      <label>Account
+        <input type="hidden" id="aiInsightAccountId">
+        <div data-account-picker data-target="aiInsightAccountId"></div>
       </label>
       <label>Focus Goal (optional)
         <textarea id="aiInsightGoal" rows="3" placeholder="Example: Increase reel plays and comments in next 30 days."></textarea>

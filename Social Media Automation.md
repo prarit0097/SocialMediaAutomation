@@ -15,7 +15,7 @@ Primary Git repository: `https://github.com/prarit0097/SocialMediaAutomation`
 - Provide a dedicated Profile page for each logged-in user with Google-synced identity data and editable non-email fields.
 - Provide a dedicated Subscription page with Razorpay checkout for monthly/yearly plan purchase flow.
 - Provide a public Help page with FAQ and a support request form that emails submitted requests to the configured support mailbox.
-- Give every new user a 1-day trial and lock the app after expiry until payment is completed.
+- Give every new user a 3-day trial and lock the app after expiry until payment is completed.
 - Isolate connected accounts, tokens, schedules, planning context, and analytics to the logged-in user who owns them.
 - Schedule Facebook, Instagram, or combined FB + IG posts.
 - Publish due posts automatically through Celery workers.
@@ -79,7 +79,7 @@ What it shows:
 - locked-access warning when a user has expired and needs payment to continue
 
 What it does:
-- new Google-signup users start on `Trial` plan with 1-day app access
+- new Google-signup users start on `Trial` plan with 3-day app access
 - starts checkout by creating Razorpay order via backend `POST /dashboard/subscription/create-order/`
 - opens Razorpay checkout popup from UI (`checkout.js`)
 - verifies payment signature via backend `POST /dashboard/subscription/verify-payment/`
@@ -192,8 +192,8 @@ Supported publishing modes:
 - Both Facebook + Instagram together
 
 What happens:
-- user enters account, platform, content, media, and schedule time
-- scheduler form now auto-resolves and shows `Page Name` from entered `Account ID`; for linked profiles it uses merged format (`FB page + IG profile`) same as Accounts page
+- user selects account, platform, content, media, and schedule time
+- Scheduler, Insights, and AI Insights no longer require typing a raw account ID: each shows a searchable account picker (dropdown) listing connected accounts by page name + thumbnail + FB/IG badge. Selecting a page sets the underlying account id internally and drives page-name/assist autofill; the list comes from the same connected-accounts source as the Accounts page, and stored `profile_picture_url` (populated on Meta connect/sync, backfillable via `manage.py backfill_account_pictures`) supplies the thumbnails.
 - app validates account freshness and rejects stale account rows
 - scheduler list, retry, stale-processing recovery, and publish-health checks only operate on the logged-in user's rows
 - local Instagram image uploads are auto-optimized to a lighter JPG variant for more reliable Meta download
@@ -347,7 +347,10 @@ What it supports:
 Important runtime meaning:
 - AI advice is generated from available snapshot/post data; missing metrics are marked as unavailable
 - operator focus text is treated as untrusted preference input and sanitized/truncated before prompt assembly
-- OpenAI key must be configured in `.env` (`OPENAI_API_KEY`) for AI insights generation
+- AI generation (AI Insights report + AI content planner) is provider-configurable via `.env`:
+  - `AI_PROVIDER=openai` (default) uses `OPENAI_API_KEY` + `OPENAI_MODEL`
+  - `AI_PROVIDER=openrouter` routes the same OpenAI-compatible call through OpenRouter using `OPENROUTER_API_KEY` + `OPENROUTER_MODEL` (e.g. `deepseek/deepseek-chat` and other DeepSeek slugs); base URLs are overridable via `OPENAI_BASE_URL` / `OPENROUTER_BASE_URL`
+  - the AI Insights response reports the actual active model
 
 ## Background Automation
 
@@ -429,7 +432,7 @@ Operational meaning:
 ### User Account Signup Mode
 - `/signup/` is Google-only onboarding UI.
 - Google OAuth callback creates user with unusable password and logs in via Django session.
-- Google OAuth callback also upserts `UserProfile` seed data (first name, last name, profile picture URL) and initializes a 1-day `Trial` subscription.
+- Google OAuth callback also upserts `UserProfile` seed data (first name, last name, profile picture URL) and initializes a 3-day `Trial` subscription.
 - Google OAuth state is bound to the browser session, so a cached state token alone is not enough to complete login
 - Existing users can continue to use login flow; new account creation happens only through Google OAuth.
 - `/login/` shows both classic login form and Google button (`Continue with Google`) when OAuth env is configured.
