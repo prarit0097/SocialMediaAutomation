@@ -24,7 +24,7 @@ from .models import ConnectedAccount, MetaUserToken
 from accounts.pixel import queue_pixel_event
 from core.fields import decrypt_text, encrypt_text
 from .services import upsert_connected_accounts
-from .sync_state import SYNC_CACHE_KEY_TEMPLATE, build_account_sync_state
+from .sync_state import SYNC_CACHE_KEY_TEMPLATE, build_account_sync_state, get_recent_sync_time
 
 logger = logging.getLogger("integrations")
 TOKEN_HEALTH_CACHE_KEY = "meta_token_health_summary_v1"
@@ -322,6 +322,10 @@ def list_accounts(request: HttpRequest) -> JsonResponse:
     )
     last_post_map = _latest_published_post_times([row["id"] for row in account_rows])
     stale_cutoff = timezone.now() - timedelta(hours=24)
+    # Resolve once: recent_sync_time is the same for every account, so computing it inside
+    # the loop was one redundant cache/DB hit per account (N+1) — the bulk of this view's
+    # latency for users with many accounts.
+    recent_sync_time = get_recent_sync_time(user_id)
     rows = []
     for row in account_rows:
         last_post = last_post_map.get(row["id"])
@@ -335,7 +339,7 @@ def list_accounts(request: HttpRequest) -> JsonResponse:
             access_token="",
             updated_at=row["updated_at"],
         )
-        sync_state = build_account_sync_state(account, user_id)
+        sync_state = build_account_sync_state(account, user_id, recent_sync_time=recent_sync_time)
         rows.append(
             {
                 **row,
@@ -379,9 +383,10 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
         return JsonResponse(cached)
 
     accounts = list(ConnectedAccount.objects.filter(is_active=True, user=request.user).order_by("-updated_at"))
+    catalog_ttl = getattr(settings, "META_PAGES_CATALOG_CACHE_TTL", 3600)
     if not accounts:
         payload = {"total_pages": 0, "connected_pages": 0, "rows": []}
-        cache.set(cache_key, payload, timeout=300)
+        cache.set(cache_key, payload, timeout=catalog_ttl)
         return JsonResponse(payload)
 
     seed_account = next((a for a in accounts if a.platform == "facebook"), accounts[0])
@@ -590,5 +595,5 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
         "connected_pages": sum(1 for r in rows if r.get("status") == "connected"),
         "rows": rows,
     }
-    cache.set(cache_key, payload, timeout=300)
+    cache.set(cache_key, payload, timeout=catalog_ttl)
     return JsonResponse(payload)
