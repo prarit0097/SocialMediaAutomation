@@ -57,7 +57,9 @@
   .ov-badge.fb { background:#1877f2 } .ov-badge.ig { background:linear-gradient(45deg,#f09433,#dc2743,#bc1888) }
   .ov-up { color:#15803d; font-weight:700 } .ov-down { color:#b91c1c; font-weight:700 } .ov-flat { color:#9ca3af }
   .ov-health { font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px }
-  .ov-health.ok { background:#dcfce7; color:#15803d } .ov-health.stale { background:#fef3c7; color:#92400e } .ov-health.no_data { background:#f1f1f4; color:#6b7280 }
+  .ov-health.ok { background:#dcfce7; color:#15803d } .ov-health.stale { background:#fef3c7; color:#92400e } .ov-health.no_data { background:#f1f1f4; color:#6b7280 } .ov-health.expired { background:#fee2e2; color:#b91c1c }
+  .ov-acct a { color:inherit; text-decoration:none; font-weight:600 }
+  .ov-acct a:hover, .ov-acct a:focus-visible { text-decoration:underline }
   .ov-pending-flag { color:#b45309; font-weight:700 }
 </style>
 
@@ -141,7 +143,10 @@
       const acct = document.createElement("td");
       const wrap = document.createElement("div"); wrap.className = "ov-acct";
       wrap.appendChild(avatarCell(r));
-      const nm = document.createElement("span"); nm.textContent = cleanName(r); wrap.appendChild(nm);
+      const nm = document.createElement("a");
+      nm.href = "/dashboard/insights/?account_id=" + encodeURIComponent(r.account_id);
+      nm.textContent = cleanName(r);
+      wrap.appendChild(nm);
       acct.appendChild(wrap); tr.appendChild(acct);
 
       const plt = document.createElement("td");
@@ -165,7 +170,8 @@
       const h = document.createElement("td");
       const hb = document.createElement("span");
       hb.className = "ov-health " + (r.health || "no_data");
-      hb.textContent = r.health === "ok" ? "OK" : r.health === "stale" ? "Stale" : "No data";
+      hb.textContent = r.health === "ok" ? "OK" : r.health === "stale" ? "Stale" : r.health === "expired" ? "Reconnect" : "No data";
+      if (r.health === "expired") hb.title = "Meta token expired — reconnect this account";
       h.appendChild(hb); tr.appendChild(h);
 
       body.appendChild(tr);

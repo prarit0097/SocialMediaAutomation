@@ -31,6 +31,7 @@ from publishing.models import ScheduledPost
 from .ai_service import AIInsightsError, active_ai_model, generate_profile_ai_insights
 from .models import BulkInsightRefreshRun, InsightSnapshot
 from .services import (
+    _coerce_numeric_value,
     _first_metric_value,
     _metric_value,
     build_comparison_rows,
@@ -1036,9 +1037,14 @@ def scheduler_assist(request: HttpRequest, account_id: int) -> JsonResponse:
 
 def _overview_followers(insights: list, platform: str):
     if platform == INSTAGRAM:
-        return _first_metric_value(insights, ["followers_count", "follower_count"])
-    value = _first_metric_value(insights, ["followers_count"])
-    return value if value is not None else _first_metric_value(insights, ["fan_count"])
+        value = _first_metric_value(insights, ["followers_count", "follower_count"])
+    else:
+        value = _first_metric_value(insights, ["followers_count"])
+        if value is None:
+            value = _first_metric_value(insights, ["fan_count"])
+    # Always coerce to a number (or None) so JSON, sorting, and follower-change
+    # subtraction can never receive a raw str/dict and 500 the endpoint.
+    return _coerce_numeric_value(value)
 
 
 def _overview_reach(insights: list, platform: str):
@@ -1047,7 +1053,10 @@ def _overview_reach(insights: list, platform: str):
 
 
 def _overview_engagement(insights: list, platform: str):
-    names = ["total_interactions", "accounts_engaged"] if platform == INSTAGRAM else ["page_post_engagements", "page_engaged_users"]
+    # Single canonical "interactions" metric per platform — never fall back across
+    # metric families (interaction events vs unique accounts) which would make the
+    # sortable column mix non-comparable units.
+    names = ["total_interactions"] if platform == INSTAGRAM else ["page_post_engagements"]
     return _metric_value(insights, names, strategy="sum")
 
 
@@ -1099,6 +1108,11 @@ def accounts_overview(request: HttpRequest) -> JsonResponse:
     week_ago = now - timedelta(days=7)
     stale_cutoff = now - timedelta(hours=36)
     rows = []
+    # Snapshots are read per-account (one at a time) on purpose: batch-loading every
+    # account's snapshot payload at once would cut query count but spike memory (full
+    # JSON payloads), which this app is sensitive to after prior OOM incidents. The
+    # per-account loop keeps peak memory at ~2 payloads; the query count is acceptable
+    # for an occasional, indexed portfolio read.
     for account in accounts:
         latest = InsightSnapshot.objects.filter(account=account).order_by("-fetched_at", "-id").first()
         insights = _snapshot_insights(latest)
@@ -1106,8 +1120,11 @@ def accounts_overview(request: HttpRequest) -> JsonResponse:
 
         follower_change = None
         if followers is not None:
+            # exclude(latest) so a lone snapshot older than a week doesn't diff against
+            # itself and report a fake "0" change.
             prior = (
                 InsightSnapshot.objects.filter(account=account, fetched_at__lte=week_ago)
+                .exclude(pk=latest.pk)
                 .order_by("-fetched_at", "-id")
                 .first()
             )
@@ -1116,7 +1133,10 @@ def accounts_overview(request: HttpRequest) -> JsonResponse:
                 follower_change = followers - prior_followers
 
         fetched_at = latest.fetched_at if latest else None
-        if not latest:
+        token_expires_at = account.token_expires_at
+        if token_expires_at is not None and token_expires_at <= now:
+            health = "expired"
+        elif not latest:
             health = "no_data"
         elif fetched_at and fetched_at < stale_cutoff:
             health = "stale"

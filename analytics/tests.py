@@ -74,6 +74,38 @@ class AnalyticsApiTests(TestCase):
         self.assertIn("health", row)
         self.assertIn("pending_count", row)
 
+    def test_accounts_overview_scoped_and_change_and_robust(self):
+        # Another user's account/snapshot must never appear (IDOR scoping).
+        other = get_user_model().objects.create_user(username="other-ov", password="pass12345")
+        other_account = ConnectedAccount.objects.create(
+            user=other, platform=FACEBOOK, page_id="999", page_name="Other", access_token="t",
+        )
+        InsightSnapshot.objects.create(
+            account=other_account, platform=FACEBOOK,
+            payload={"insights": [{"name": "followers_count", "values": [{"value": 50}]}]},
+        )
+
+        # self.account: an 8-day-old prior (1000) + a latest (1200) whose insights list
+        # also contains a non-dict element (must not 500 -> exercises the central guard).
+        prior = InsightSnapshot.objects.create(
+            account=self.account, platform=FACEBOOK,
+            payload={"insights": [{"name": "followers_count", "values": [{"value": 1000}]}]},
+        )
+        InsightSnapshot.objects.filter(id=prior.id).update(fetched_at=timezone.now() - timedelta(days=8))
+        InsightSnapshot.objects.create(
+            account=self.account, platform=FACEBOOK,
+            payload={"insights": ["junk", {"name": "followers_count", "values": [{"value": 1200}]}]},
+        )
+
+        response = self.client.get("/api/insights/overview/")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["total"], 1)  # only the logged-in user's account
+        row = body["accounts"][0]
+        self.assertEqual(row["account_id"], self.account.id)
+        self.assertEqual(row["followers"], 1200)
+        self.assertEqual(row["follower_change_7d"], 200)
+
     @patch("analytics.views.refresh_account_insights_snapshot.apply_async")
     @patch("analytics.views.fetch_and_store_insights")
     def test_fetch_insights_without_snapshot_returns_placeholder_and_queues_background_refresh(

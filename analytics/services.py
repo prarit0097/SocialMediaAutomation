@@ -35,6 +35,8 @@ def _first_metric_value(insights: list[dict], names: list[str]):
     # Respect priority order from `names` (e.g. followers_count before fan_count).
     for target_name in names:
         for metric in insights:
+            if not isinstance(metric, dict):
+                continue
             if metric.get("name") != target_name:
                 continue
             value = _metric_entry_value(metric)
@@ -77,7 +79,7 @@ def _coerce_numeric_value(value):
 def _matching_metric(insights: list[dict], names: list[str]) -> dict | None:
     for target_name in names:
         for metric in insights:
-            if metric.get("name") == target_name:
+            if isinstance(metric, dict) and metric.get("name") == target_name:
                 return metric
     return None
 
