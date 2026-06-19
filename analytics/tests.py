@@ -106,6 +106,66 @@ class AnalyticsApiTests(TestCase):
         self.assertEqual(row["followers"], 1200)
         self.assertEqual(row["follower_change_7d"], 200)
 
+    def test_accounts_overview_metric_sources(self):
+        # FB: engagement from page_post_engagements day-series; reach is always None
+        # (Meta removed the page reach metric) even if a legacy metric is present.
+        InsightSnapshot.objects.create(
+            account=self.account, platform=FACEBOOK,
+            payload={"insights": [
+                {"name": "followers_count", "values": [{"value": 500}]},
+                {"name": "page_post_engagements", "period": "day",
+                 "values": [{"value": 2}, {"value": 1}, {"value": 0}, {"value": 0}, {"value": 0}, {"value": 0}, {"value": 0}]},
+                {"name": "page_impressions_unique", "period": "day", "values": [{"value": 9}]},
+            ]},
+        )
+        # IG: engagement must come from recent posts (NOT the all-time total_interactions),
+        # reach from the day-series, last post from the real platform timestamp.
+        ig = ConnectedAccount.objects.create(
+            user=self.user, platform=INSTAGRAM, page_id="ig1", page_name="ig (IG)",
+            ig_user_id="ig1", access_token="t",
+        )
+        recent = (timezone.now() - timedelta(days=2)).isoformat()
+        old = (timezone.now() - timedelta(days=30)).isoformat()
+        InsightSnapshot.objects.create(
+            account=ig, platform=INSTAGRAM,
+            payload={
+                "insights": [
+                    {"name": "followers_count", "values": [{"value": 800}]},
+                    {"name": "reach", "period": "day",
+                     "values": [{"value": 10}, {"value": 5}, {"value": 0}, {"value": 0}, {"value": 0}, {"value": 0}, {"value": 0}]},
+                    {"name": "total_interactions", "period": "day", "total_value": {"value": 999999}},
+                ],
+                "published_posts": [
+                    {"published_at": recent, "total_likes": 10, "total_comments": 5, "total_shares": 2, "total_saves": 1},
+                    {"published_at": old, "total_likes": 100, "total_comments": 50},
+                ],
+            },
+        )
+        body = self.client.get("/api/insights/overview/").json()
+        rows = {r["page_name"]: r for r in body["accounts"]}
+        fb = rows["Page"]
+        self.assertEqual(fb["engagement_7d"], 3)       # 2+1 from day-series
+        self.assertIsNone(fb["reach_7d"])              # FB page reach unavailable
+        igr = rows["ig (IG)"]
+        self.assertEqual(igr["reach_7d"], 15)          # 10+5
+        self.assertEqual(igr["engagement_7d"], 18)     # recent post 10+5+2+1; old + 999999 ignored
+        self.assertTrue(igr["last_post_at"].startswith(recent[:10]))  # real platform last post
+
+    def test_accounts_overview_delta_guard_for_sparse_snapshots(self):
+        # A prior snapshot far older than a week must not be reported as a "7D" change.
+        old_prior = InsightSnapshot.objects.create(
+            account=self.account, platform=FACEBOOK,
+            payload={"insights": [{"name": "followers_count", "values": [{"value": 1000}]}]},
+        )
+        InsightSnapshot.objects.filter(id=old_prior.id).update(fetched_at=timezone.now() - timedelta(days=40))
+        InsightSnapshot.objects.create(
+            account=self.account, platform=FACEBOOK,
+            payload={"insights": [{"name": "followers_count", "values": [{"value": 1500}]}]},
+        )
+        row = self.client.get("/api/insights/overview/").json()["accounts"][0]
+        self.assertEqual(row["followers"], 1500)
+        self.assertIsNone(row["follower_change_7d"])  # prior is 40d old -> not a 7D delta
+
     @patch("analytics.views.refresh_account_insights_snapshot.apply_async")
     @patch("analytics.views.fetch_and_store_insights")
     def test_fetch_insights_without_snapshot_returns_placeholder_and_queues_background_refresh(
