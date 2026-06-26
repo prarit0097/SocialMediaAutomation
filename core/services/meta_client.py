@@ -140,6 +140,24 @@ class MetaClient:
             },
         )
 
+    def exchange_user_token_for_long_lived(self, short_lived_token: str) -> dict:
+        """Exchange a short-lived user token (~1h) for a long-lived one (~60d).
+
+        Page access tokens derived from a long-lived user token are themselves
+        long-lived, which is required for scheduled publishing that runs hours or
+        days after connect. Returns the raw response: {access_token, token_type,
+        expires_in?}.
+        """
+        return self._get(
+            "/oauth/access_token",
+            {
+                "grant_type": "fb_exchange_token",
+                "client_id": settings.META_APP_ID,
+                "client_secret": settings.META_APP_SECRET,
+                "fb_exchange_token": short_lived_token,
+            },
+        )
+
     def get_managed_pages(self, user_access_token: str) -> list[dict]:
         pages: list[dict] = []
         params = {

@@ -223,15 +223,25 @@ def meta_callback(request: HttpRequest) -> HttpResponse:
 
     client = MetaClient()
     token_data = client.exchange_code_for_token(code, redirect_uri=redirect_uri)
-    pages = client.get_managed_pages(token_data["access_token"])
+    # Exchange the short-lived (~1h) user token for a long-lived (~60d) one. Page access
+    # tokens derived from a short-lived user token also expire in ~1h, which silently
+    # breaks scheduled publishing run later; long-lived page tokens do not. Fall back to
+    # the short-lived token if the exchange call fails.
+    user_access_token = token_data.get("access_token")
+    try:
+        long_lived = client.exchange_user_token_for_long_lived(user_access_token)
+        if long_lived.get("access_token"):
+            user_access_token = long_lived["access_token"]
+    except Exception as exc:  # noqa: BLE001 - best-effort upgrade; fall back to short-lived
+        logger.warning("long-lived token exchange failed user_id=%s error=%s", request.user.id, exc)
+
+    pages = client.get_managed_pages(user_access_token)
     upsert_connected_accounts(pages, request.user)
 
     # Re-activate any previously-connected IG accounts that are linked
     # from a now-active FB account. /me/accounts only returns directly
     # linked IG pages, but the user may have many more that were synced
-    # via catalog discovery. We must re-activate them BEFORE calling
-    # _deactivate_disconnected_accounts, which deactivates based on
-    # the narrow /me/accounts list.
+    # via catalog discovery. We must re-activate them BEFORE any deactivation pass.
     active_fb_accounts = ConnectedAccount.objects.filter(
         user=request.user, platform=FACEBOOK, is_active=True
     ).exclude(ig_user_id__isnull=True).exclude(ig_user_id="")
@@ -242,9 +252,9 @@ def meta_callback(request: HttpRequest) -> HttpResponse:
             page_id=fb_account.ig_user_id,
         ).update(is_active=True, access_token=fb_account.access_token)
 
-    _deactivate_disconnected_accounts(request.user, pages)
-    cache.delete(f"{TOKEN_HEALTH_CACHE_KEY}:{request.user.id}")
-
+    # Figure out whether /me/accounts returned the COMPLETE set of granted pages
+    # (token target_ids) BEFORE deactivating anything. A partial/flaky Meta response
+    # must not disconnect live pages.
     target_ids_count = None
     sync_warning = None
     if pages:
@@ -254,16 +264,27 @@ def meta_callback(request: HttpRequest) -> HttpResponse:
             for scope_item in (debug_data.get("granular_scopes") or []):
                 for target_id in (scope_item.get("target_ids") or []):
                     target_ids.add(str(target_id))
-            target_ids_count = len(target_ids)
-            if target_ids_count and len(pages) < target_ids_count:
-                sync_warning = (
-                    "Meta returned fewer pages than token target_ids. Reconnect and allow access to all pages."
-                )
+            target_ids_count = len(target_ids) or None
         except MetaAPIError:
             target_ids_count = None
 
+    response_is_complete = target_ids_count is None or len(pages) >= target_ids_count
+    if response_is_complete:
+        _deactivate_disconnected_accounts(request.user, pages)
+    else:
+        sync_warning = (
+            "Meta returned fewer pages than your token grants, so account removal was "
+            "skipped this time to avoid disconnecting live pages. Reconnect and allow "
+            "access to all pages to fully resync."
+        )
+        logger.warning(
+            "partial /me/accounts response user_id=%s pages=%s target_ids=%s — deactivation skipped",
+            request.user.id, len(pages), target_ids_count,
+        )
+    cache.delete(f"{TOKEN_HEALTH_CACHE_KEY}:{request.user.id}")
+
     if user_id:
-        _persist_user_access_token(user_id, token_data["access_token"])
+        _persist_user_access_token(user_id, user_access_token)
         cache.set(
             SYNC_CACHE_KEY_TEMPLATE.format(user_id=user_id),
             {
@@ -281,7 +302,7 @@ def meta_callback(request: HttpRequest) -> HttpResponse:
         cache.delete(f"meta_pages_catalog:{user_id}")
         cache.delete(f"accounts_list_v1:{user_id}")
 
-    request.session[META_USER_SESSION_TOKEN_KEY] = token_data["access_token"]
+    request.session[META_USER_SESSION_TOKEN_KEY] = user_access_token
     request.session.modified = True
 
     logger.info("Meta accounts connected. total_pages=%s", len(pages))
