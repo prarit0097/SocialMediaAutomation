@@ -14,11 +14,24 @@ def _parse_rate(rate: str) -> tuple[int, int]:
 
 
 def client_ip(request) -> str:
-    """Best-effort client IP. Trusts X-Forwarded-For only behind a trusted proxy."""
+    """Best-effort client IP. Trusts X-Forwarded-For only behind a trusted proxy.
+
+    Takes the entry just left of the trusted proxy hops (the client IP as the
+    outermost trusted proxy saw it), NOT the leftmost entry — the leftmost is
+    fully attacker-spoofable (a client can prepend any value), which would let an
+    attacker forge IPs to evade rate limits or frame another address.
+    TRUSTED_PROXY_HOPS defaults to 2 (host nginx + container nginx on the VPS).
+    """
     if getattr(settings, "TRUST_REVERSE_PROXY", False):
         forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
         if forwarded:
-            return forwarded.split(",")[0].strip()
+            parts = [p.strip() for p in forwarded.split(",") if p.strip()]
+            if parts:
+                hops = int(getattr(settings, "TRUSTED_PROXY_HOPS", 2) or 0)
+                idx = len(parts) - 1 - hops
+                if idx < 0:
+                    idx = 0
+                return parts[idx]
     return request.META.get("REMOTE_ADDR") or "unknown"
 
 

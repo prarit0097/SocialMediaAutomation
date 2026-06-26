@@ -1014,8 +1014,10 @@ class MetaClientTests(TestCase):
         insights = MetaClient().fetch_facebook_insights("page-1", "token")
 
         names = [metric["name"] for metric in insights]
-        self.assertIn("page_impressions_unique", names)
-        self.assertIn("page_posts_impressions", names)
+        # Removed by Meta — must NOT be requested anymore (they aborted/ wasted the fetch).
+        self.assertNotIn("page_impressions_unique", names)
+        self.assertNotIn("page_posts_impressions", names)
+        # Still-valid metrics.
         self.assertIn("page_post_engagements", names)
         self.assertIn("page_actions_post_reactions_like_total", names)
         self.assertIn("page_views_total", names)

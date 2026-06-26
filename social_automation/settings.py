@@ -374,11 +374,25 @@ SECURE_REFERRER_POLICY = env("SECURE_REFERRER_POLICY")
 SECURE_CROSS_ORIGIN_OPENER_POLICY = env("SECURE_CROSS_ORIGIN_OPENER_POLICY")
 SECURE_CROSS_ORIGIN_RESOURCE_POLICY = env("SECURE_CROSS_ORIGIN_RESOURCE_POLICY")
 TRUST_REVERSE_PROXY = env("TRUST_REVERSE_PROXY")
+# Number of trusted reverse-proxy hops that append to X-Forwarded-For (VPS = host
+# nginx + container nginx = 2). Used by core.throttle.client_ip to pick the real,
+# spoof-resistant client IP.
+TRUSTED_PROXY_HOPS = env.int("TRUSTED_PROXY_HOPS", default=2)
 if TRUST_REVERSE_PROXY:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     USE_X_FORWARDED_HOST = True
 else:
     USE_X_FORWARDED_HOST = False
+
+# SECURE_SSL_REDIRECT behind a TLS-terminating proxy needs SECURE_PROXY_SSL_HEADER
+# (set only when TRUST_REVERSE_PROXY=True). Without it request.is_secure() is always
+# False and SecurityMiddleware redirects every request -> infinite HTTPS loop that
+# takes the whole site down. Fail fast at boot instead.
+if not DEBUG and SECURE_SSL_REDIRECT and not TRUST_REVERSE_PROXY:
+    raise ImproperlyConfigured(
+        "SECURE_SSL_REDIRECT=True requires TRUST_REVERSE_PROXY=True behind a TLS-terminating "
+        "reverse proxy; otherwise Django cannot detect HTTPS and will redirect-loop."
+    )
 
 if not DEBUG and (not SESSION_COOKIE_SECURE or not CSRF_COOKIE_SECURE):
     raise ImproperlyConfigured("SESSION_COOKIE_SECURE and CSRF_COOKIE_SECURE must be enabled in production.")
