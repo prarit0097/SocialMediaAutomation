@@ -146,21 +146,36 @@ def _recover_stale_processing() -> int:
     """
     stale_minutes = max(12, int(getattr(settings, "CELERY_TASK_TIME_LIMIT", 480)) // 60 + 2)
     cutoff = timezone.now() - timedelta(minutes=stale_minutes)
-    stale_ids = list(
+    stale = list(
         ScheduledPost.objects.filter(
             status=POST_STATUS_PROCESSING,
             updated_at__lt=cutoff,
-        ).values_list("id", flat=True)[:20]
+        ).only("id", "external_post_id")[:20]
     )
-    if stale_ids:
-        ScheduledPost.objects.filter(id__in=stale_ids).update(
+    if not stale:
+        return 0
+    # Rows that already carry an external id were actually published to Meta (the
+    # status write was lost); FINALIZE them — re-queuing would publish the same
+    # content again. Only genuinely-unpublished rows are re-queued.
+    published_ids = [p.id for p in stale if (p.external_post_id or "").strip()]
+    requeue_ids = [p.id for p in stale if not (p.external_post_id or "").strip()]
+    if published_ids:
+        ScheduledPost.objects.filter(id__in=published_ids).update(
+            status=POST_STATUS_PUBLISHED, error_message="", updated_at=timezone.now(),
+        )
+        ScheduledPost.objects.filter(id__in=published_ids, published_at__isnull=True).update(
+            published_at=timezone.now(),
+        )
+        logger.warning("stale-processing finalize (already published) count=%s ids=%s", len(published_ids), published_ids)
+    if requeue_ids:
+        ScheduledPost.objects.filter(id__in=requeue_ids).update(
             status=POST_STATUS_PENDING,
             error_message="Recovered from stale processing state; auto re-queued.",
             scheduled_for=timezone.now() + timedelta(seconds=30),
             updated_at=timezone.now(),
         )
-        logger.warning("auto-recovered stale processing posts count=%s ids=%s", len(stale_ids), stale_ids)
-    return len(stale_ids)
+        logger.warning("auto-recovered stale processing posts count=%s ids=%s", len(requeue_ids), requeue_ids)
+    return len(stale)
 
 
 @shared_task(name="publishing.tasks.process_due_posts")
@@ -240,6 +255,20 @@ def publish_post_task(self, post_id: int):
             return {"status": "already_failed", "post_id": post.id}
         if post.status not in {POST_STATUS_PENDING, POST_STATUS_PROCESSING}:
             return {"status": "skipped_state", "post_id": post.id, "state": post.status}
+
+        # If a prior attempt already published to Meta (external id persisted) but the
+        # worker died before writing the final status, finalize the row instead of
+        # publishing the same content twice. external_post_id is saved the instant Meta
+        # confirms the publish (publish_scheduled_post -> _persist_external_id).
+        if (post.external_post_id or "").strip():
+            post.status = POST_STATUS_PUBLISHED
+            if not post.published_at:
+                post.published_at = timezone.now()
+            post.error_message = ""
+            post.save(update_fields=["status", "published_at", "error_message", "updated_at"])
+            _clear_publish_attempts(post.id)
+            logger.warning("publish entry-guard: post id=%s already has external id %s — finalized, not re-published", post.id, post.external_post_id)
+            return {"status": "already_published", "post_id": post.id}
 
         # Subscription enforcement: a lapsed owner's queued posts must not keep
         # publishing to Meta. Pause (don't fail) and re-check after a hold window so
@@ -395,6 +424,17 @@ def publish_post_task(self, post_id: int):
                 f"Temporary Meta delay. Auto-retry in {countdown}s. "
                 f"Last Meta response: {exc}"
             )
+        # Honor Meta's authoritative cooldown: estimated_time_to_regain_access is cached
+        # by MetaClient as meta_buc_regain_minutes. On a rate-limit, never retry sooner
+        # than that — re-firing into an active block only extends it (the #4/#17/#32
+        # over-throttle class of incident this app already hit at 142%).
+        if is_rate_limit_error or is_poll_rate_limit:
+            try:
+                regain_min = cache.get("meta_buc_regain_minutes")
+                if regain_min:
+                    countdown = max(countdown, int(float(regain_min) * 60) + random.randint(0, 15))
+            except (TypeError, ValueError):
+                pass
         post.status = POST_STATUS_PENDING
         post.scheduled_for = now + timedelta(seconds=countdown)
         post.error_message = user_message
