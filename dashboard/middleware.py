@@ -32,7 +32,12 @@ class SubscriptionAccessMiddleware:
 
         request.subscription_profile = profile
 
-        if profile.subscription_status == UserProfile.SUBSCRIPTION_STATUS_ACTIVE:
+        # Recompute status from today's date on EVERY request (cheap, no DB) rather than
+        # trusting the cached subscription_status. Otherwise a trial/plan that lapses by
+        # date passage keeps full paid access for up to the cache TTL (5 min).
+        _, current_status, _ = profile._normalized_subscription_state()
+
+        if current_status == UserProfile.SUBSCRIPTION_STATUS_ACTIVE:
             return self.get_response(request)
 
         allowed_paths = {

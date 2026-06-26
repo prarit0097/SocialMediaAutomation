@@ -83,7 +83,13 @@ def _optimize_local_image_for_instagram(media_url: str) -> str:
     try:
         with Image.open(io.BytesIO(source_bytes)) as image:
             if getattr(image, "is_animated", False):
-                return media_url
+                # Instagram cannot publish an animated GIF as an image post. Returning
+                # the raw .gif guaranteed a downstream publish failure + wasted retries;
+                # fail fast with a clear, terminal message instead.
+                raise MetaPermanentError(
+                    "Animated GIFs are not supported by Instagram. Convert it to a video "
+                    "(MP4) or a static image before scheduling."
+                )
 
             modified = False
             image = ImageOps.exif_transpose(image)

@@ -458,6 +458,20 @@ class PublishingTaskTests(TestCase):
         self.assertEqual(self.post.status, POST_STATUS_PUBLISHED)
         self.assertEqual(self.post.external_post_id, "meta-post-id")
 
+    @patch("publishing.tasks.publish_scheduled_post")
+    def test_publish_post_task_does_not_republish_when_external_id_present(self, mock_publish):
+        # Worker died after Meta confirmed the publish (external id persisted) but before
+        # the status write. The retry must FINALIZE the row, not publish again.
+        self.post.external_post_id = "already-on-meta"
+        self.post.status = POST_STATUS_PENDING
+        self.post.save(update_fields=["external_post_id", "status"])
+        result = publish_post_task(self.post.id)
+        self.assertEqual(result.get("status"), "already_published")
+        mock_publish.assert_not_called()  # no second publish to Meta
+        self.post.refresh_from_db()
+        self.assertEqual(self.post.status, POST_STATUS_PUBLISHED)
+        self.assertIsNotNone(self.post.published_at)
+
     def test_publish_post_task_skips_when_lock_exists(self):
         cache.set(f"publish_task_lock:{self.post.id}", "busy", timeout=30)
         result = publish_post_task(self.post.id)

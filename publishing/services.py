@@ -19,6 +19,17 @@ from publishing.media_utils import (
 logger = logging.getLogger("publishing")
 
 
+def _persist_external_id(post, external_id):
+    """Persist the Meta post id the instant Meta confirms a publish, BEFORE the task
+    writes the final PUBLISHED status. If the worker dies in that gap, the row still
+    carries external_post_id so the publish task's entry guard finalizes it instead of
+    publishing the same content to Meta twice."""
+    if external_id and post.external_post_id != external_id:
+        post.external_post_id = external_id
+        post.save(update_fields=["external_post_id", "updated_at"])
+    return external_id
+
+
 def _check_meta_usage_and_throttle() -> None:
     """Publishing tasks call this to check cached Meta usage and self-throttle.
 
@@ -129,7 +140,7 @@ def publish_scheduled_post(post):
                     source_filename=source_filename,
                 )
                 logger.info("facebook video publish response post id=%s response=%s", post.id, result)
-                return result.get("post_id") or result.get("id")
+                return _persist_external_id(post, result.get("post_id") or result.get("id"))
 
             if ext and ext not in IMAGE_EXTENSIONS:
                 raise MetaPermanentError(f"Unsupported Facebook media type: {ext}")
@@ -149,7 +160,7 @@ def publish_scheduled_post(post):
                 source_filename=source_filename,
             )
             logger.info("facebook photo publish response post id=%s response=%s", post.id, result)
-            return result.get("post_id") or result.get("id")
+            return _persist_external_id(post, result.get("post_id") or result.get("id"))
 
         logger.info("publishing facebook text post id=%s page_id=%s", post.id, account.page_id)
         result = client.publish_facebook_post(
@@ -158,7 +169,7 @@ def publish_scheduled_post(post):
             message=(post.message or "").strip(),
         )
         logger.info("facebook text publish response post id=%s response=%s", post.id, result)
-        return result.get("id")
+        return _persist_external_id(post, result.get("id"))
 
     if not (post.media_url or "").strip():
         raise MetaPermanentError(
@@ -270,4 +281,4 @@ def publish_scheduled_post(post):
     )
     # Clean up — container is published, no need to cache it.
     cache.delete(creation_cache_key)
-    return publish_result.get("id")
+    return _persist_external_id(post, publish_result.get("id"))

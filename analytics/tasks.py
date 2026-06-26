@@ -135,11 +135,14 @@ def queue_daily_heavy_insight_refresh(force: bool = False):
         total += len(batch_ids)
 
         if not force:
-            # Pre-filter accounts that already have today's snapshot in bulk.
+            # Pre-filter accounts that already have today's DAILY-HEAVY snapshot.
+            # Scope to collection_mode so a user's manual/force refresh earlier today
+            # (a non-daily_heavy snapshot) does not make the daily job skip them.
             already_done = set(
                 InsightSnapshot.objects.filter(
                     account_id__in=batch_ids,
                     fetched_at__date=timezone.localdate(),
+                    payload__metadata__collection_mode=DAILY_HEAVY_COLLECTION_MODE,
                 ).values_list("account_id", flat=True).distinct()
             )
         else:

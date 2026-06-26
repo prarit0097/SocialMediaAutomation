@@ -16,21 +16,47 @@ logger = logging.getLogger("meta_client")
 TRANSIENT_GRAPH_ERROR_CODES = {2, 4, 17, 32, 613}
 TRANSIENT_GRAPH_ERROR_SUBCODES = {2207003, 2207027, 2207051}
 MAX_PAGING_REQUESTS = 100
+# Meta's default Instagram content-publishing limit (posts / rolling 24h).
+IG_DEFAULT_PUBLISH_QUOTA = 50
+
+# Wording Meta uses when a requested insights metric is invalid/removed for the
+# node or API version. Any of these means "skip this metric", not "fail the whole
+# fetch" — Meta deprecates page/IG metrics frequently (e.g. page_impressions_unique).
+_INVALID_METRIC_MARKERS = (
+    "valid insights metric",
+    "not available",
+    "must be one of the following values",
+    "does not support the metric",
+    "nonexisting field",
+    "no longer supported",
+)
+
+
+def _is_invalid_metric_error(message: str) -> bool:
+    msg = (message or "").lower()
+    return any(marker in msg for marker in _INVALID_METRIC_MARKERS)
 
 
 def meta_app_usage_peak() -> float | None:
-    """Return the most recent cached Meta X-App-Usage peak percentage, or None.
+    """Return the highest recent cached Meta usage percentage across ALL throttle
+    dimensions (X-App-Usage, X-Business-Use-Case-Usage, X-Page-Usage), or None.
 
+    Meta can throttle on the per-business or per-page dimension even when the app
+    dimension is low, so the shared rate-limit signal must consider all three.
     Populated by MetaClient._check_usage_headers on every Graph response.
-    Used as a lightweight, shared app-level rate-limit signal.
     """
     from django.core.cache import cache as _cache
 
-    peak = _cache.get("meta_usage:X-App-Usage")
-    try:
-        return float(peak) if peak is not None else None
-    except (TypeError, ValueError):
-        return None
+    peaks = []
+    for header in ("X-App-Usage", "X-Business-Use-Case-Usage", "X-Page-Usage"):
+        value = _cache.get(f"meta_usage:{header}")
+        if value is None:
+            continue
+        try:
+            peaks.append(float(value))
+        except (TypeError, ValueError):
+            continue
+    return max(peaks) if peaks else None
 
 
 def meta_app_over_budget(stop_pct: int | None = None) -> bool:
@@ -118,6 +144,24 @@ class MetaClient:
                 "client_secret": settings.META_APP_SECRET,
                 "redirect_uri": target_redirect_uri,
                 "code": code,
+            },
+        )
+
+    def exchange_user_token_for_long_lived(self, short_lived_token: str) -> dict:
+        """Exchange a short-lived user token (~1h) for a long-lived one (~60d).
+
+        Page access tokens derived from a long-lived user token are themselves
+        long-lived, which is required for scheduled publishing that runs hours or
+        days after connect. Returns the raw response: {access_token, token_type,
+        expires_in?}.
+        """
+        return self._get(
+            "/oauth/access_token",
+            {
+                "grant_type": "fb_exchange_token",
+                "client_id": settings.META_APP_ID,
+                "client_secret": settings.META_APP_SECRET,
+                "fb_exchange_token": short_lived_token,
             },
         )
 
@@ -402,10 +446,12 @@ class MetaClient:
             # Some older accounts / permission sets don't expose this endpoint.
             # Treat as "unknown" — don't block publishing, let the actual
             # publish call fail if over quota.
-            return {"quota_usage": 0, "quota_total": 25, "quota_remaining": 25}
+            return {"quota_usage": 0, "quota_total": IG_DEFAULT_PUBLISH_QUOTA, "quota_remaining": IG_DEFAULT_PUBLISH_QUOTA}
 
         config = data.get("config") or {}
-        quota_total = int(config.get("quota_total", 25))
+        # Meta's default IG content publishing limit is 50 posts / rolling 24h
+        # (was 25 on older docs). Defaulting to 25 caused false "quota reached".
+        quota_total = int(config.get("quota_total", IG_DEFAULT_PUBLISH_QUOTA))
         quota_usage = int(data.get("quota_usage", 0))
         return {
             "quota_usage": quota_usage,
@@ -480,9 +526,11 @@ class MetaClient:
         raise MetaTransientError("Instagram media processing did not finish in time. Retry will try again.")
 
     def fetch_facebook_insights(self, page_id: str, page_access_token: str) -> list[dict]:
+        # page_impressions_unique and page_posts_impressions were removed by Meta
+        # (page reach/impressions deprecation); requesting them wasted a Graph call
+        # and — when Meta returns a hard error instead of empty data — could abort the
+        # whole FB fetch. page_follows/page_post_engagements/page_views_total still work.
         metrics = [
-            "page_impressions_unique",
-            "page_posts_impressions",
             "page_post_engagements",
             "page_actions_post_reactions_like_total",
             "page_views_total",
@@ -504,8 +552,7 @@ class MetaClient:
                 )
                 insights.extend(data.get("data", []))
             except MetaPermanentError as exc:
-                message = str(exc).lower()
-                if "valid insights metric" in message or "not available" in message:
+                if _is_invalid_metric_error(str(exc)):
                     continue
                 raise
 
@@ -536,11 +583,11 @@ class MetaClient:
 
     def fetch_instagram_insights(self, ig_user_id: str, page_access_token: str) -> list[dict]:
         # Query metrics one-by-one so unsupported metrics do not fail the whole response.
+        # profile_views and website_clicks were removed for IG on Graph v21+ and hard-error
+        # on v22, which (depending on wording) could abort the fetch. Dropped.
         metrics = [
             "reach",
             "follower_count",
-            "profile_views",
-            "website_clicks",
             "accounts_engaged",
             "total_interactions",
             "likes",
@@ -551,8 +598,6 @@ class MetaClient:
         ]
         insights: list[dict] = []
         total_value_metrics = {
-            "profile_views",
-            "website_clicks",
             "accounts_engaged",
             "total_interactions",
             "likes",
@@ -562,8 +607,6 @@ class MetaClient:
             "views",
         }
         lifetime_metrics = {
-            "profile_views",
-            "website_clicks",
             "accounts_engaged",
             "total_interactions",
             "likes",
@@ -599,11 +642,7 @@ class MetaClient:
                     break
                 except MetaPermanentError as exc:
                     last_message = str(exc).lower()
-                    if (
-                        "must be one of the following values" in last_message
-                        or "not available for this" in last_message
-                        or "metric_type=total_value" in last_message
-                    ):
+                    if _is_invalid_metric_error(last_message) or "metric_type=total_value" in last_message:
                         continue
                     raise
             if last_message:
