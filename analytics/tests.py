@@ -904,11 +904,20 @@ class AnalyticsApiTests(TestCase):
                     "total_comments": 4,
                     "total_shares": 5,
                 },
+                {
+                    "platform": "instagram",
+                    "published_at": (timezone.now() - timedelta(days=2)).isoformat(),
+                    "total_likes": 30,
+                    "total_comments": 2,
+                    "total_shares": 4,
+                    "total_saves": 6,
+                },
             ],
         )
 
         indexed = {row["metric"]: row for row in rows}
-        self.assertEqual(indexed["Total Reach"]["facebook"], 300)
+        # FB reach/views metrics were removed by Meta -> N/A (not a stale/zero number).
+        self.assertEqual(indexed["Total Reach"]["facebook"], "N/A")
         self.assertEqual(indexed["Total Reach"]["instagram"], 15)
         self.assertEqual(indexed["Total Profile Views"]["facebook"], 20)
         self.assertEqual(indexed["Total Accounts Engaged"]["facebook"], "N/A")
@@ -916,11 +925,19 @@ class AnalyticsApiTests(TestCase):
         self.assertEqual(indexed["Total Likes"]["facebook"], 18)
         self.assertEqual(indexed["Total Comments"]["facebook"], 4)
         self.assertEqual(indexed["Total Shares"]["facebook"], 5)
-        self.assertEqual(indexed["Total Views"]["facebook"], 700)
+        self.assertEqual(indexed["Total Views"]["facebook"], "N/A")
         self.assertEqual(indexed["Total Saves"]["facebook"], "N/A")
         self.assertEqual(indexed["Total Followers Count"]["facebook"], 2000)
         self.assertEqual(indexed["Total Follows Count"]["facebook"], 146000)
         self.assertEqual(indexed["Total Media Count"]["instagram"], 1106)
+        # IG engagement now comes from posts in the 7-day window (NOT Meta's all-time
+        # total_value), so it is a genuine 7-day figure comparable to FB.
+        self.assertEqual(indexed["Total Likes"]["instagram"], 30)
+        self.assertEqual(indexed["Total Comments"]["instagram"], 2)
+        self.assertEqual(indexed["Total Shares"]["instagram"], 4)
+        self.assertEqual(indexed["Total Saves"]["instagram"], 6)
+        self.assertEqual(indexed["Total Interactions"]["instagram"], 42)  # 30+2+4+6
+        self.assertEqual(indexed["Total Views"]["instagram"], "N/A")
 
     def test_aggregate_recent_post_metric_parses_utc_offset_without_colon(self):
         now = timezone.now()

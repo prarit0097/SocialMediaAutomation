@@ -35,6 +35,27 @@ def client_ip(request) -> str:
     return request.META.get("REMOTE_ADDR") or "unknown"
 
 
+def _atomic_hit(key: str, period: int):
+    """Atomically count one hit under *key* and return the new count.
+
+    cache.add creates the counter with its window TTL only if absent; cache.incr is
+    atomic on Redis, closing the get-then-set race where a burst slips past the limit.
+    Returns None on cache error so callers can fail OPEN (never block real users).
+    """
+    try:
+        cache.add(key, 0, timeout=period)
+        return cache.incr(key)
+    except ValueError:
+        # Key expired between add and incr — recreate the window.
+        try:
+            cache.add(key, 1, timeout=period)
+            return 1
+        except Exception:  # noqa: BLE001
+            return None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def is_ip_rate_limited(request, scope: str, rate: str) -> bool:
     """Anonymous-safe per-IP limiter. Returns True when OVER the limit.
 
@@ -42,14 +63,8 @@ def is_ip_rate_limited(request, scope: str, rate: str) -> bool:
     """
     count, period = _parse_rate(rate)
     key = f"ratelimit:{scope}:{client_ip(request)}"
-    try:
-        hits = cache.get(key, 0)
-        if hits >= count:
-            return True
-        cache.set(key, hits + 1, timeout=period)
-    except Exception:  # noqa: BLE001 - never block real users on cache failure
-        return False
-    return False
+    hits = _atomic_hit(key, period)
+    return hits is not None and hits > count
 
 
 def _login_fail_key(request) -> str:
@@ -66,12 +81,7 @@ def is_login_locked(request) -> bool:
 
 def note_login_failure(request) -> None:
     window = int(getattr(settings, "LOGIN_FAILURE_WINDOW_SECONDS", 900) or 900)
-    key = _login_fail_key(request)
-    try:
-        hits = int(cache.get(key, 0)) + 1
-        cache.set(key, hits, timeout=window)
-    except Exception:  # noqa: BLE001
-        pass
+    _atomic_hit(_login_fail_key(request), window)
 
 
 def reset_login_failures(request) -> None:
@@ -100,13 +110,12 @@ def throttle_per_user(rate: str, scope: str = ""):
                 return view_func(request, *args, **kwargs)
             user_id = request.user.pk
             key = f"throttle:{scope or view_func.__name__}:{user_id}"
-            hits = cache.get(key, 0)
-            if hits >= count:
+            hits = _atomic_hit(key, period)
+            if hits is not None and hits > count:
                 return JsonResponse(
                     {"error": "Too many requests. Please wait a moment and try again."},
                     status=429,
                 )
-            cache.set(key, hits + 1, timeout=period)
             return view_func(request, *args, **kwargs)
         return wrapper
     return decorator

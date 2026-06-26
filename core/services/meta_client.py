@@ -38,18 +38,25 @@ def _is_invalid_metric_error(message: str) -> bool:
 
 
 def meta_app_usage_peak() -> float | None:
-    """Return the most recent cached Meta X-App-Usage peak percentage, or None.
+    """Return the highest recent cached Meta usage percentage across ALL throttle
+    dimensions (X-App-Usage, X-Business-Use-Case-Usage, X-Page-Usage), or None.
 
+    Meta can throttle on the per-business or per-page dimension even when the app
+    dimension is low, so the shared rate-limit signal must consider all three.
     Populated by MetaClient._check_usage_headers on every Graph response.
-    Used as a lightweight, shared app-level rate-limit signal.
     """
     from django.core.cache import cache as _cache
 
-    peak = _cache.get("meta_usage:X-App-Usage")
-    try:
-        return float(peak) if peak is not None else None
-    except (TypeError, ValueError):
-        return None
+    peaks = []
+    for header in ("X-App-Usage", "X-Business-Use-Case-Usage", "X-Page-Usage"):
+        value = _cache.get(f"meta_usage:{header}")
+        if value is None:
+            continue
+        try:
+            peaks.append(float(value))
+        except (TypeError, ValueError):
+            continue
+    return max(peaks) if peaks else None
 
 
 def meta_app_over_budget(stop_pct: int | None = None) -> bool:

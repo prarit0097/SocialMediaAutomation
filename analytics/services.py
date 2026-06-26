@@ -245,20 +245,31 @@ def build_comparison_rows(accounts: list[dict], published_posts: list[dict]) -> 
     fb_recent_likes = _aggregate_recent_post_metric(published_posts, "facebook", "total_likes")
     fb_recent_comments = _aggregate_recent_post_metric(published_posts, "facebook", "total_comments")
     fb_recent_shares = _aggregate_recent_post_metric(published_posts, "facebook", "total_shares")
+    # Instagram total_value metrics (total_interactions/likes/comments/shares/saves) are
+    # ALL-TIME figures from Meta — showing them under "Last 7 days" massively inflated IG
+    # vs FB. Derive a genuine 7-day figure from posts in the window instead (same source
+    # the Overview uses). accounts_engaged / IG views have no per-post equivalent, so they
+    # are reported as None rather than a mislabeled all-time number.
+    ig_recent_likes = _aggregate_recent_post_metric(published_posts, "instagram", "total_likes")
+    ig_recent_comments = _aggregate_recent_post_metric(published_posts, "instagram", "total_comments")
+    ig_recent_shares = _aggregate_recent_post_metric(published_posts, "instagram", "total_shares")
+    ig_recent_saves = _aggregate_recent_post_metric(published_posts, "instagram", "total_saves")
+    _ig_interaction_parts = [v for v in (ig_recent_likes, ig_recent_comments, ig_recent_shares, ig_recent_saves) if v]
+    ig_recent_interactions = sum(_ig_interaction_parts) if _ig_interaction_parts else None
 
     rows = [
         {"metric": "Total Followers", "facebook": fb_summary.get("total_followers"), "instagram": ig_summary.get("total_followers"), "window": "Current", "group": "profile"},
         {"metric": "Total Following", "facebook": fb_summary.get("total_following"), "instagram": ig_summary.get("total_following"), "window": "Current", "group": "profile"},
         {"metric": "Total Media Count", "facebook": fb_summary.get("total_post_share"), "instagram": _metric_value(ig_insights, ["media_count"], strategy="last"), "window": "Current", "group": "profile"},
-        {"metric": "Total Reach", "facebook": _metric_value(fb_insights, ["page_impressions_unique"], strategy="sum"), "instagram": _metric_value(ig_insights, ["reach"], strategy="sum"), "window": "Last 7 days", "group": "engagement"},
-        {"metric": "Total Profile Views", "facebook": _metric_value(fb_insights, ["page_views_total"], strategy="sum"), "instagram": _metric_value(ig_insights, ["profile_views"], strategy="sum"), "window": "Last 7 days", "group": "engagement"},
-        {"metric": "Total Accounts Engaged", "facebook": _metric_value(fb_insights, ["page_engaged_users"], strategy="sum"), "instagram": _metric_value(ig_insights, ["accounts_engaged"], strategy="sum"), "window": "Last 7 days", "group": "engagement"},
-        {"metric": "Total Interactions", "facebook": _metric_value(fb_insights, ["page_post_engagements"], strategy="sum"), "instagram": _metric_value(ig_insights, ["total_interactions"], strategy="sum"), "window": "Last 7 days", "group": "engagement"},
-        {"metric": "Total Views", "facebook": _metric_value(fb_insights, ["page_posts_impressions"], strategy="sum"), "instagram": _metric_value(ig_insights, ["views"], strategy="sum"), "window": "Last 7 days", "group": "performance"},
-        {"metric": "Total Likes", "facebook": _metric_value(fb_insights, ["page_actions_post_reactions_like_total"], strategy="sum") or fb_recent_likes, "instagram": _metric_value(ig_insights, ["likes"], strategy="sum"), "window": "Last 7 days", "group": "performance"},
-        {"metric": "Total Comments", "facebook": fb_recent_comments, "instagram": _metric_value(ig_insights, ["comments"], strategy="sum"), "window": "Last 7 days", "group": "performance"},
-        {"metric": "Total Shares", "facebook": fb_recent_shares, "instagram": _metric_value(ig_insights, ["shares"], strategy="sum"), "window": "Last 7 days", "group": "performance"},
-        {"metric": "Total Saves", "facebook": None, "instagram": _metric_value(ig_insights, ["saves"], strategy="sum"), "window": "Last 7 days", "group": "performance"},
+        {"metric": "Total Reach", "facebook": None, "instagram": _metric_value(ig_insights, ["reach"], strategy="sum"), "window": "Last 7 days", "group": "engagement"},
+        {"metric": "Total Profile Views", "facebook": _metric_value(fb_insights, ["page_views_total"], strategy="sum"), "instagram": None, "window": "Last 7 days", "group": "engagement"},
+        {"metric": "Total Accounts Engaged", "facebook": None, "instagram": None, "window": "Last 7 days", "group": "engagement"},
+        {"metric": "Total Interactions", "facebook": _metric_value(fb_insights, ["page_post_engagements"], strategy="sum"), "instagram": ig_recent_interactions, "window": "Last 7 days", "group": "engagement"},
+        {"metric": "Total Views", "facebook": None, "instagram": None, "window": "Last 7 days", "group": "performance"},
+        {"metric": "Total Likes", "facebook": _metric_value(fb_insights, ["page_actions_post_reactions_like_total"], strategy="sum") or fb_recent_likes, "instagram": ig_recent_likes, "window": "Last 7 days", "group": "performance"},
+        {"metric": "Total Comments", "facebook": fb_recent_comments, "instagram": ig_recent_comments, "window": "Last 7 days", "group": "performance"},
+        {"metric": "Total Shares", "facebook": fb_recent_shares, "instagram": ig_recent_shares, "window": "Last 7 days", "group": "performance"},
+        {"metric": "Total Saves", "facebook": None, "instagram": ig_recent_saves, "window": "Last 7 days", "group": "performance"},
         {"metric": "Total Followers Count", "facebook": _metric_value(fb_insights, ["page_follows"], strategy="delta"), "instagram": _metric_value(ig_insights, ["follower_count"], strategy="sum"), "window": "Last 7 days", "group": "growth"},
         {"metric": "Total Follows Count", "facebook": _metric_value(fb_insights, ["page_follows"], strategy="last"), "instagram": _metric_value(ig_insights, ["follows_count"], strategy="last"), "window": "Current", "group": "growth"},
     ]
