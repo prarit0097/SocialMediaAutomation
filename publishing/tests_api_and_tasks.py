@@ -65,6 +65,41 @@ class PublishingApiTests(TestCase):
         self.assertEqual(ScheduledPost.objects.count(), 1)
         self.assertEqual(ScheduledPost.objects.first().status, POST_STATUS_PENDING)
 
+    @patch("publishing.views.MetaClient.debug_token", return_value={"data": {"is_valid": True}})
+    def test_bulk_schedule_creates_one_post_per_owned_account_and_skips_others(self, _mock_debug_token):
+        fb2 = ConnectedAccount.objects.create(
+            user=self.user, platform=FACEBOOK, page_id="999", page_name="FB Two", access_token="token",
+        )
+        other_user = get_user_model().objects.create_user(username="other-bulk", password="pass12345")
+        other_acc = ConnectedAccount.objects.create(
+            user=other_user, platform=FACEBOOK, page_id="888", page_name="Other", access_token="token",
+        )
+        when = (timezone.now() + timedelta(minutes=10)).isoformat()
+        response = self.client.post(
+            reverse("bulk_schedule_post"),
+            data={
+                "account_ids": [self.account.id, fb2.id, other_acc.id, self.account.id],  # dup + foreign id
+                "message": "Hello all",
+                "scheduled_for": when,
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201)
+        body = response.json()
+        self.assertEqual(body["created_count"], 2)        # self.account + fb2 (dup collapsed)
+        self.assertEqual(body["skipped_count"], 1)        # other user's account
+        self.assertEqual(ScheduledPost.objects.count(), 2)
+        created_ids = [c["account_id"] for c in body["created"]]
+        self.assertNotIn(other_acc.id, created_ids)       # IDOR: never schedules a foreign account
+
+    def test_bulk_schedule_rejects_empty_account_list(self):
+        response = self.client.post(
+            reverse("bulk_schedule_post"),
+            data={"account_ids": [], "message": "x", "scheduled_for": (timezone.now() + timedelta(minutes=5)).isoformat()},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
     @patch("publishing.views.process_due_posts")
     def test_list_scheduled_posts_triggers_auto_dispatch_for_due_pending(self, mock_process_due_posts):
         ScheduledPost.objects.create(
