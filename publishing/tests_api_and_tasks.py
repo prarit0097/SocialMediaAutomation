@@ -289,14 +289,14 @@ class PublishingApiTests(TestCase):
         self.assertEqual(fb_post.scheduled_for, desired_dt)
         self.assertEqual(ig_post.scheduled_for, desired_dt + timedelta(seconds=125))
 
-    def test_schedule_post_rejects_stale_account_not_in_recent_sync(self):
+    @patch("publishing.views.MetaClient.debug_token", return_value={"data": {"is_valid": True}})
+    def test_schedule_post_allows_bm_account_with_old_sync_but_valid_token(self, _mock_debug_token):
+        # A Business-Manager page not in the latest /me/accounts reconnect (old updated_at)
+        # but with a valid token must be schedulable — the old reconnect-recency rule
+        # wrongly blocked these.
         from django.core.cache import cache
 
-        cache.set(
-            f"meta_last_sync:{self.user.id}",
-            {"synced_at": timezone.now().isoformat()},
-            timeout=600,
-        )
+        cache.set(f"meta_last_sync:{self.user.id}", {"synced_at": timezone.now().isoformat()}, timeout=600)
         ConnectedAccount.objects.filter(id=self.account.id).update(updated_at=timezone.now() - timedelta(hours=2))
 
         response = self.client.post(
@@ -309,9 +309,23 @@ class PublishingApiTests(TestCase):
             },
             content_type="application/json",
         )
+        self.assertEqual(response.status_code, 201)
 
+    def test_schedule_post_rejects_token_expired_account(self):
+        ConnectedAccount.objects.filter(id=self.account.id).update(token_expires_at=timezone.now() - timedelta(days=1))
+
+        response = self.client.post(
+            reverse("schedule_post"),
+            data={
+                "account_id": self.account.id,
+                "platform": FACEBOOK,
+                "message": "Hello",
+                "scheduled_for": (timezone.now() + timedelta(minutes=10)).isoformat(),
+            },
+            content_type="application/json",
+        )
         self.assertEqual(response.status_code, 400)
-        self.assertIn("not refreshed in the latest Meta reconnect", response.json()["error"])
+        self.assertIn("expired", response.json()["error"].lower())
 
     @patch("publishing.views.MetaClient.debug_token")
     def test_schedule_post_rejects_invalid_token_before_queueing(self, mock_debug_token):

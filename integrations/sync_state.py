@@ -51,30 +51,25 @@ def build_account_sync_state(account, user_id: int | None, recent_sync_time=_SYN
             ),
         }
 
-    # recent_sync_time is account-independent, so list views resolve it once and pass it
-    # in to avoid an N+1 lookup (one cache/DB hit per account).
-    if recent_sync_time is _SYNC_TIME_UNSET:
-        recent_sync_time = get_recent_sync_time(user_id)
-    if not recent_sync_time:
+    # Staleness is based on REAL token validity, not reconnect-recency. /me/accounts only
+    # returns a user's directly-managed pages, so Business-Manager-managed pages (synced
+    # via catalog discovery) legitimately are NOT refreshed on every reconnect — flagging
+    # them "stale" (and blocking scheduling) by comparing updated_at to the last reconnect
+    # was a false positive that hit most accounts in a Business-Manager setup. A genuinely
+    # dead/revoked/expired token is still caught at schedule/publish time by the live
+    # debug_token gate (_ensure_account_token_is_valid) and the Meta API error path.
+    # `recent_sync_time` is accepted for call-site compatibility but no longer used here.
+    expires_at = getattr(account, "token_expires_at", None)
+    if expires_at is not None and expires_at <= timezone.now():
         return {
-            "is_sync_stale": False,
-            "sync_state": "unknown",
-            "sync_state_reason": "No recent Meta reconnect found for this session.",
+            "is_sync_stale": True,
+            "sync_state": "token_expired",
+            "sync_state_reason": (
+                "This account's stored page token has expired. Reconnect to refresh it."
+            ),
         }
-
-    window_start = recent_sync_time - SYNC_FRESHNESS_WINDOW
-    if account.updated_at >= window_start:
-        return {
-            "is_sync_stale": False,
-            "sync_state": "current",
-            "sync_state_reason": "This account was refreshed in the most recent Meta reconnect.",
-        }
-
     return {
-        "is_sync_stale": True,
-        "sync_state": "stale",
-        "sync_state_reason": (
-            "This account was not refreshed in the latest Meta reconnect. "
-            "Its stored page token may be stale. Reconnect and then choose a currently synced profile."
-        ),
+        "is_sync_stale": False,
+        "sync_state": "current",
+        "sync_state_reason": "This account is connected.",
     }

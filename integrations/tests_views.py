@@ -179,30 +179,28 @@ class IntegrationsViewTests(TestCase):
         self.assertEqual(row["last_post_at"], post.published_at.isoformat())
         self.assertTrue(row["last_post_is_stale"])
 
-    def test_list_accounts_marks_account_stale_when_not_in_latest_sync_window(self):
-        account = ConnectedAccount.objects.create(
-            user=self.user,
-            platform="facebook",
-            page_id="1",
-            page_name="Page 1",
-            access_token="token",
+    def test_list_accounts_staleness_is_token_expiry_based_not_sync_recency(self):
+        # Business-Manager case: a page not returned by /me/accounts in the latest reconnect
+        # (old updated_at) but with a valid token must NOT be flagged stale (it's connected
+        # via catalog discovery) — the old reconnect-recency rule false-flagged these.
+        bm = ConnectedAccount.objects.create(
+            user=self.user, platform="facebook", page_id="1", page_name="BM Page", access_token="token",
         )
-        cache.set(
-            f"meta_last_sync:{self.user.id}",
-            {
-                "synced_at": timezone.now().isoformat(),
-            },
-            timeout=600,
+        ConnectedAccount.objects.filter(id=bm.id).update(updated_at=timezone.now() - timedelta(hours=2))
+        # A genuinely expired stored token -> stale.
+        expired = ConnectedAccount.objects.create(
+            user=self.user, platform="facebook", page_id="2", page_name="Expired Page",
+            access_token="token", token_expires_at=timezone.now() - timedelta(days=1),
         )
-        ConnectedAccount.objects.filter(id=account.id).update(updated_at=timezone.now() - timedelta(hours=2))
+        cache.set(f"meta_last_sync:{self.user.id}", {"synced_at": timezone.now().isoformat()}, timeout=600)
 
-        response = self.client.get("/api/accounts/")
-
-        self.assertEqual(response.status_code, 200)
-        payload = response.json()
-        row = next(item for item in payload if item["id"] == account.id)
-        self.assertTrue(row["is_sync_stale"])
-        self.assertEqual(row["sync_state"], "stale")
+        payload = self.client.get("/api/accounts/").json()
+        bm_row = next(item for item in payload if item["id"] == bm.id)
+        self.assertFalse(bm_row["is_sync_stale"])
+        self.assertEqual(bm_row["sync_state"], "current")
+        exp_row = next(item for item in payload if item["id"] == expired.id)
+        self.assertTrue(exp_row["is_sync_stale"])
+        self.assertEqual(exp_row["sync_state"], "token_expired")
 
     @patch("integrations.views.MetaClient._get")
     @patch("integrations.views.MetaClient.debug_token")

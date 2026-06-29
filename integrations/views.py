@@ -284,14 +284,21 @@ def meta_callback(request: HttpRequest) -> HttpResponse:
     if response_is_complete:
         _deactivate_disconnected_accounts(request.user, pages)
     else:
-        sync_warning = (
-            "Meta returned fewer pages than your token grants, so account removal was "
-            "skipped this time to avoid disconnecting live pages. Reconnect and allow "
-            "access to all pages to fully resync."
-        )
+        # Suppress the "fewer pages" warning for Business-Manager setups: /me/accounts only
+        # returns the user's directly-managed pages, but the user already has more pages
+        # connected via catalog discovery — so a smaller response is EXPECTED, not lost
+        # pages, and reconnecting won't change it. Only warn on a genuine first-connect
+        # shortfall (the user doesn't yet have more connected than this response returned).
+        existing_active = ConnectedAccount.objects.filter(user=request.user, is_active=True).count()
+        if existing_active <= returned_assets:
+            sync_warning = (
+                "Meta returned fewer pages than your token grants, so account removal was "
+                "skipped this time to avoid disconnecting live pages. Reconnect and allow "
+                "access to all pages to fully resync."
+            )
         logger.warning(
-            "partial /me/accounts response user_id=%s pages=%s target_ids=%s — deactivation skipped",
-            request.user.id, len(pages), target_ids_count,
+            "partial /me/accounts response user_id=%s pages=%s target_ids=%s active=%s — deactivation skipped",
+            request.user.id, len(pages), target_ids_count, existing_active,
         )
     cache.delete(f"{TOKEN_HEALTH_CACHE_KEY}:{request.user.id}")
 
@@ -364,6 +371,7 @@ def list_accounts(request: HttpRequest) -> JsonResponse:
             "is_active",
             "created_at",
             "updated_at",
+            "token_expires_at",
         )
     )
     last_post_map = _latest_published_post_times([row["id"] for row in account_rows])
@@ -384,6 +392,7 @@ def list_accounts(request: HttpRequest) -> JsonResponse:
             is_active=row["is_active"],
             access_token="",
             updated_at=row["updated_at"],
+            token_expires_at=row["token_expires_at"],
         )
         sync_state = build_account_sync_state(account, user_id, recent_sync_time=recent_sync_time)
         rows.append(
