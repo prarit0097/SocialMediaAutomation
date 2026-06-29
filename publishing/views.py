@@ -376,6 +376,135 @@ def schedule_post(request: HttpRequest) -> JsonResponse:
     return JsonResponse({"id": post.id, "status": post.status, "media_url": post.media_url}, status=201)
 
 
+@require_POST
+@login_required
+@throttle_per_user("20/m", scope="bulk_schedule")
+def bulk_schedule_post(request: HttpRequest) -> JsonResponse:
+    """Compose once, schedule the same post to many connected accounts.
+
+    Each selected account is validated independently (ownership, freshness, token,
+    media compatibility) and gets its own ScheduledPost at the chosen time. One bad
+    account never blocks the rest — the response reports created and skipped accounts
+    with reasons. Each account publishes to its own native platform (FB or IG).
+    """
+    is_json = bool(request.content_type and request.content_type.startswith("application/json"))
+    if is_json:
+        try:
+            payload = json.loads(request.body.decode())
+        except json.JSONDecodeError:
+            return _bad_request("Invalid JSON body")
+        account_ids = payload.get("account_ids")
+        message = payload.get("message")
+        media_url = payload.get("media_url")
+        scheduled_for = payload.get("scheduled_for")
+    else:
+        raw_ids = (request.POST.get("account_ids") or "").strip()
+        try:
+            account_ids = json.loads(raw_ids) if raw_ids.startswith("[") else [x for x in raw_ids.split(",") if x.strip()]
+        except json.JSONDecodeError:
+            account_ids = [x for x in raw_ids.split(",") if x.strip()]
+        message = request.POST.get("message")
+        media_url = request.POST.get("media_url")
+        scheduled_for = request.POST.get("scheduled_for")
+        uploaded_media_url, upload_error = _upload_file_to_media(request)
+        if upload_error:
+            return _bad_request(upload_error)
+        if uploaded_media_url:
+            media_url = uploaded_media_url
+
+    if not isinstance(account_ids, list) or not account_ids:
+        return _bad_request("account_ids (a non-empty list) is required")
+    if not scheduled_for:
+        return _bad_request("scheduled_for is required")
+
+    # De-dup + bound the fan-out so one request can't flood the publish queue.
+    deduped: list[int] = []
+    for raw in account_ids:
+        try:
+            aid = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if aid not in deduped:
+            deduped.append(aid)
+    if not deduped:
+        return _bad_request("account_ids contained no valid ids")
+    max_accounts = int(getattr(settings, "BULK_SCHEDULE_MAX_ACCOUNTS", 100) or 100)
+    if len(deduped) > max_accounts:
+        return _bad_request(f"Too many accounts in one bulk schedule (max {max_accounts}).")
+
+    dt = parse_datetime(scheduled_for)
+    if not isinstance(dt, datetime):
+        return _bad_request("scheduled_for must be a valid ISO8601 datetime")
+    if timezone.is_naive(dt):
+        dt = timezone.make_aware(dt, timezone=dt_timezone.utc)
+
+    owned = {a.id: a for a in ConnectedAccount.objects.filter(id__in=deduped, user=request.user)}
+
+    # Optimize media once for Instagram — the IG-safe derivative is the same for every
+    # IG account, so we don't recompute it per account.
+    ig_media_url, ig_media_error = (None, None)
+    if media_url:
+        ig_media_url, ig_media_error = _prepare_media_for_instagram_schedule(media_url)
+
+    created: list[dict] = []
+    skipped: list[dict] = []
+    for aid in deduped:
+        account = owned.get(aid)
+        if not account:
+            skipped.append({"account_id": aid, "reason": "Not found or not your account"})
+            continue
+        label = account.page_name
+        if _ensure_account_is_currently_synced(request, account) is not None:
+            skipped.append({"account_id": aid, "page_name": label, "reason": "Stale account — reconnect required before scheduling"})
+            continue
+        if _ensure_account_token_is_valid(account) is not None:
+            skipped.append({"account_id": aid, "page_name": label, "reason": "Invalid Meta token — reconnect this account"})
+            continue
+        if account.platform == INSTAGRAM:
+            if not media_url:
+                skipped.append({"account_id": aid, "page_name": label, "reason": "Instagram requires an image or video"})
+                continue
+            if ig_media_error is not None:
+                skipped.append({"account_id": aid, "page_name": label, "reason": "Media is not Instagram-compatible"})
+                continue
+            target_dt = _next_available_instagram_slot(account, dt)
+            target_media = ig_media_url
+        else:
+            target_dt = dt
+            target_media = media_url
+        try:
+            post = ScheduledPost.objects.create(
+                account=account,
+                platform=account.platform,
+                message=message,
+                media_url=target_media,
+                scheduled_for=target_dt,
+            )
+        except Exception as exc:  # noqa: BLE001
+            skipped.append({"account_id": aid, "page_name": label, "reason": f"Could not schedule: {exc}"})
+            continue
+        created.append({
+            "id": post.id,
+            "account_id": aid,
+            "page_name": label,
+            "platform": account.platform,
+            "scheduled_for": target_dt.isoformat(),
+        })
+        logger.info("bulk post scheduled id=%s account_id=%s platform=%s", post.id, aid, account.platform)
+
+    return JsonResponse(
+        {
+            "created_count": len(created),
+            "skipped_count": len(skipped),
+            "total_requested": len(deduped),
+            "status": POST_STATUS_PENDING,
+            "created": created,
+            "skipped": skipped,
+        },
+        status=201 if created else 400,
+    )
+
+
 @require_GET
 @login_required
 def list_scheduled_posts(request: HttpRequest) -> JsonResponse:

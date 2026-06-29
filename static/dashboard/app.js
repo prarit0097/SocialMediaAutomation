@@ -1453,9 +1453,133 @@
     const scheduleSubmitBtn = scheduleForm.querySelector("button[type='submit']");
     const runWithScheduleLoading = withButtonLoading(scheduleSubmitBtn, "Schedule Post", "Scheduling...");
 
+    // --- Bulk multi-account scheduling ---
+    const bulkToggle = document.getElementById("bulkScheduleToggle");
+    const bulkPanel = document.getElementById("bulkAccountsPanel");
+    const bulkList = document.getElementById("bulkAccountList");
+    const bulkSearch = document.getElementById("bulkAccountSearch");
+    const bulkSelectedCount = document.getElementById("bulkSelectedCount");
+    const singleOnly = scheduleForm.querySelectorAll(".single-only");
+    let bulkAccountsLoaded = false;
+
+    function updateBulkCount() {
+      if (!bulkList || !bulkSelectedCount) return;
+      const n = bulkList.querySelectorAll("input[type='checkbox']:checked").length;
+      bulkSelectedCount.textContent = `${n} selected`;
+    }
+    function renderBulkAccounts(rows) {
+      if (!bulkList) return;
+      bulkList.textContent = "";
+      if (!Array.isArray(rows) || !rows.length) {
+        bulkList.textContent = "No connected accounts.";
+        return;
+      }
+      rows.slice()
+        .sort((a, b) => String(a.page_name || "").toLowerCase().localeCompare(String(b.page_name || "").toLowerCase()))
+        .forEach((r) => {
+          const id = r.account_id != null ? r.account_id : r.id;
+          if (id == null) return;
+          const item = document.createElement("label");
+          item.className = "bulk-item";
+          item.dataset.name = String(r.page_name || "").toLowerCase();
+          const cb = document.createElement("input");
+          cb.type = "checkbox"; cb.value = String(id); cb.className = "bulk-acct-cb";
+          cb.addEventListener("change", updateBulkCount);
+          const badge = document.createElement("span");
+          badge.className = "bulk-badge " + (r.platform === "instagram" ? "ig" : "fb");
+          badge.textContent = r.platform === "instagram" ? "IG" : "FB";
+          const nm = document.createElement("span");
+          nm.className = "bulk-name"; nm.textContent = r.page_name || ("Account #" + id);
+          item.appendChild(cb); item.appendChild(badge); item.appendChild(nm);
+          bulkList.appendChild(item);
+        });
+      updateBulkCount();
+    }
+    async function loadBulkAccounts() {
+      if (bulkAccountsLoaded || !bulkList) return;
+      try {
+        renderBulkAccounts(await fetchJSON("/api/accounts/"));
+        bulkAccountsLoaded = true;
+      } catch (err) {
+        bulkList.textContent = "Could not load accounts. Toggle again to retry.";
+      }
+    }
+    function setBulkMode(on) {
+      if (!bulkPanel) return;
+      bulkPanel.hidden = !on;
+      singleOnly.forEach((el) => { el.hidden = on; });
+      // Hidden but HTML5-required fields block submit — toggle requiredness with mode.
+      if (accountIdInput) accountIdInput.required = !on;
+      if (platformInput) platformInput.required = !on;
+      if (on) loadBulkAccounts();
+    }
+    if (bulkToggle) bulkToggle.addEventListener("change", () => setBulkMode(bulkToggle.checked));
+    if (bulkSearch && bulkList) {
+      bulkSearch.addEventListener("input", () => {
+        const q = bulkSearch.value.trim().toLowerCase();
+        bulkList.querySelectorAll(".bulk-item").forEach((el) => {
+          el.style.display = !q || el.dataset.name.indexOf(q) !== -1 ? "" : "none";
+        });
+      });
+    }
+    const bulkSelectAllBtn = document.getElementById("bulkSelectAll");
+    const bulkSelectNoneBtn = document.getElementById("bulkSelectNone");
+    if (bulkSelectAllBtn && bulkList) bulkSelectAllBtn.addEventListener("click", () => {
+      bulkList.querySelectorAll(".bulk-item").forEach((el) => {
+        if (el.style.display !== "none") { const cb = el.querySelector("input"); if (cb) cb.checked = true; }
+      });
+      updateBulkCount();
+    });
+    if (bulkSelectNoneBtn && bulkList) bulkSelectNoneBtn.addEventListener("click", () => {
+      bulkList.querySelectorAll("input[type='checkbox']").forEach((cb) => { cb.checked = false; });
+      updateBulkCount();
+    });
+
+    async function submitBulk(formData) {
+      const resultEl = document.getElementById("scheduleResult");
+      const ids = Array.from(bulkList.querySelectorAll("input[type='checkbox']:checked")).map((cb) => Number(cb.value));
+      if (!ids.length) {
+        resultEl.textContent = "Select at least one account.";
+        showAppToast("Select at least one account.", "error");
+        return;
+      }
+      const payload = new FormData();
+      payload.append("account_ids", JSON.stringify(ids));
+      payload.append("scheduled_for", new Date(formData.get("scheduled_for")).toISOString());
+      const message = formData.get("message");
+      const mediaUrl = formData.get("media_url");
+      const mediaFile = formData.get("media_file");
+      if (message) payload.append("message", String(message));
+      if (mediaUrl) payload.append("media_url", String(mediaUrl));
+      if (mediaFile instanceof File && mediaFile.size > 0) payload.append("media_file", mediaFile);
+      try {
+        const data = await runWithScheduleLoading(() =>
+          fetchJSON("/api/posts/bulk-schedule/", { method: "POST", headers: { "X-CSRFToken": csrfToken }, body: payload })
+        );
+        const created = Number(data.created_count || 0);
+        const skipped = Number(data.skipped_count || 0);
+        let note = `Scheduled to ${created} account(s)` + (skipped ? `, skipped ${skipped}.` : ".");
+        if (skipped && Array.isArray(data.skipped)) {
+          note += " Skipped — " + data.skipped.map((s) => `${s.page_name || ("#" + s.account_id)}: ${s.reason}`).join(" | ");
+        }
+        resultEl.textContent = note;
+        showAppToast(`Bulk scheduled to ${created} account(s)` + (skipped ? `, ${skipped} skipped.` : "."), created ? "success" : "error");
+        trackPixelEvent("SchedulePost", {
+          scheduled_count: created,
+          bulk: true,
+          has_media: Boolean(mediaUrl || (mediaFile instanceof File && mediaFile.size > 0)),
+        }, true);
+        await loadScheduledPosts();
+      } catch (err) {
+        resultEl.textContent = `Error: ${err.message}`;
+        showAppToast(`Bulk scheduling failed: ${err.message}`, "error");
+      }
+    }
+
     scheduleForm.addEventListener("submit", async (event) => {
       event.preventDefault();
       const formData = new FormData(scheduleForm);
+      if (bulkToggle && bulkToggle.checked) { await submitBulk(formData); return; }
       const payload = new FormData();
       payload.append("account_id", String(Number(formData.get("account_id"))));
       payload.append("platform", String(formData.get("platform") || ""));
