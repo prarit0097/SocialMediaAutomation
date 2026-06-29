@@ -12,3 +12,7 @@ celerybeat-schedule.bak
 celerybeat-schedule.dat
 celerybeat-schedule.dir
 mcp_outputs/
+
+# Local tooling state/logs and stray assets (not part of the app)
+.omx/
+ChatGPT Image*.png
