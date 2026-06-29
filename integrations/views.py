@@ -384,10 +384,15 @@ def accounts_sync_status(request: HttpRequest) -> JsonResponse:
     latest_updated = (
         ConnectedAccount.objects.filter(is_active=True, user=request.user).aggregate(latest=Max("updated_at")).get("latest")
     )
+    # Distinguish a genuine cached 0 (user revoked all pages) from an absent key — `0 or
+    # fb_total` would wrongly overwrite a real zero with the recomputed live count.
+    synced = data.get("meta_pages_synced")
+    fb_cached = data.get("facebook_connected_total")
+    ig_cached = data.get("instagram_connected_total")
     data = {
-        "meta_pages_synced": data.get("meta_pages_synced") or fb_total,
-        "facebook_connected_total": data.get("facebook_connected_total") or fb_total,
-        "instagram_connected_total": data.get("instagram_connected_total") or ig_total,
+        "meta_pages_synced": synced if synced is not None else fb_total,
+        "facebook_connected_total": fb_cached if fb_cached is not None else fb_total,
+        "instagram_connected_total": ig_cached if ig_cached is not None else ig_total,
         "token_target_ids_count": data.get("token_target_ids_count") or None,
         "warning": data.get("warning"),
         "synced_at": data.get("synced_at") or (latest_updated.isoformat() if latest_updated else None),

@@ -623,7 +623,7 @@ def generate_content_calendar_plan(payload: dict[str, Any]) -> dict[str, Any]:
         "  ]\n"
         "}\n"
         "Rules:\n"
-        f"- duration_days is {duration_days}; generate exactly {duration_days} rows for 7-day plan or 12 rows for 30-day plan.\n"
+        f"- Generate exactly {7 if duration_days == 7 else 12} calendar rows for this {duration_days}-day plan.\n"
         "- Use a healthy mix of reel, carousel, image quote, educational post, and CTA post when suitable.\n"
         "- Keep hooks short and human.\n"
         "- Use historical recommendation context when available for time windows, format bias, or topic direction.\n"

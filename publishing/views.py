@@ -55,8 +55,12 @@ def _upload_file_to_media(request: HttpRequest):
     if not uploaded:
         return None, None
 
+    # A blank/0 MAX_UPLOAD_FILE_BYTES must NOT disable the limit — fall back to the
+    # default cap so the guard is always enforced.
     max_upload_bytes = int(getattr(settings, "MAX_UPLOAD_FILE_BYTES", 100 * 1024 * 1024) or 0)
-    if max_upload_bytes > 0 and int(getattr(uploaded, "size", 0) or 0) > max_upload_bytes:
+    if max_upload_bytes <= 0:
+        max_upload_bytes = 100 * 1024 * 1024
+    if int(getattr(uploaded, "size", 0) or 0) > max_upload_bytes:
         return None, "Uploaded media exceeds the configured upload size limit."
 
     ext = os.path.splitext(uploaded.name or "")[1].lower()

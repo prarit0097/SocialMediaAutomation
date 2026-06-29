@@ -545,9 +545,11 @@ def build_insight_response(
         "platform": platform,
         "insights": insights,
         "summary": {
-            "total_followers": total_followers,
-            "total_following": 0 if total_following is None else total_following,
-            "total_post_share": total_post_share,
+            # Coerce at the source so consumers (e.g. the combined FB+IG endpoint that
+            # sums these) can never receive a raw str/dict from Meta and 500 on `+`.
+            "total_followers": _coerce_numeric_value(total_followers),
+            "total_following": _coerce_numeric_value(total_following) or 0,
+            "total_post_share": _coerce_numeric_value(total_post_share) or 0,
         },
         "published_posts": published_posts,
         "snapshot_id": snapshot_id,

@@ -120,7 +120,10 @@ class UserProfile(models.Model):
         today = timezone.now().date()
         normalized_plan, _, expires_on = self._normalized_subscription_state()
         base_date = today
-        if normalized_plan.lower() == cycle and expires_on >= today:
+        # Preserve remaining prepaid time from ANY active paid plan (Monthly/Yearly),
+        # including a cross-plan switch — never forfeit days the user already paid for.
+        paid_plans = {self.SUBSCRIPTION_PLAN_MONTHLY.lower(), self.SUBSCRIPTION_PLAN_YEARLY.lower()}
+        if normalized_plan.lower() in paid_plans and expires_on >= today:
             base_date = expires_on
 
         if cycle == "monthly":
