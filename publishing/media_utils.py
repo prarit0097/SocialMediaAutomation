@@ -290,10 +290,29 @@ def ensure_public_media_fetchable(media_url: str) -> None:
                 f"Public media URL returned {response.status}. "
                 "The tunnel or media server is temporarily unavailable."
             )
+        if 300 <= response.status < 400:
+            # The pinned connection does NOT follow redirects; a 3xx to an internal host
+            # (e.g. cloud metadata) would otherwise slip past as "fetchable". Reject it.
+            raise MetaPermanentError(
+                "Public media URL must not redirect; host a direct media link. "
+                "Reconnect the tunnel or upload the media again."
+            )
         if response.status >= 400:
             raise MetaPermanentError(
                 f"Public media URL returned {response.status}. "
                 "Reconnect the tunnel or upload the media again."
+            )
+        # Reject non-media responses (e.g. an HTML error/landing page) so we never hand
+        # Meta a URL that isn't actually an image/video. Absent header -> pass (no false reject).
+        content_type = (response.getheader("Content-Type") or "").split(";", 1)[0].strip().lower()
+        if content_type and not (
+            content_type.startswith("image/")
+            or content_type.startswith("video/")
+            or content_type == "application/octet-stream"
+        ):
+            raise MetaPermanentError(
+                "Public media URL did not return image or video content. "
+                "Provide a direct media link, not a web page."
             )
         try:
             response.read(65536)

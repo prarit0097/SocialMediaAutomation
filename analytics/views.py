@@ -1297,6 +1297,7 @@ def ai_profile_insights(request: HttpRequest, account_id: int) -> JsonResponse:
     )
 
 
+@throttle_per_user("2/m", scope="force_refresh_all")
 @require_POST
 @login_required
 def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:

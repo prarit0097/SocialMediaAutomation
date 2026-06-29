@@ -444,28 +444,46 @@ def google_signup_callback(request):
     if not email or not email_verified:
         return redirect("/signup/?error=Google+signup+requires+a+verified+email")
 
+    from django.db.models import Q
+
     user_model = get_user_model()
-    user = user_model.objects.filter(email__iexact=email).first() or user_model.objects.filter(username=email).first()
+    matches = list(user_model.objects.filter(Q(email__iexact=email) | Q(username=email)))
     # Account-takeover guard: never let Google email-matching log into a PRIVILEGED
     # (staff/superuser) account — those unlock the admin + runtime Meta-credential
     # management, so they must authenticate with their password, not an email match.
-    # Regular operator accounts logging in via Google is an intended app feature.
-    if user is not None and (user.is_staff or user.is_superuser):
+    # auth.User.email is NOT unique, so check EVERY match (not just .first()) — the guard
+    # must not depend on row ordering. Regular operator Google login stays supported.
+    if any(u.is_staff or u.is_superuser for u in matches):
         return redirect(
             "/signup/?error=This+is+an+admin+account.+Please+sign+in+with+your+password."
         )
+    user = next((u for u in matches if u.email and u.email.lower() == email.lower()), None) or (matches[0] if matches else None)
     first_name = str(profile.get("given_name") or "").strip()
     last_name = str(profile.get("family_name") or "").strip()
     profile_picture_url = str(profile.get("picture") or "").strip()
     is_new_user = not user
     if is_new_user:
+        from django.db import IntegrityError, transaction
+
         username = email
         if user_model.objects.filter(username=username).exists():
             username = _build_unique_username_from_email(email)
-        user = user_model(username=username, email=email, first_name=first_name, last_name=last_name)
-        user.set_unusable_password()
-        user.save()
-    else:
+        try:
+            with transaction.atomic():
+                user = user_model(username=username, email=email, first_name=first_name, last_name=last_name)
+                user.set_unusable_password()
+                user.save()
+        except IntegrityError:
+            # Lost a concurrent first-time-signup race for this email — resolve to the
+            # account the other request created and fall through to the existing path.
+            user = (user_model.objects.filter(email__iexact=email).first()
+                    or user_model.objects.filter(username=email).first())
+            if user is None:
+                return redirect("/signup/?error=Google+signup+failed%3A+please+try+again")
+            if user.is_staff or user.is_superuser:
+                return redirect("/signup/?error=This+is+an+admin+account.+Please+sign+in+with+your+password.")
+            is_new_user = False
+    if not is_new_user:
         changed = False
         if first_name and user.first_name != first_name:
             user.first_name = first_name

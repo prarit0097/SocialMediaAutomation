@@ -111,6 +111,11 @@ def publish_scheduled_post(post):
     if post.platform == FACEBOOK:
         if post.media_url:
             ext = media_extension(post.media_url)
+            # SSRF screen non-local FB media URLs (scheme/host/private-IP + reachability)
+            # exactly like the Instagram path — previously FB forwarded the raw URL to Meta
+            # with no validation. _read_local_media below returns None for non-local URLs.
+            if not resolve_local_media_storage_path(post.media_url):
+                ensure_public_media_fetchable(post.media_url)
             caption = (post.message or "").strip() or None
 
             # Try to read the local file for direct multipart upload.

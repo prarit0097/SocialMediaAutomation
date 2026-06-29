@@ -73,13 +73,13 @@ def _razorpay_capture_verified(order_id: str, payment_id: str, billing_cycle: st
         return True, None
     if str(data.get("order_id") or "") != order_id:
         return False, "Payment does not match this order."
-    # Accept both 'captured' and 'authorized'. With auto-capture enabled, an authorized
-    # payment is captured automatically within the configured window, so accepting it
-    # avoids rejecting a genuine payment during the brief authorize->capture lag. Only
-    # outright-bad states (failed/created/refunded) are rejected.
+    # Require a CAPTURED payment. An 'authorized' payment can still be voided and never
+    # settle, so accepting it would activate a paid plan for money that may never arrive
+    # — defeating the whole point of the capture check. The order is NOT consumed on
+    # rejection, so a brief authorize->capture lag is recoverable by re-verifying.
     status = str(data.get("status") or "").lower()
-    if status not in ("captured", "authorized"):
-        return False, "Payment is not in a successful state. Please try again."
+    if status != "captured":
+        return False, "Payment capture is still pending. Please retry in a moment."
     if int(data.get("amount") or 0) != int(plan["amount_paise"]):
         return False, "Payment amount does not match the selected plan."
     if str(data.get("currency") or "").upper() != expected_currency:
@@ -681,33 +681,48 @@ def profile_data(request):
     except json.JSONDecodeError:
         return JsonResponse({"error": "Invalid JSON body."}, status=400)
 
+    # Treat an absent key as "no change" and reject an explicitly-empty value, so a
+    # partial or empty submit can't silently blank the user's stored name.
+    has_first = "first_name" in payload
+    has_last = "last_name" in payload
     first_name = str(payload.get("first_name") or "").strip()
     last_name = str(payload.get("last_name") or "").strip()
 
     errors = []
-    if len(first_name) > 150:
+    if has_first and not first_name:
+        errors.append("First name cannot be empty.")
+    if has_last and not last_name:
+        errors.append("Last name cannot be empty.")
+    if has_first and len(first_name) > 150:
         errors.append("First name should be 150 characters or less.")
-    if len(last_name) > 150:
+    if has_last and len(last_name) > 150:
         errors.append("Last name should be 150 characters or less.")
 
     if errors:
         return JsonResponse({"error": "Validation failed.", "details": " ".join(errors)}, status=400)
 
     user = request.user
-    user.first_name = first_name
-    user.last_name = last_name
-    user.save(update_fields=["first_name", "last_name"])
+    user_fields = []
+    if has_first:
+        user.first_name = first_name
+        user_fields.append("first_name")
+    if has_last:
+        user.last_name = last_name
+        user_fields.append("last_name")
+    if user_fields:
+        user.save(update_fields=user_fields)
 
     profile, _ = UserProfile.objects.get_or_create(user=user)
-    profile.first_name = first_name
-    profile.last_name = last_name
-    profile.save(
-        update_fields=[
-            "first_name",
-            "last_name",
-            "updated_at",
-        ]
-    )
+    profile_fields = []
+    if has_first:
+        profile.first_name = first_name
+        profile_fields.append("first_name")
+    if has_last:
+        profile.last_name = last_name
+        profile_fields.append("last_name")
+    if profile_fields:
+        profile_fields.append("updated_at")
+        profile.save(update_fields=profile_fields)
 
     response = _profile_payload(user)
     response["ok"] = True

@@ -722,8 +722,9 @@ class PublishingServiceTests(TestCase):
             access_token="token",
         )
 
+    @patch("publishing.services.ensure_public_media_fetchable")
     @patch("publishing.services.MetaClient.publish_facebook_photo", return_value={"post_id": "photo-post-id"})
-    def test_facebook_media_uses_photo_endpoint(self, mock_publish_photo):
+    def test_facebook_media_uses_photo_endpoint(self, mock_publish_photo, _mock_preflight):
         post = ScheduledPost.objects.create(
             account=self.account,
             platform=FACEBOOK,
@@ -736,8 +737,9 @@ class PublishingServiceTests(TestCase):
         self.assertEqual(result, "photo-post-id")
         mock_publish_photo.assert_called_once()
 
+    @patch("publishing.services.ensure_public_media_fetchable")
     @patch("publishing.services.MetaClient.publish_facebook_video", return_value={"id": "video-node-id", "post_id": "fb-page_post-id"})
-    def test_facebook_video_prefers_post_id_for_external_id(self, mock_publish_video):
+    def test_facebook_video_prefers_post_id_for_external_id(self, mock_publish_video, _mock_preflight):
         post = ScheduledPost.objects.create(
             account=self.account,
             platform=FACEBOOK,
@@ -919,6 +921,7 @@ class PublishingServiceTests(TestCase):
     def test_media_fetchable_stream_timeout_is_transient(self, mock_getresponse, _mock_request, _mock_ips):
         mock_response = Mock()
         mock_response.status = 200
+        mock_response.getheader.return_value = "image/jpeg"
         mock_response.read.side_effect = OSError("Read timed out.")
         mock_getresponse.return_value = mock_response
 

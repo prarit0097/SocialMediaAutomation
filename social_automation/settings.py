@@ -213,6 +213,10 @@ if not FERNET_KEY and not FERNET_KEYS and not DEBUG:
 REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
 CELERY_BROKER_URL = REDIS_URL
 CELERY_RESULT_BACKEND = REDIS_URL
+# No code reads task results (no .get()/AsyncResult), so persisting a result key per
+# task execution (per-minute beat + per-item fan-out) is dead weight in the same Redis
+# used for broker/cache/sessions — and gets fsync'd to AOF on a memory-constrained VPS.
+CELERY_TASK_IGNORE_RESULT = True
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"

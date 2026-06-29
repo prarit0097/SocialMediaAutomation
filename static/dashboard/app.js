@@ -1543,9 +1543,15 @@
         showAppToast("Select at least one account.", "error");
         return;
       }
+      const whenBulk = new Date(formData.get("scheduled_for"));
+      if (Number.isNaN(whenBulk.getTime())) {
+        resultEl.textContent = "Error: pick a valid schedule date/time.";
+        showAppToast("Pick a valid schedule date/time.", "error");
+        return;
+      }
       const payload = new FormData();
       payload.append("account_ids", JSON.stringify(ids));
-      payload.append("scheduled_for", new Date(formData.get("scheduled_for")).toISOString());
+      payload.append("scheduled_for", whenBulk.toISOString());
       const message = formData.get("message");
       const mediaUrl = formData.get("media_url");
       const mediaFile = formData.get("media_file");
@@ -1583,7 +1589,14 @@
       const payload = new FormData();
       payload.append("account_id", String(Number(formData.get("account_id"))));
       payload.append("platform", String(formData.get("platform") || ""));
-      payload.append("scheduled_for", new Date(formData.get("scheduled_for")).toISOString());
+      const whenSingle = new Date(formData.get("scheduled_for"));
+      if (Number.isNaN(whenSingle.getTime())) {
+        const el = document.getElementById("scheduleResult");
+        if (el) el.textContent = "Error: pick a valid schedule date/time.";
+        showAppToast("Pick a valid schedule date/time.", "error");
+        return;
+      }
+      payload.append("scheduled_for", whenSingle.toISOString());
 
       const message = formData.get("message");
       const mediaUrl = formData.get("media_url");
