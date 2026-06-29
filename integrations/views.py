@@ -268,7 +268,19 @@ def meta_callback(request: HttpRequest) -> HttpResponse:
         except MetaAPIError:
             target_ids_count = None
 
-    response_is_complete = target_ids_count is None or len(pages) >= target_ids_count
+    # /me/accounts returns FB PAGES (each may nest a linked IG account), while target_ids
+    # counts BOTH FB pages AND IG accounts — so comparing len(pages) directly to
+    # target_ids_count was always "incomplete" (e.g. 44 FB pages < 80 FB+IG grants) and
+    # falsely warned/skipped on every healthy sync. Count the IG accounts we got back too,
+    # and treat >=90% of granted assets as complete (target_ids can include an asset with
+    # no usable role).
+    returned_ig = sum(1 for p in pages if (p.get("instagram_business_account") or {}).get("id"))
+    returned_assets = len(pages) + returned_ig
+    response_is_complete = (
+        target_ids_count is None
+        or returned_assets >= target_ids_count
+        or returned_assets >= target_ids_count * 0.9
+    )
     if response_is_complete:
         _deactivate_disconnected_accounts(request.user, pages)
     else:
@@ -285,6 +297,15 @@ def meta_callback(request: HttpRequest) -> HttpResponse:
 
     if user_id:
         _persist_user_access_token(user_id, user_access_token)
+        # The sync timestamp is the per-account staleness baseline. On a COMPLETE reconnect
+        # advance it to now; on a PARTIAL response (Meta returned fewer pages than granted)
+        # KEEP the previous baseline — otherwise a partial sync would falsely flag every
+        # un-returned (but still working) account as "Stale sync".
+        previous_sync = cache.get(SYNC_CACHE_KEY_TEMPLATE.format(user_id=user_id)) or {}
+        if response_is_complete:
+            synced_at = timezone.now().isoformat()
+        else:
+            synced_at = previous_sync.get("synced_at") or timezone.now().isoformat()
         cache.set(
             SYNC_CACHE_KEY_TEMPLATE.format(user_id=user_id),
             {
@@ -295,7 +316,7 @@ def meta_callback(request: HttpRequest) -> HttpResponse:
                 .count(),
                 "token_target_ids_count": target_ids_count,
                 "warning": sync_warning,
-                "synced_at": timezone.now().isoformat(),
+                "synced_at": synced_at,
             },
             timeout=60 * 60 * 12,
         )
