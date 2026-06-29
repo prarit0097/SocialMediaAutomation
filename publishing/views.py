@@ -50,6 +50,45 @@ def _build_public_media_url(request: HttpRequest, relative_url: str) -> str:
     return request.build_absolute_uri(relative_url)
 
 
+_IMAGE_UPLOAD_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
+
+
+def _verify_upload_content(uploaded, ext: str) -> str | None:
+    """Verify uploaded bytes match the declared extension, so a mislabeled file (e.g.
+    an HTML/script payload named foo.jpg) is rejected before it's served as media to
+    Meta. Returns an error string on mismatch, else None. Fails OPEN when it can't sniff
+    (e.g. Pillow missing) so it never blocks legitimate uploads."""
+    try:
+        uploaded.seek(0)
+        head = uploaded.read(16)
+        uploaded.seek(0)
+    except Exception:  # noqa: BLE001
+        return None
+    if ext in _IMAGE_UPLOAD_EXTS:
+        try:
+            from PIL import Image
+        except ImportError:
+            return None
+        try:
+            uploaded.seek(0)
+            Image.open(uploaded).verify()
+        except Exception:  # noqa: BLE001
+            return "Uploaded file is not a valid image."
+        finally:
+            try:
+                uploaded.seek(0)
+            except Exception:  # noqa: BLE001
+                pass
+        return None
+    # Video magic-byte sniff (mp4/mov/m4v, webm/mkv, avi).
+    video_ok = (
+        head[4:8] == b"ftyp"
+        or head[:4] == b"\x1aE\xdf\xa3"
+        or (head[:4] == b"RIFF" and head[8:12] == b"AVI ")
+    )
+    return None if video_ok else "Uploaded file does not look like a valid video."
+
+
 def _upload_file_to_media(request: HttpRequest):
     uploaded = request.FILES.get("media_file")
     if not uploaded:
@@ -66,6 +105,10 @@ def _upload_file_to_media(request: HttpRequest):
     ext = os.path.splitext(uploaded.name or "")[1].lower()
     if ext not in ALLOWED_MEDIA_EXTENSIONS:
         return None, f"Unsupported media file type: {ext or 'unknown'}"
+
+    content_error = _verify_upload_content(uploaded, ext)
+    if content_error:
+        return None, content_error
 
     stamp = timezone.now().strftime("%Y/%m/%d")
     unique_name = f"{uuid.uuid4().hex}{ext}"
@@ -608,6 +651,12 @@ def retry_failed_post(request: HttpRequest, post_id: int) -> JsonResponse:
         if media_error:
             return media_error
         post.media_url = prepared_media_url
+
+    # Never schedule a retry in the past; for IG also space it into a free per-account
+    # slot so two retried IG posts can't collide inside the <120s lane window.
+    retry_time = max(retry_time, timezone.now())
+    if post.platform == INSTAGRAM:
+        retry_time = _next_available_instagram_slot(post.account, retry_time)
 
     # Clear all stale caches from prior failed attempts so the retry
     # starts clean (fresh container, no skip-resumable flag, etc.).

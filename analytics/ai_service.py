@@ -1,4 +1,5 @@
 import json
+import math
 import re
 from typing import Any
 
@@ -222,15 +223,18 @@ def _to_number(value: Any) -> float | None:
     if value is None or isinstance(value, bool):
         return None
     if isinstance(value, (int, float)):
-        return float(value)
+        return float(value) if math.isfinite(value) else None
     if isinstance(value, str):
         raw = value.strip().replace(",", "")
         if not raw:
             return None
         try:
-            return float(raw)
+            parsed = float(raw)
         except ValueError:
             return None
+        # json.loads accepts NaN/Infinity literals; reject non-finite so downstream
+        # int(round(...)) never raises ValueError.
+        return parsed if math.isfinite(parsed) else None
     return None
 
 
@@ -238,6 +242,8 @@ def _format_number(value: float | None, decimals: int = 2) -> str:
     if value is None:
         return "not available"
     rounded = round(float(value), decimals)
+    if not math.isfinite(rounded):
+        return "not available"
     if abs(rounded - int(rounded)) < 1e-9:
         return str(int(rounded))
     return f"{rounded:.{decimals}f}".rstrip("0").rstrip(".")
@@ -586,8 +592,11 @@ def generate_profile_ai_insights(payload: dict[str, Any], focus: str | None = No
 
 
 def generate_content_calendar_plan(payload: dict[str, Any]) -> dict[str, Any]:
-    niche = str(payload.get("niche") or "").strip()
-    goal = str(payload.get("goal") or "").strip()
+    # Sanitize + length-cap like `focus` — these flow verbatim into the OpenAI prompt,
+    # so an unbounded/brace-laden value would inflate token cost and could perturb the
+    # JSON-structured prompt on the shared key.
+    niche = _sanitize_focus_text(payload.get("niche"))
+    goal = _sanitize_focus_text(payload.get("goal"))
     platform = str(payload.get("platform") or "both").strip().lower()
     duration_days = int(payload.get("duration_days") or 7)
     account_context = payload.get("account_context") if isinstance(payload.get("account_context"), dict) else {}
