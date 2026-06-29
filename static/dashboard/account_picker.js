@@ -48,9 +48,9 @@
         headers: { "X-Requested-With": "XMLHttpRequest" },
         credentials: "same-origin",
       })
-        .then(function (r) { return r.ok ? r.json() : []; })
-        .then(function (rows) { return Array.isArray(rows) ? rows : []; })
-        .catch(function () { return []; });
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error("load failed")); })
+        .then(function (rows) { return { ok: true, rows: Array.isArray(rows) ? rows : [] }; })
+        .catch(function () { return { ok: false, rows: [] }; });
     }
     return accountsPromise;
   }
@@ -99,7 +99,7 @@
     return badge;
   }
 
-  function mountPicker(container, accounts) {
+  function mountPicker(container, accounts, loadOk) {
     var targetId = container.getAttribute("data-target");
     var hidden = document.getElementById(targetId);
     if (!hidden) return;
@@ -141,7 +141,9 @@
       if (!current) {
         var ph = document.createElement("span");
         ph.className = "acct-pick-placeholder";
-        ph.textContent = accounts.length ? "Select an account…" : "No connected accounts";
+        ph.textContent = accounts.length
+          ? "Select an account…"
+          : (loadOk === false ? "Couldn't load accounts — refresh" : "No connected accounts");
         trigger.appendChild(ph);
         return;
       }
@@ -244,8 +246,8 @@
     var containers = document.querySelectorAll("[data-account-picker]");
     if (!containers.length) return;
     injectStyles();
-    loadAccounts().then(function (accounts) {
-      containers.forEach(function (c) { mountPicker(c, accounts); });
+    loadAccounts().then(function (result) {
+      containers.forEach(function (c) { mountPicker(c, result.rows, result.ok); });
     });
   }
 

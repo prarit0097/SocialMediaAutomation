@@ -130,6 +130,7 @@
           const source = items.find((it) => it.id === id);
           if (!source || !targetDate) return;
           const sourceDate = new Date(source.start_at);
+          if (Number.isNaN(sourceDate.getTime())) { alert("This item has an invalid date and cannot be moved."); return; }
           const nextStart = `${targetDate}T${pad(sourceDate.getHours())}:${pad(sourceDate.getMinutes())}:00`;
           try {
             const updated = await fetchJSON(`/api/planning/calendar/${id}/`, {
@@ -171,19 +172,23 @@
     });
   }
 
+  const calendarLoadFailed = (err) => {
+    console.error(err);
+    if (monthLabel) monthLabel.textContent = "Calendar unavailable. Click Reload to retry.";
+  };
+
   prevBtn?.addEventListener("click", async () => {
     cursor = new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1);
-    await loadItems();
+    try { await loadItems(); } catch (err) { calendarLoadFailed(err); }
   });
 
   nextBtn?.addEventListener("click", async () => {
     cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
-    await loadItems();
+    try { await loadItems(); } catch (err) { calendarLoadFailed(err); }
   });
 
   reloadBtn?.addEventListener("click", async () => {
-    await loadItems();
-    await loadTags();
+    try { await loadItems(); await loadTags(); } catch (err) { calendarLoadFailed(err); }
   });
 
   createForm?.addEventListener("submit", async (ev) => {
@@ -312,7 +317,11 @@
   (async () => {
     const input = createForm?.querySelector("[name='start_at']");
     if (input) input.value = fmtLocalInput(new Date().toISOString());
-    await loadItems();
-    await loadTags();
+    try {
+      await loadItems();
+      await loadTags();
+    } catch (err) {
+      calendarLoadFailed(err);
+    }
   })();
 })();

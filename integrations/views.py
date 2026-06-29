@@ -165,7 +165,7 @@ def _lookup_catalog_target(client: MetaClient, target_id: str, access_token: str
 
 
 def _resolve_user_access_token(request: HttpRequest, user_id: int | None) -> str:
-    session_token = str(request.session.get(META_USER_SESSION_TOKEN_KEY) or "").strip()
+    session_token = str(decrypt_text(request.session.get(META_USER_SESSION_TOKEN_KEY)) or "").strip()
     if session_token:
         _persist_user_access_token(user_id, session_token)
         return session_token
@@ -302,7 +302,9 @@ def meta_callback(request: HttpRequest) -> HttpResponse:
         cache.delete(f"meta_pages_catalog:{user_id}")
         cache.delete(f"accounts_list_v1:{user_id}")
 
-    request.session[META_USER_SESSION_TOKEN_KEY] = user_access_token
+    # Encrypt at rest in the session — with the cache-backed session engine this token
+    # would otherwise sit in plaintext in shared Redis, unlike its encrypted DB/cache copies.
+    request.session[META_USER_SESSION_TOKEN_KEY] = encrypt_text(user_access_token)
     request.session.modified = True
 
     logger.info("Meta accounts connected. total_pages=%s", len(pages))
@@ -458,6 +460,8 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                 if sid not in target_ids:
                     target_ids.append(sid)
 
+        live_lookups = 0
+        max_lookups = int(getattr(settings, "MAX_CATALOG_DETAIL_LOOKUPS", 25) or 25)
         for target_id in target_ids:
             if target_id in seen_ids:
                 continue
@@ -466,6 +470,22 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
             reason = "Asset is visible in token target_ids but not returned by /me/accounts."
             connectability = "not_connectable"
             profile_picture_url = None
+            # Bound live Meta detail lookups per request — a token granting hundreds of
+            # pages would otherwise make hundreds of blocking round-trips (worker/gateway
+            # timeout + wasted rate budget). Remaining assets list as catalog-only.
+            if live_lookups >= max_lookups:
+                rows.append({
+                    "page_id": target_id,
+                    "page_name": "(refresh to resolve)",
+                    "status": "catalog-only",
+                    "connectability": "catalog-only",
+                    "reason": "Not resolved this round (catalog lookup cap reached). Refresh again to resolve more pages.",
+                    "platform": platform,
+                    "profile_picture_url": None,
+                })
+                seen_ids.add(target_id)
+                continue
+            live_lookups += 1
             try:
                 detail_token = user_access_token
                 if not detail_token:
