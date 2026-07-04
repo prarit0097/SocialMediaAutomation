@@ -249,6 +249,20 @@ def refresh_account_insights_snapshot(self, account_id: int, force: bool = False
     except MetaAPIError as exc:
         logger.warning("daily heavy insights failed account_id=%s error=%s", account.id if account else account_id, str(exc))
         outcome = "failed"
+        # Self-heal: a hard token invalidation (OAuth code=190) will keep failing every
+        # run and burn shared Meta app quota across the whole fleet. Deactivate the row so
+        # the daily/force fan-out stops hammering it. A reconnect or `resync_page_tokens`
+        # re-mints a valid token and flips is_active back on (update_or_create sets it True).
+        try:
+            err = (getattr(exc, "payload", None) or {}).get("error", {})
+            if account is not None and err.get("code") == 190:
+                ConnectedAccount.objects.filter(id=account.id).update(is_active=False)
+                logger.warning(
+                    "deactivated account_id=%s: invalid token (code=190) — reconnect/resync needed",
+                    account.id,
+                )
+        except Exception:  # noqa: BLE001 - self-heal must never mask the original failure
+            pass
         return {"status": "failed", "account_id": account.id if account else account_id, "error": str(exc)}
     except Exception as exc:  # noqa: BLE001
         logger.exception("daily heavy insights unexpected failure account_id=%s", account.id if account else account_id)

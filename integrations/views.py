@@ -330,6 +330,15 @@ def meta_callback(request: HttpRequest) -> HttpResponse:
         cache.delete(f"meta_pages_catalog:{user_id}")
         cache.delete(f"accounts_list_v1:{user_id}")
 
+        # /me/accounts only refreshed DIRECTLY-managed pages above. Business-Manager
+        # pages keep stale per-page tokens on reconnect and then fail insight/publish
+        # with OAuth 190. Re-mint tokens for the FULL granted asset set in the
+        # background (can be ~100+ Meta calls) once the token row is committed.
+        from django.db import transaction
+        from .tasks import resync_page_tokens_task
+
+        transaction.on_commit(lambda uid=user_id: resync_page_tokens_task.delay(uid))
+
     # Encrypt at rest in the session — with the cache-backed session engine this token
     # would otherwise sit in plaintext in shared Redis, unlike its encrypted DB/cache copies.
     request.session[META_USER_SESSION_TOKEN_KEY] = encrypt_text(user_access_token)
