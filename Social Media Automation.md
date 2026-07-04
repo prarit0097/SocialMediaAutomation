@@ -141,6 +141,7 @@ What it shows:
 
 What it does:
 - starts the Meta connect flow
+- on reconnect, re-mints fresh per-page access tokens for ALL granted Business-Manager pages (token `target_ids`), not only the `/me/accounts` pages, so catalog-discovered profiles do not later fail with `code=190`; this runs in the background via `integrations.tasks.resync_page_tokens_task` (see "Business-Manager Page-Token Resync")
 - only allows the logged-in operator to complete the Meta callback; OAuth state is tied to both cache and the current session/user
 - refreshes the connected account list
 - `Refresh List` now forces fresh reads for both connected accounts list and Meta catalog (`?refresh=1`), so operators see latest reconnect state immediately
@@ -228,7 +229,7 @@ What happens:
 - publish task now uses a per-post execution lock (`publish_task_lock:<post_id>`) so duplicate deliveries do not run in parallel
 - failed jobs can be retried if the account row is current
 - invalid Meta token failures are stored with reconnect guidance so the operator knows to reconnect before retrying
-- the Dashboard Home shows a one-click "Review failed posts" alert whenever any scheduled posts are in the failed state, so permanent failures are surfaced proactively instead of only being discoverable on the Profile page; the alert deep-links to the Scheduler queue pre-filtered to `failed` (via `?status=failed`)
+- the Dashboard Home shows a one-click "Review failed posts" alert whenever any scheduled posts are in the failed state, so permanent failures are surfaced proactively instead of only being discoverable on the Profile page; the alert deep-links to the Scheduler queue pre-filtered to `failed` (via `?status=failed`); the alert is now correctly hidden when there are zero failed posts (previously an inline `display:flex` overrode the `hidden` attribute, so the banner rendered on every load regardless of the failed count)
 - public/marketing copy no longer claims failures always auto-recover: messaging is "most failed posts auto-recover; anything that can't is flagged for one-click retry"
 - Instagram video / reel publishing prefers direct resumable upload from locally stored media when available, then waits for container processing before final publish
 - if Instagram resumable video upload fails during container setup, publish flow now falls back to `video_url` container creation instead of immediately failing the whole post
@@ -383,6 +384,7 @@ Important runtime meaning:
 - intended timezone: `Asia/Kolkata`
 - purpose: fetch the heaviest practical insights snapshot for every connected profile and store it for UI and future analytics
 - each account refresh task uses a per-account lock (`insight_refresh_lock:<account_id>`) so duplicate queued jobs are safely skipped
+- self-heal on invalid tokens: if an account's refresh fails with a hard Meta `code=190` (access token invalidated), the task marks that account `is_active=False` so the daily fan-out stops re-hammering dead tokens and burning shared Meta app quota; a later reconnect or `resync_page_tokens` re-mints a valid token and flips `is_active` back on
 
 Heavy insights collection currently stores:
 - account-level insights returned by Meta
@@ -943,6 +945,24 @@ Added after a focused security audit. All controls are additive and behavior-pre
 - Meta user OAuth token is now Fernet-encrypted in the cache (it was previously stored in plaintext in Redis for 30 days); decryption tolerates any pre-existing plaintext entries during the transition.
 - Production startup now also requires `CACHE_BACKEND=redis` (a shared cache is mandatory for rate limiting, login lockout, OAuth state, and subscription-order recovery; LocMem would silently multiply limits by worker count).
 - Django admin no longer renders the decrypted Meta page access token in the change form; the debug-token health cache key uses a full SHA-256 (no truncation) so distinct tokens can never collide.
+
+## Business-Manager Page-Token Resync (reconnect OAuth-190 fix)
+Added after a production incident where ~71 of an operator's connected profiles failed every insights/force-refresh pull with Meta `code=190 subcode=460` ("access token invalidated"), so `last_post_at` and snapshots went stale and "Force Refresh All" returned mostly failures — even after the operator reconnected Meta.
+
+Root cause:
+- `/me/accounts` only returns a user's DIRECTLY-managed pages (~8 for a Business-Manager operator). The rest of the granted pages are exposed only through the token's `granular_scopes.target_ids`.
+- On reconnect the app previously re-minted per-page `access_token`s ONLY for the `/me/accounts` pages; the Business-Manager (catalog-discovered) pages kept their pre-reconnect tokens, which a fresh user-token re-auth invalidates → `code=190` on every later insight/publish call.
+- The Accounts catalog marks a row "connected" when a `ConnectedAccount` row simply exists (it does not validate the stored token), so the UI looked healthy while the stored per-page tokens were dead.
+
+Fix (additive; no schema change; reuses `is_active`):
+- New `integrations.services.resync_all_page_tokens(user, user_access_token)` walks the FULL granted asset set (token `target_ids`) and re-mints every `ConnectedAccount.access_token` from the current user token. FB page tokens are fetched in quota-friendly batches (50 ids per Graph call, with per-id fallback on batch error) and each linked IG row is updated with its FB page token. Guarded by the shared app-usage budget (`meta_app_over_budget`) so it cannot re-trigger app-level rate-limit exhaustion, and it never deactivates rows (safe to re-run any time).
+- New Celery task `integrations.tasks.resync_page_tokens_task(user_id)` wraps it and is auto-enqueued on transaction commit at the end of the Meta reconnect callback, so every reconnect now refreshes tokens for ALL pages, not just `/me/accounts`.
+- New management command for immediate recovery without another reconnect (uses the stored `MetaUserToken`):
+  - `python manage.py resync_page_tokens --user-id <id>` (or `--email <addr>`)
+- Daily heavy insights self-heal (see "Daily Heavy Insights Automation"): a hard `code=190` failure now marks that account `is_active=False` so the nightly fan-out stops burning shared Meta app quota on dead tokens.
+
+Operational note (large multi-page fleets):
+- A single "Force Refresh All" already sweeps the whole fleet's Meta quota; do NOT run it repeatedly, and never run `check_meta_tokens` across a large fleet (it makes one Meta call per account and can push `X-App-Usage` past 100%, which fails ALL app calls with `code=4`). Prefer the nightly daily-heavy job; use `resync_page_tokens` for targeted token recovery.
 
 ## Maintenance Rule
 This file must be updated whenever project behavior, workflow, automation, stored data, or important UI meaning changes.
