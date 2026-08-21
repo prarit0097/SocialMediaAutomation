@@ -651,13 +651,39 @@ This project includes local MCP servers under `mcp_servers/` so Codex or future 
 - SQLite can still hit transient write locks under high parallel activity; PostgreSQL is strongly recommended for production workloads.
 
 ## Test Reliability Notes
-- full Django test suite currently runs with 185 tests (plus optional skips depending on environment).
+- full Django test suite currently runs with 190 tests (plus optional skips depending on environment).
+- static storage coverage (`core/tests_storage.py`) locks in hashed URLs when a manifest entry exists, unhashed fallback when it is missing or absent, and that the stock Django storage would raise in that case.
 - force-refresh-all regression coverage now explicitly checks counter seeding before dispatch, preservation of task-written counters against the post-dispatch save, cooldown suppression on no-op runs, once-per-run accounts-cache invalidation from the status endpoint, and that skipped/no-token accounts cannot prematurely finalize a run that still has live refresh tasks.
 - MCP helper tests are optional and auto-skip when the external `mcp` Python package is not installed.
 - Instagram local image optimization tests are auto-skip when Pillow (`PIL`) is not installed.
 - publishing task tests clear cache in setup to avoid stale lock-key side effects between tests.
 - scheduler regression coverage now explicitly checks inline auto-dispatch fallback, chained Instagram slot collision handling, and daily-heavy force-refresh queue rules.
 - planning coverage now also checks invalid month validation, connected-account ownership boundaries, cross-user item isolation, and AI planner account-context isolation.
+
+## Static Asset Cache-Busting
+Production serves `/static/` through Nginx with `expires 30d`. Assets were referenced by plain
+filename (`/static/dashboard/app.js`), so a returning visitor's browser kept the cached old
+`app.js` / `styles.css` for up to 30 days after a deploy and never received frontend fixes.
+
+- production static storage is now `core.storage.ResilientManifestStaticFilesStorage`, so
+  `collectstatic` writes content-hashed filenames (`app.2b2c7201104f.js`) and `{% static %}`
+  renders those hashed URLs; the filename changes whenever the file content changes, which
+  makes the long `expires 30d` cache both safe and self-invalidating
+- Django bypasses hashing while `DEBUG=True`, so `runserver` needs no manifest
+- the storage falls back to the unhashed filename instead of raising when a name is missing
+  from `staticfiles.json`. The stock Django storage raises `ValueError` there, which would
+  turn an asset problem into a site-wide 500 (and would break every template-rendering test
+  on a fresh checkout, since `staticfiles/` is gitignored). `collectstatic` writes both the
+  hashed and the plain filename, so the fallback URL is always serveable — it costs only
+  cache-busting for that one file, never availability
+- `manifest_strict` is deliberately left at `True`: with it disabled Django hashes a
+  missing-from-manifest file on the fly and returns a URL that 404s, because only
+  `collectstatic` writes hashed copies to disk
+- `deploy/prod/update_on_vps.sh` now builds, then runs `collectstatic` into the shared static
+  volume, and only then starts the new containers. The previous order (`up -d` before
+  `collectstatic`) left a window where the running app had no matching manifest
+- after any deploy that changes JS/CSS, returning visitors get the new files automatically;
+  no hard refresh is required any more
 
 ## Recent UI Performance Update
 - Top navigation logo now uses a lightweight optimized icon asset (`postzyo-icon-optimized.png`) instead of the previous heavy lockup image.

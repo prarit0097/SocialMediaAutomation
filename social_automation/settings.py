@@ -190,6 +190,25 @@ USE_TZ = True
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"]
+
+# Content-hashed static filenames in production (e.g. app.4e1a9c2b.js).
+#
+# Nginx serves /static/ with `expires 30d`, so without hashing a returning visitor keeps
+# the browser-cached old app.js/styles.css for up to 30 days after a deploy and simply
+# never receives frontend fixes. Hashing changes the filename whenever the file content
+# changes, so the long cache stays valid AND every deploy lands immediately.
+#
+# Django already bypasses hashing while DEBUG is on, so runserver needs no manifest. The
+# storage falls back to the unhashed name (rather than raising) when a manifest entry is
+# missing — see core.storage for why that matters for tests and for deploy windows.
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "core.storage.ResilientManifestStaticFilesStorage",
+    },
+}
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 PUBLIC_BASE_URL = env("PUBLIC_BASE_URL", default="")
