@@ -1141,6 +1141,10 @@
           status: data.status || "queued",
           total_accounts: Number(data.total_accounts || 0),
         }, true);
+        // A run was launched in this session, so the next completion we observe belongs to
+        // us and the accounts table must be reloaded — including when the run already
+        // finished inside this POST (everything skipped, inline fallback, or fast tasks).
+        forceRefreshSawRunning = true;
         renderForceRefreshProgress(data);
         forceRefreshPollFailureCount = 0;
         scheduleForceRefreshPoll(FORCE_REFRESH_STATUS_POLL_MS);

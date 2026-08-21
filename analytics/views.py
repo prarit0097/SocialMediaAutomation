@@ -188,16 +188,19 @@ def _reconcile_bulk_run_progress(run: BulkInsightRefreshRun | None) -> BulkInsig
         if not locked or locked.status != BulkInsightRefreshRun.STATUS_RUNNING:
             return locked
 
-        processed = int(locked.completed_count or 0) + int(locked.failed_count or 0) + int(locked.skipped_no_token or 0) + int(
-            locked.enqueue_failed or 0
-        )
+        # Completion must be judged on REPORTED outcomes only (completed + failed), matching
+        # _record_bulk_run_outcome. skipped_no_token / enqueue_failed rows never had a task
+        # dispatched, so counting them against queued_count finalized runs prematurely: with
+        # 1 queued + 1 skipped, the first 7s status poll marked the run COMPLETED while the
+        # real task was still pulling from Meta — whose outcome was then silently dropped
+        # because the run was no longer RUNNING.
+        reported = int(locked.completed_count or 0) + int(locked.failed_count or 0)
         queued = int(locked.queued_count or 0)
-        total = int(locked.total_accounts or 0)
         now = timezone.now()
         stale_cutoff = timedelta(minutes=_bulk_refresh_stale_minutes())
 
         # Fast-path finalize when counters already indicate completion.
-        if queued > 0 and processed >= queued:
+        if queued > 0 and reported >= queued:
             locked.status = (
                 BulkInsightRefreshRun.STATUS_COMPLETED_WITH_ERRORS
                 if locked.failed_count > 0 or locked.enqueue_failed > 0
@@ -221,11 +224,10 @@ def _reconcile_bulk_run_progress(run: BulkInsightRefreshRun | None) -> BulkInsig
                 .count()
             )
             inferred_completed = min(max(queued, 0), refreshed_accounts)
-            minimum_processed = min(max(total, 0), inferred_completed + int(locked.skipped_no_token or 0) + int(locked.enqueue_failed or 0))
-            if minimum_processed > processed:
-                delta = minimum_processed - processed
+            if inferred_completed > reported:
+                delta = inferred_completed - reported
                 locked.completed_count = int(locked.completed_count or 0) + delta
-                processed = minimum_processed
+                reported = inferred_completed
                 locked.save(update_fields=["completed_count", "updated_at"])
                 locked._auto_reconciled = True
                 locked._auto_reconcile_reason = "snapshot_counter_repair"
@@ -233,7 +235,7 @@ def _reconcile_bulk_run_progress(run: BulkInsightRefreshRun | None) -> BulkInsig
         # Finalize long-stale runs to avoid indefinite "running" UI state.
         age = (now - locked.started_at) if locked.started_at else timedelta(0)
         since_update = (now - locked.updated_at) if locked.updated_at else timedelta(0)
-        if queued > 0 and processed >= queued:
+        if queued > 0 and reported >= queued:
             locked.status = (
                 BulkInsightRefreshRun.STATUS_COMPLETED_WITH_ERRORS
                 if locked.failed_count > 0 or locked.enqueue_failed > 0
@@ -244,7 +246,7 @@ def _reconcile_bulk_run_progress(run: BulkInsightRefreshRun | None) -> BulkInsig
             locked._auto_reconciled = True
             locked._auto_reconcile_reason = "counter_completion"
         elif queued > 0 and age >= stale_cutoff and since_update >= stale_cutoff:
-            remaining = max(0, queued - processed)
+            remaining = max(0, queued - reported)
             if remaining:
                 locked.failed_count = int(locked.failed_count or 0) + remaining
             locked.status = BulkInsightRefreshRun.STATUS_COMPLETED_WITH_ERRORS
@@ -1375,10 +1377,19 @@ def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
                 )
 
             accounts = list(ConnectedAccount.objects.filter(is_active=True, user=request.user).order_by("id"))
+            # Seed queued_count/skipped_no_token BEFORE any task is dispatched. Tasks call
+            # _record_bulk_run_outcome() as soon as they finish (a stale-lock skip returns in
+            # milliseconds), and that callback finalizes the run when processed >= queued_count.
+            # Creating the row with queued_count=0 made the very first callback finalize the run
+            # instantly, and the post-dispatch save() then clobbered the counters it had written.
+            eligible_accounts = [account for account in accounts if account.access_token]
+            skipped_no_token = len(accounts) - len(eligible_accounts)
             run = BulkInsightRefreshRun.objects.create(
                 user=request.user,
                 status=BulkInsightRefreshRun.STATUS_RUNNING,
                 total_accounts=len(accounts),
+                queued_count=len(eligible_accounts),
+                skipped_no_token=skipped_no_token,
             )
     except OperationalError as exc:
         logger.warning("bulk force refresh creation blocked due to database lock user_id=%s error=%s", request.user.id, exc)
@@ -1392,16 +1403,12 @@ def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
 
     total_accounts = len(accounts)
     queued = 0
-    skipped_no_token = 0
     enqueue_failed = 0
     enqueue_failed_accounts: list[ConnectedAccount] = []
     inline_completed = 0
     inline_failed = 0
 
-    for account in accounts:
-        if not account.access_token:
-            skipped_no_token += 1
-            continue
+    for account in eligible_accounts:
         try:
             refresh_account_insights_snapshot.apply_async(
                 args=[account.id],
@@ -1466,33 +1473,60 @@ def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
 
     unresolved_enqueue_failed = enqueue_failed if not inline_queue_fallback else (inline_failed + inline_deferred)
 
-    run.queued_count = queued
-    run.skipped_no_token = skipped_no_token
-    run.enqueue_failed = unresolved_enqueue_failed
-    run.completed_count = inline_completed
-    run.failed_count = inline_failed
-    if queued == 0:
-        if unresolved_enqueue_failed > 0 or inline_failed > 0:
-            run.status = BulkInsightRefreshRun.STATUS_COMPLETED_WITH_ERRORS
-        else:
-            run.status = BulkInsightRefreshRun.STATUS_COMPLETED
-        run.finished_at = timezone.now()
-    run.save(
-        update_fields=[
-            "queued_count",
-            "skipped_no_token",
-            "enqueue_failed",
-            "completed_count",
-            "failed_count",
-            "status",
-            "finished_at",
-            "updated_at",
-        ]
-    )
+    # Reconcile the seeded counters under a row lock. Tasks may already have reported
+    # outcomes into this row, so ADD to the persisted values instead of overwriting them.
+    # Inline-fallback results are folded into queued_count as well, so they do not shift
+    # the completion threshold that _record_bulk_run_outcome() compares against.
+    try:
+        with transaction.atomic():
+            locked_run = BulkInsightRefreshRun.objects.select_for_update().filter(id=run.id).first()
+            if locked_run is not None:
+                locked_run.queued_count = queued + inline_completed + inline_failed
+                locked_run.skipped_no_token = skipped_no_token
+                locked_run.enqueue_failed = unresolved_enqueue_failed
+                locked_run.completed_count = int(locked_run.completed_count or 0) + inline_completed
+                locked_run.failed_count = int(locked_run.failed_count or 0) + inline_failed
+                processed = int(locked_run.completed_count) + int(locked_run.failed_count)
+                if locked_run.status == BulkInsightRefreshRun.STATUS_RUNNING and (
+                    locked_run.queued_count == 0 or processed >= locked_run.queued_count
+                ):
+                    if locked_run.failed_count > 0 or unresolved_enqueue_failed > 0:
+                        locked_run.status = BulkInsightRefreshRun.STATUS_COMPLETED_WITH_ERRORS
+                    else:
+                        locked_run.status = BulkInsightRefreshRun.STATUS_COMPLETED
+                    locked_run.finished_at = timezone.now()
+                locked_run.save(
+                    update_fields=[
+                        "queued_count",
+                        "skipped_no_token",
+                        "enqueue_failed",
+                        "completed_count",
+                        "failed_count",
+                        "status",
+                        "finished_at",
+                        "updated_at",
+                    ]
+                )
+                run = locked_run
+    except OperationalError as exc:
+        # Tasks are already dispatched at this point, so a transient write lock must not
+        # 500 the request. The seeded counters stay in place and the status endpoint's
+        # reconcile pass repairs the row; only the response payload is best-effort here.
+        logger.warning(
+            "bulk force refresh counter reconcile skipped due to database lock user_id=%s run_id=%s error=%s",
+            request.user.id,
+            run.id,
+            exc,
+        )
+        run.queued_count = queued + inline_completed + inline_failed
+        run.skipped_no_token = skipped_no_token
+        run.enqueue_failed = unresolved_enqueue_failed
 
     # Arm the per-user cooldown so the next full force-refresh waits out the window.
+    # Only when real Meta work was actually started — a run where every account was
+    # skipped (no token) or failed to enqueue must not lock the operator out for 30m.
     cooldown_seconds = int(getattr(settings, "FORCE_REFRESH_ALL_COOLDOWN_SECONDS", 1800) or 1800)
-    if cooldown_seconds > 0:
+    if cooldown_seconds > 0 and (queued > 0 or inline_completed > 0):
         cache.set(f"force-refresh-all-cooldown:{request.user.id}", timezone.now().isoformat(), timeout=cooldown_seconds)
 
     logger.info(
@@ -1537,6 +1571,7 @@ def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
 
 @require_GET
 @login_required
+@throttle_per_user("60/m", scope="force_refresh_all_status")
 def force_refresh_all_accounts_status(request: HttpRequest) -> JsonResponse:
     run = BulkInsightRefreshRun.objects.filter(user=request.user).order_by("-started_at").first()
     run = _safe_reconcile_bulk_run_progress(run)
@@ -1544,7 +1579,11 @@ def force_refresh_all_accounts_status(request: HttpRequest) -> JsonResponse:
         BulkInsightRefreshRun.STATUS_COMPLETED,
         BulkInsightRefreshRun.STATUS_COMPLETED_WITH_ERRORS,
     }:
-        cache.delete(f"accounts_list_v1:{request.user.id}")
+        # Invalidate the accounts list ONCE per finished run. This endpoint is polled every
+        # 7s and is also called on every Accounts page load, so an unconditional delete kept
+        # the accounts-list cache permanently cold for anyone who had ever run a refresh.
+        if cache.add(f"force-refresh-accounts-cache-cleared:{run.id}", 1, timeout=86400):
+            cache.delete(f"accounts_list_v1:{request.user.id}")
     payload = _serialize_bulk_run(run)
     if run and getattr(run, "_db_lock_contention", False):
         payload["db_lock_contention"] = True

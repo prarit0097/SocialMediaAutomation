@@ -57,7 +57,7 @@ Update `.env` values:
   - `DAILY_INSIGHTS_SCHEDULE_HOUR=5`
   - `DAILY_INSIGHTS_SCHEDULE_MINUTE=0`
 - `DAILY_INSIGHTS_POST_LIMIT=100`
-- `DAILY_INSIGHTS_POST_STATS_LIMIT=40`
+- `DAILY_INSIGHTS_POST_STATS_LIMIT=15` (one Meta Graph call per post per account — the dominant quota driver; raise only if you need deeper post history and have quota headroom)
 - `OPENAI_API_KEY` (required for AI Insights page)
 - `OPENAI_MODEL` (default: `gpt-4o-mini`)
 - `OPENAI_TIMEOUT_SECONDS` (default: `45`)

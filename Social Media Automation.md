@@ -155,6 +155,11 @@ What it does:
 - force-refresh run status is now auto-reconciled: if snapshot storage succeeds but callback bookkeeping misses, counters self-heal and stale `running` states are auto-finalized
 - force-refresh auto-reconcile now counts only that operator's snapshots, preventing cross-user snapshot activity from falsely completing someone else's run
 - a reconciled/completed force-refresh run no longer blocks the next refresh request for that same user
+- force-refresh run counters (`queued_count`, `skipped_no_token`) are now persisted BEFORE the first Celery task is dispatched, so a task that reports its outcome immediately (for example an account already under `insight_refresh_lock`) can no longer finalize the run on its first callback; the post-dispatch bookkeeping now re-reads the row under a lock and ADDS to the persisted counters instead of overwriting whatever the workers already wrote
+- inline queue-down fallback results are folded into `queued_count` as already-reported outcomes, so the completion threshold stays correct when Celery dispatch fails; the API response still reports Celery-dispatched work separately as `queued`
+- the per-user force-refresh cooldown is armed only when Meta work actually started (`queued > 0` or an inline refresh succeeded); a run where every profile was skipped for a missing token no longer locks the operator out for the cooldown window
+- the force-refresh status endpoint is per-user throttled (`60/m`) and now clears the cached accounts list only once per finished run, instead of on every 7-second poll and every Accounts page load
+- run reconcile now judges completion on REPORTED task outcomes only (`completed + failed`), matching the task-side bookkeeping; `skipped_no_token` / `enqueue_failed` rows never dispatch a task, and counting them toward the `queued_count` threshold used to let the first status poll finalize a run as completed while real refresh tasks were still running (their late outcomes were then dropped)
 - force-refresh status endpoint is lock-safe for SQLite contention (`database is locked`): temporary DB locks no longer break UI polling with 500 responses
 - Accounts UI shows a one-time toast when a previously stuck force-refresh run is auto-recovered/finalized
 - force-refresh status polling now avoids overlapping requests, applies retry backoff on temporary failures, and shows retry status text instead of silently swallowing poll errors
@@ -645,7 +650,8 @@ This project includes local MCP servers under `mcp_servers/` so Codex or future 
 - SQLite can still hit transient write locks under high parallel activity; PostgreSQL is strongly recommended for production workloads.
 
 ## Test Reliability Notes
-- full Django test suite currently runs with 153 tests (plus optional skips depending on environment).
+- full Django test suite currently runs with 185 tests (plus optional skips depending on environment).
+- force-refresh-all regression coverage now explicitly checks counter seeding before dispatch, preservation of task-written counters against the post-dispatch save, cooldown suppression on no-op runs, once-per-run accounts-cache invalidation from the status endpoint, and that skipped/no-token accounts cannot prematurely finalize a run that still has live refresh tasks.
 - MCP helper tests are optional and auto-skip when the external `mcp` Python package is not installed.
 - Instagram local image optimization tests are auto-skip when Pillow (`PIL`) is not installed.
 - publishing task tests clear cache in setup to avoid stale lock-key side effects between tests.
@@ -926,6 +932,7 @@ Meta app-usage protection:
 - manual force-refresh-all (`POST /api/insights/force-refresh-all/`) now has a non-overridable app-usage gate (`429` when cached usage `>= FORCE_REFRESH_APP_USAGE_BLOCK_PCT`, default `90`) and a per-user cooldown (`FORCE_REFRESH_ALL_COOLDOWN_SECONDS`, default `1800s`) so repeated full-fleet runs cannot stack on the daily job and exhaust the shared app quota.
 - the force-refresh-all inline (queue-down) fallback is bounded to `FORCE_REFRESH_INLINE_FALLBACK_MAX` accounts (default `5`) so a degraded broker cannot push the whole fleet through synchronous Meta pulls inside one web worker.
 - per-account Meta call volume is the dominant quota driver; lower `DAILY_INSIGHTS_POST_STATS_LIMIT` / `DAILY_INSIGHTS_POST_LIMIT` in production to cut it.
+- `DAILY_INSIGHTS_POST_STATS_LIMIT` default is now `15` (was `40`). Per-post stats are one Meta Graph call per post per account per refresh, so this is the single largest lever on app-usage: for an 81-profile fleet a full "Force Refresh All" drops from roughly 3,400 calls to roughly 1,400. Only the newest 15 posts per profile get live per-post metrics; older posts still appear in Published Posts and reuse their last cached stats. Deployments that pin this value in their own `.env` must update it there — the settings default does not override an explicit env value.
 
 Memory / OOM protection:
 - new `analytics.tasks.prune_insight_snapshots` Celery beat task keeps only the latest `INSIGHT_SNAPSHOT_RETENTION_PER_ACCOUNT` (default `30`) snapshots per account and deletes the rest in id-batches; scheduled daily at `INSIGHT_SNAPSHOT_PRUNE_HOUR:MINUTE` (default `04:30`). Only the newest snapshot per account is ever read, so older rows were unbounded dead weight bloating Postgres.

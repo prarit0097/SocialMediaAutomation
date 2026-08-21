@@ -357,15 +357,20 @@ class AnalyticsApiTests(TestCase):
 
     @patch("analytics.views.refresh_account_insights_snapshot.apply_async")
     def test_force_refresh_all_second_run_blocked_by_cooldown(self, mock_apply_async):
-        # First run completes immediately (no token -> nothing queued) and arms cooldown.
-        ConnectedAccount.objects.filter(id=self.account.id).update(access_token="")
+        # First run actually queues Meta work, which is what arms the cooldown.
         first = self.client.post(
             "/api/insights/force-refresh-all/",
             data=json.dumps({}),
             content_type="application/json",
         )
         self.assertEqual(first.status_code, 200)
-        self.assertEqual(first.json()["status"], "completed")
+        self.assertEqual(first.json()["queued"], 1)
+
+        # Finalize the run so the duplicate-run gate cannot mask the cooldown gate.
+        BulkInsightRefreshRun.objects.filter(user=self.user).update(
+            status=BulkInsightRefreshRun.STATUS_COMPLETED,
+            finished_at=timezone.now(),
+        )
 
         # Second run is refused by the per-user cooldown window.
         second = self.client.post(
@@ -375,6 +380,140 @@ class AnalyticsApiTests(TestCase):
         )
         self.assertEqual(second.status_code, 429)
         self.assertEqual(second.json()["error"], "Force refresh on cooldown")
+
+    @patch("analytics.views.refresh_account_insights_snapshot.apply_async")
+    def test_force_refresh_all_no_op_run_does_not_arm_cooldown(self, mock_apply_async):
+        """A run that queued nothing must not lock the operator out for the cooldown window."""
+        ConnectedAccount.objects.filter(id=self.account.id).update(access_token="")
+
+        first = self.client.post(
+            "/api/insights/force-refresh-all/",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(first.json()["queued"], 0)
+        self.assertEqual(first.json()["status"], "completed")
+        self.assertIsNone(cache.get(f"force-refresh-all-cooldown:{self.user.id}"))
+
+        # No Meta quota was spent, so an immediate retry must be allowed.
+        ConnectedAccount.objects.filter(id=self.account.id).update(access_token="token")
+        second = self.client.post(
+            "/api/insights/force-refresh-all/",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.json()["queued"], 1)
+
+    @patch("analytics.views.refresh_account_insights_snapshot.apply_async")
+    def test_force_refresh_all_seeds_counters_before_dispatch(self, mock_apply_async):
+        """queued_count/skipped_no_token must be persisted before the first task is sent.
+
+        A task can report its outcome within milliseconds (e.g. a stale account lock makes
+        it return immediately). If the run row still said queued_count=0 at that moment,
+        _record_bulk_run_outcome() would finalize the run on the very first callback.
+        """
+        ConnectedAccount.objects.create(
+            user=self.user,
+            platform=FACEBOOK,
+            page_id="seed-no-token",
+            page_name="No Token",
+            access_token="",
+            is_active=True,
+        )
+        observed = {}
+
+        def _capture(*args, **kwargs):
+            run_id = kwargs["kwargs"]["bulk_run_id"]
+            row = BulkInsightRefreshRun.objects.get(id=run_id)
+            observed["queued_count"] = row.queued_count
+            observed["skipped_no_token"] = row.skipped_no_token
+
+        mock_apply_async.side_effect = _capture
+
+        response = self.client.post(
+            "/api/insights/force-refresh-all/",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(observed["queued_count"], 1)
+        self.assertEqual(observed["skipped_no_token"], 1)
+
+    @patch("analytics.views.refresh_account_insights_snapshot.apply_async")
+    def test_force_refresh_all_preserves_counters_written_during_dispatch(self, mock_apply_async):
+        """Counters written by a task mid-dispatch must survive the post-dispatch save."""
+
+        def _complete_immediately(*args, **kwargs):
+            _record_bulk_run_outcome(kwargs["kwargs"]["bulk_run_id"], "stored")
+
+        mock_apply_async.side_effect = _complete_immediately
+
+        response = self.client.post(
+            "/api/insights/force-refresh-all/",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        run = BulkInsightRefreshRun.objects.get(user=self.user)
+        self.assertEqual(run.completed_count, 1)
+        self.assertEqual(run.queued_count, 1)
+        self.assertEqual(run.status, BulkInsightRefreshRun.STATUS_COMPLETED)
+        self.assertIsNotNone(run.finished_at)
+        self.assertFalse(response.json()["has_active_run"])
+
+    def test_force_refresh_status_clears_accounts_cache_only_once_per_run(self):
+        """The status endpoint is polled every 7s; it must not evict the accounts cache each time."""
+        BulkInsightRefreshRun.objects.create(
+            user=self.user,
+            status=BulkInsightRefreshRun.STATUS_COMPLETED,
+            total_accounts=1,
+            queued_count=1,
+            completed_count=1,
+            finished_at=timezone.now(),
+        )
+        cache_key = f"accounts_list_v1:{self.user.id}"
+
+        cache.set(cache_key, [{"id": 1}], timeout=300)
+        self.assertEqual(self.client.get("/api/insights/force-refresh-all/status/").status_code, 200)
+        self.assertIsNone(cache.get(cache_key))
+
+        cache.set(cache_key, [{"id": 1}], timeout=300)
+        self.assertEqual(self.client.get("/api/insights/force-refresh-all/status/").status_code, 200)
+        self.assertIsNotNone(cache.get(cache_key))
+
+    def test_force_refresh_status_does_not_finalize_run_from_skipped_accounts(self):
+        """skipped_no_token / enqueue_failed rows never dispatch a task, so they must not
+        count toward the queued_count completion threshold. With 1 queued + 1 skipped, the
+        first status poll used to mark the run COMPLETED while the real task was still
+        running — and that task's outcome was then dropped because the run had left RUNNING.
+        """
+        run = BulkInsightRefreshRun.objects.create(
+            user=self.user,
+            status=BulkInsightRefreshRun.STATUS_RUNNING,
+            total_accounts=2,
+            queued_count=1,
+            skipped_no_token=1,
+            completed_count=0,
+            failed_count=0,
+        )
+
+        response = self.client.get("/api/insights/force-refresh-all/status/")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["run_id"], run.id)
+        self.assertEqual(body["status"], "running")
+        self.assertTrue(body["has_active_run"])
+
+        # The still-running task's outcome must land normally afterwards.
+        _record_bulk_run_outcome(run.id, "stored")
+        run.refresh_from_db()
+        self.assertEqual(run.completed_count, 1)
+        self.assertEqual(run.status, BulkInsightRefreshRun.STATUS_COMPLETED)
+        self.assertIsNotNone(run.finished_at)
 
     @patch("analytics.views.refresh_account_insights_snapshot.apply_async")
     def test_force_refresh_all_accounts_status_endpoint_returns_current_run(self, mock_apply_async):
@@ -476,12 +615,17 @@ class AnalyticsApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         body = response.json()
-        self.assertEqual(body["queued_count"], 0)
+        # Nothing reached Celery...
+        self.assertEqual(body["queued"], 0)
+        # ...but the inline-processed account still counts as one expected outcome, so the
+        # run's completion threshold (completed+failed >= queued_count) stays correct.
+        self.assertEqual(body["queued_count"], 1)
         self.assertEqual(body["inline_completed"], 1)
         self.assertEqual(body["inline_failed"], 0)
         self.assertEqual(body["queue_errors"], 1)
         self.assertEqual(body["unresolved_queue_errors"], 0)
         self.assertEqual(body["status"], "completed")
+        self.assertFalse(body["has_active_run"])
         mock_fetch_and_store.assert_called_once()
 
     @patch("analytics.views._reconcile_bulk_run_progress", side_effect=OperationalError("database is locked"))
