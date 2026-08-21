@@ -132,6 +132,7 @@ What it shows:
 - connected timestamp
 - latest detected posting time (`last_post_at`)
 - stale posting indicator when no recent post was detected in the last 24 hours
+- Connected Accounts rows are ordered by posting recency: profiles that posted within the last 24 hours come first (newest `last_post_at` at the very top), profiles stale for more than 24 hours sink below them (also newest-first), and profiles with no detected post at all sit last, so the most recently active profiles are always visible without scrolling
 - stale sync indicator when a stored account row was not refreshed in the latest Meta reconnect
 - view meta shows both merged-row count and active raw connected-row count
 - per-row quick actions: Schedule, Insights, and AI Insights

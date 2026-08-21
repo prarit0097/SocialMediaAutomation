@@ -318,7 +318,28 @@
       return 1;
     }
 
+    function lastPostTime(row) {
+      if (!row.last_post_at) return null;
+      const parsed = new Date(row.last_post_at);
+      return Number.isNaN(parsed.getTime()) ? null : parsed.getTime();
+    }
+
     merged.sort((a, b) => {
+      // Recently-active profiles first. Anything that has not posted in the last 24h
+      // (the red `stale` rows) and anything with no detected post at all sinks to the
+      // bottom, so the freshest last_post_at is always visible at the top of the table.
+      const staleDiff = Number(Boolean(a.last_post_is_stale)) - Number(Boolean(b.last_post_is_stale));
+      if (staleDiff !== 0) return staleDiff;
+
+      // Within each group, newest post first; rows with no post time go last.
+      const aTime = lastPostTime(a);
+      const bTime = lastPostTime(b);
+      if (aTime !== bTime) {
+        if (aTime === null) return 1;
+        if (bTime === null) return -1;
+        return bTime - aTime;
+      }
+
       const rankDiff = platformRank(a.platform) - platformRank(b.platform);
       if (rankDiff !== 0) return rankDiff;
       return Number(b.account_id || 0) - Number(a.account_id || 0);
