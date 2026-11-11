@@ -2,6 +2,10 @@
 
 Django-based internal admin app to connect Facebook + Instagram accounts, schedule posts, and view insights from one dashboard.
 
+## Related project overview
+
+Read the [Postzyo engineering overview](https://praritsidana.com/projects/postzyo) for the publishing workflow, background jobs and AI insight architecture. More work by [Prarit Sidana](https://praritsidana.com/) is available in his portfolio.
+
 ## What this app includes
 - Meta OAuth connect flow for Facebook Pages + linked Instagram Business accounts
 - Connected accounts listing API and dashboard table
