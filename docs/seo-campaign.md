@@ -4,15 +4,15 @@
 
 | Deliverable | Verified state |
 | --- | --- |
-| Guides on Postzyo | Nine guides live after the November 19, 2026 web release at `2afc802`. Verified the public blog index links, article canonicals, BlogPosting metadata and images for all nine. |
+| Guides on Postzyo | Eleven guides live after the November 19, 2026 web release at `8db1024`. Verified the public index links, article canonicals, BlogPosting metadata and images for all eleven. |
 | External illustrated articles | Five live articles with illustrations or product screenshots, on GitHub, LinkedIn and Blogger. |
 | Social and news placements | One public LinkedIn article. A Public City editorial draft is ready for author review. |
 | External backlinks | Five verified article links across three sites. Three point to the homepage and two point to the media URL guide. The AlternativeTo entry is pending review. |
-| Search Console | The verified `https://postzyo.com/` property reported Success and 13 discovered pages on November 19, 2026. Search Console accepted resubmission after the live sitemap grew to 16 URLs. The latest URLs still await Google’s recrawl. |
+| Search Console | The verified `https://postzyo.com/` property reported Success and 13 discovered pages on November 19, 2026. Search Console accepted resubmission at 16 URLs. The same live sitemap now contains 18 URLs. Google’s recrawl of the latest release has yet to be verified. |
 
 The campaign uses free publishing and submission routes. For an external placement, record the final public URL, the exact Postzyo destination and the verification date. Test the page signed out, check that the image renders, and inspect the link on the published page before counting it.
 
-The production rollout applied the homepage lead migration and refreshed static assets. The signed-out homepage showed the redesigned Scheduler and Planning sections and answered a trial question through Ask Postzyo. The `www` redirect preserved the blog path, and the canonical sitemap listed the blog and all nine guides.
+The production rollout applied the homepage lead migration and refreshed static assets. The signed-out homepage showed the redesigned Scheduler and Planning sections and answered a trial question through Ask Postzyo. The `www` redirect preserved the blog path, and the canonical sitemap lists the blog and all eleven guides.
 
 ## Publishing opportunities
 
@@ -21,7 +21,7 @@ The production rollout applied the homepage lead migration and refreshed static 
 | WordPress.com | The free plan includes hosting on a WordPress.com subdomain. Create a branded publication and publish original tutorials. [Plan details](https://wordpress.com/pricing/) |
 | Blogger | Postzyo Field Notes has three live illustrated guides covering the weekend publishing handoff, naming approved image exports, and checking delivery before retrying a post. [Publication](https://postzyo-field-notes.blogspot.com/) |
 | LinkedIn | Published from the signed-in author account to Anyone. The article uses an inline Scheduler screenshot. [Live article](https://www.linkedin.com/pulse/preflight-check-publishing-same-announcement-facebook-prarit-sidana-jslnc/) |
-| AlternativeTo | Account and email verified. Postzyo submitted with its official website, logo and a Scheduler screenshot under Commercial. The submission is in the normal review queue. [Submission receipt](https://alternativeto.net/my-submissions/) [Submission rules](https://alternativeto.net/faq/#add-a-new-application) |
+| AlternativeTo | Postzyo is in the free normal review queue under Commercial. The signed-in preview confirmed the Social Media Scheduling, Calendar View and Multiple Account support features after the listing update on November 19, 2026. [Submission receipt](https://alternativeto.net/my-submissions/) [Submission rules](https://alternativeto.net/faq/#add-a-new-application) |
 | Product Hunt | The regular launch route is free. Prepare a verified personal maker account, product description, logo and gallery image. [Launch requirements](https://help.producthunt.com/en/articles/17734646-8-launch-faq-and-myths) |
 | SaaSHub | The workflow requests direct submission by the product owner and asks for a product-domain email address for higher-priority verification. [Submission form](https://www.saashub.com/services/submit) |
 | Medium | The author account was signed out. The editor redirects to sign-in and states that proceeding accepts Medium's terms. [Terms](https://policy.medium.com/medium-terms-of-service-9db0094a1e0f) |
