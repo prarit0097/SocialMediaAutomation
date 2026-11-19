@@ -4,15 +4,15 @@
 
 | Deliverable | Verified state |
 | --- | --- |
-| Guides on Postzyo | Thirty-two guides live after the November 19, 2026 web release at `80995d5`. Verified the blog links, canonicals, BlogPosting metadata, images and all 64 related-guide links. |
+| Guides on Postzyo | Thirty-six guides live after the November 19, 2026 web release at `d975036`. Verified the blog links, canonicals, BlogPosting metadata, images and all 72 related-guide links. |
 | External illustrated articles | Seventeen live articles with illustrations or product screenshots across GitHub, LinkedIn, Blogger, Google Sites and ChatGPT Sites. |
 | Social and news placements | One public LinkedIn article and two public LinkedIn short posts with illustrated link previews. The Public City draft is ready for author review. |
 | External backlinks | Nineteen verified links across five external sites. Four guides in the public ChatGPT Sites playbook link directly to Postzyo guides. The AlternativeTo entry is pending review. |
-| Search Console | The verified `https://postzyo.com/` property reported Success and 28 discovered pages before accepting the November 19, 2026 resubmission of the 39-URL sitemap. Indexing of the newest guides has yet to be verified. |
+| Search Console | The verified `https://postzyo.com/` property accepted the November 19, 2026 resubmission and reported Success with 43 discovered pages. Indexing of the newest guides has yet to be verified. |
 
 The campaign uses free publishing and submission routes. For an external placement, record the final public URL, the exact Postzyo destination and the verification date. Test the page signed out, check that the image renders, and inspect the link on the published page before counting it.
 
-The production rollout applied the homepage lead migration and refreshed static assets. The signed-out homepage showed the redesigned Scheduler and Planning sections and answered a trial question through Ask Postzyo. The `www` redirect preserves the path, and the canonical sitemap lists the blog and all 32 guides.
+The homepage rollout applied the lead migration and refreshed static assets. The signed-out homepage showed the redesigned Scheduler and Planning sections and answered a trial question through Ask Postzyo. The latest blog release added guides on [event waitlists](https://postzyo.com/blog/announce-a-full-event-waitlist/), [promotional price checks](https://postzyo.com/blog/check-price-consistency-in-social-promotions/), [customer photo permissions](https://postzyo.com/blog/prepare-customer-photos-for-social-publishing/) and [launch comment coverage](https://postzyo.com/blog/plan-comment-coverage-for-a-social-launch/). The `www` redirect preserves the path and query, and the canonical sitemap lists the blog and all 36 guides.
 
 ## Publishing opportunities
 
