@@ -652,6 +652,7 @@ filename (`/static/dashboard/app.js`), so a returning visitor's browser kept the
   - attempts SSL certificate issuance with Certbot
 - `deploy/prod/update_on_vps.sh` pulls and builds, then quiesces web, beat and workers, including an active legacy drain worker. It runs migrations and `collectstatic` using one-shot containers before restarting app services. The change introduces a brief maintenance window. Set `POSTZYO_STOP_TIMEOUT_SECONDS` at or above the maximum in-flight publish time.
 - Docker image build leaves static collection to the installer and updater, using deployed environment settings and the shared static volume.
+- Fresh app images prepare `/app/staticfiles` and `/app/media` with the Django service user's ownership before Docker mounts new volumes. The Celery broker transport is pinned to Kombu `5.6.2` for compatibility with `redis-py==5.2.1`. Check `publish` and `insights` deliveries through Redis after building a new release image.
 - Upgraded app Nginx config (`deploy/nginx/nginx.conf`) to:
   - support larger upload limits
   - directly serve `/static/` and `/media/`

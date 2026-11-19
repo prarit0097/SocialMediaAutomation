@@ -1,6 +1,8 @@
 ﻿Django==5.1.7
 djangorestframework==3.15.2
 celery==5.4.0
+# Keep the broker transport compatible with the pinned Redis client.
+kombu==5.6.2
 gevent==25.5.1
 redis==5.2.1
 django-environ==0.11.2
