@@ -5,9 +5,9 @@
 | Deliverable | Verified state |
 | --- | --- |
 | Guides on Postzyo | Thirty-six guides live after the November 19, 2026 web release at `d975036`. Verified the blog links, canonicals, BlogPosting metadata, images and all 72 related-guide links. |
-| External illustrated articles | Seventeen live articles with illustrations or product screenshots across GitHub, LinkedIn, Blogger, Google Sites and ChatGPT Sites. |
+| External illustrated articles | Eighteen live articles with illustrations or product screenshots across GitHub, LinkedIn, Blogger, Google Sites and ChatGPT Sites. |
 | Social and news placements | One public LinkedIn article and two public LinkedIn short posts with illustrated link previews. The Public City draft is ready for author review. |
-| External backlinks | Nineteen verified links across five external sites. Four guides in the public ChatGPT Sites playbook link directly to Postzyo guides. The AlternativeTo entry is pending review. |
+| External backlinks | Twenty verified links across five external sites. The newest Blogger article links directly to Postzyo's event waitlist guide. The AlternativeTo entry is pending review. |
 | Search Console | The verified `https://postzyo.com/` property accepted the November 19, 2026 resubmission and reported Success with 43 discovered pages. Indexing of the newest guides has yet to be verified. |
 
 The campaign uses free publishing and submission routes. For an external placement, record the final public URL, the exact Postzyo destination and the verification date. Test the page signed out, check that the image renders, and inspect the link on the published page before counting it.
@@ -19,7 +19,7 @@ The homepage rollout applied the lead migration and refreshed static assets. The
 | Channel | Evidence and next action |
 | --- | --- |
 | WordPress.com | The free plan includes hosting on a WordPress.com subdomain. Create a branded publication and publish original tutorials. [Plan details](https://wordpress.com/pricing/) |
-| Blogger | Postzyo Field Notes has seven live illustrated guides. The two newest articles cover a store returns-policy change and a mobile registration-link audit. [Publication](https://postzyo-field-notes.blogspot.com/) |
+| Blogger | Postzyo Field Notes has eight live illustrated guides. The newest covers how to explain a waitlist offer deadline and test the booking flow. [Publication](https://postzyo-field-notes.blogspot.com/) |
 | Google Sites | Postzyo Field Guides has three public illustrated guides on the free Google Sites address. They cover campaign review, a reporting handoff and sold-out promotions. [Publication](https://sites.google.com/view/postzyo-field-guides/home) |
 | ChatGPT Sites | The Postzyo Publishing Playbook has four illustrated articles and a five-URL sitemap. Verified signed-out access to all four guides, their illustrations, and their Postzyo destinations. Hosting is included with the existing account plan. [Playbook](https://postzyo-publishing-playbook.sunshinypancake1.chatgpt.site/) |
 | GitHub Gist | The signed-in editor uses the signup address as the public commit email. The release rehearsal guide was published through the existing public repository instead. [Gist editor](https://gist.github.com/) |
@@ -76,6 +76,7 @@ The homepage rollout applied the lead migration and refreshed static assets. The
 | [ChatGPT Sites backup artwork guide](https://postzyo-publishing-playbook.sunshinypancake1.chatgpt.site/prepare-a-backup-post.html) | https://postzyo.com/blog/organize-a-shared-social-media-asset-folder/ | Public article, illustration and direct destination returned 200 signed out on November 19, 2026. |
 | [Review translated social graphics before scheduling](https://postzyo-publishing-playbook.sunshinypancake1.chatgpt.site/review-translated-social-graphics.html) | https://postzyo.com/blog/prepare-a-multilingual-facebook-and-instagram-campaign/ | Public article, WebP illustration and direct destination returned 200 signed out on November 19, 2026. Verified the link from the publication home and the sitemap entry. |
 | [Keep a weekly record of what actually shipped](https://postzyo-publishing-playbook.sunshinypancake1.chatgpt.site/record-what-actually-shipped.html) | https://postzyo.com/blog/turn-a-monthly-calendar-into-a-weekly-social-handoff/ | Public article, WebP illustration and direct destination returned 200 signed out on November 19, 2026. Verified the link from the publication home and the sitemap entry. |
+| [Blogger waitlist deadline guide](https://postzyo-field-notes.blogspot.com/2026/11/how-to-explain-waitlist-offer-deadline.html) | https://postzyo.com/blog/announce-a-full-event-waitlist/ | The public article, WebP screenshot and Postzyo destination returned 200 signed out on November 19, 2026. Verified the publication homepage link and image alt text. |
 | [AlternativeTo submission](https://alternativeto.net/my-submissions/) | https://postzyo.com/ | Normal review queue. The owner can see it after signing in. |
 
 ## LinkedIn article source
