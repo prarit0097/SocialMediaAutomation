@@ -4,13 +4,15 @@
 
 | Deliverable | Verified state |
 | --- | --- |
-| Guides on Postzyo | Three guides on the release branch. On November 19, 2026, the live `www` host redirected to the apex, which served the old homepage and returned 404 for `/blog/`. Rollout needs authenticated access to the VPS. |
+| Guides on Postzyo | Three guides live after the November 19, 2026 rollout of `5c11a62`. The public blog index and all three article URLs returned 200. |
 | External illustrated articles | Three live articles with product screenshots, on GitHub, LinkedIn and Blogger. |
 | Social and news placements | One public LinkedIn article. A Public City editorial draft is ready for author review. |
 | External backlinks | Three verified article links to the homepage. The AlternativeTo entry is pending review. |
 | Search Console | The connected account did not list a Postzyo property on November 19, 2026. |
 
 The campaign uses free publishing and submission routes. For an external placement, record the final public URL, the exact Postzyo destination and the verification date. Test the page signed out, check that the image renders, and inspect the link on the published page before counting it.
+
+The production rollout applied the homepage lead migration and refreshed static assets. The signed-out homepage showed the redesigned Scheduler and Planning sections and answered a trial question through Ask Postzyo. The `www` redirect preserved the blog path, and the canonical sitemap listed the blog and all three guides.
 
 ## Publishing opportunities
 
