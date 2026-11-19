@@ -5,9 +5,9 @@
 | Deliverable | Verified state |
 | --- | --- |
 | Guides on Postzyo | Twenty-one guides live after the November 19, 2026 web release at `9c239b7`. Verified the blog links, canonicals, BlogPosting metadata and images for all 21. |
-| External illustrated articles | Six live articles with illustrations or product screenshots, on GitHub, LinkedIn and Blogger. |
+| External illustrated articles | Seven live articles with illustrations or product screenshots, on GitHub, LinkedIn, Blogger and Google Sites. |
 | Social and news placements | One public LinkedIn article and one public LinkedIn checklist with an illustrated link preview. Illustrated editorial drafts exist for Public City and ASBN. Neither news placement is public. |
-| External backlinks | Seven verified links across three sites, including the new LinkedIn post linking to the Reels guide. The AlternativeTo entry is pending review. |
+| External backlinks | Eight verified links across four sites. The latest Google Sites placement links directly to the client launch rehearsal guide. The AlternativeTo entry is pending review. |
 | Search Console | The verified `https://postzyo.com/` property reported Success and 16 discovered pages before accepting the November 19, 2026 resubmission of the updated 28-URL sitemap. Search Console previously added the Instagram Reels guide to its priority crawl queue. Indexing of the new guides has yet to be verified. |
 
 The campaign uses free publishing and submission routes. For an external placement, record the final public URL, the exact Postzyo destination and the verification date. Test the page signed out, check that the image renders, and inspect the link on the published page before counting it.
@@ -20,6 +20,7 @@ The production rollout applied the homepage lead migration and refreshed static 
 | --- | --- |
 | WordPress.com | The free plan includes hosting on a WordPress.com subdomain. Create a branded publication and publish original tutorials. [Plan details](https://wordpress.com/pricing/) |
 | Blogger | Postzyo Field Notes has four live illustrated guides covering the weekend publishing handoff, approved image exports, delivery checks before retry, and holiday-hours updates. [Publication](https://postzyo-field-notes.blogspot.com/) |
+| Google Sites | Postzyo Field Guides is public on the free Google Sites address. Its first article covers an independent review before a multi-account campaign goes live. [Publication](https://sites.google.com/view/postzyo-field-guides/home) |
 | LinkedIn | Published to Anyone. The original article has an inline Scheduler screenshot. The newer Reels checklist uses the illustrated Postzyo link preview. [Article](https://www.linkedin.com/pulse/preflight-check-publishing-same-announcement-facebook-prarit-sidana-jslnc/) [Reels checklist](https://www.linkedin.com/posts/prarit-sidana_how-to-schedule-an-instagram-reel-postzyo-activity-7529193205884485632-CABh) |
 | AlternativeTo | Postzyo is in the free normal review queue under Commercial. The signed-in preview confirmed the Social Media Scheduling, Calendar View and Multiple Account support features after the listing update on November 19, 2026. [Submission receipt](https://alternativeto.net/my-submissions/) [Submission rules](https://alternativeto.net/faq/#add-a-new-application) |
 | Product Hunt | The regular launch route is free. Prepare a verified personal maker account, product description, logo and gallery image. [Launch requirements](https://help.producthunt.com/en/articles/17734646-8-launch-faq-and-myths) |
@@ -57,6 +58,7 @@ The production rollout applied the homepage lead migration and refreshed static 
 | [Blogger scheduled-post retry guide](https://postzyo-field-notes.blogspot.com/2026/11/what-to-check-before-retrying-scheduled.html) | https://postzyo.com/blog/check-media-url-before-scheduling/ | Verified signed out on November 19, 2026. The article, Scheduler screenshot and direct destination returned 200. |
 | [Blogger holiday-hours checklist](https://postzyo-field-notes.blogspot.com/2026/11/a-holiday-hours-checklist-for-facebook.html) | https://postzyo.com/blog/update-scheduled-posts-when-a-campaign-date-changes/ | Verified signed out on November 19, 2026. The article, WebP illustration and direct destination returned 200. |
 | [LinkedIn Reels preflight checklist](https://www.linkedin.com/posts/prarit-sidana_how-to-schedule-an-instagram-reel-postzyo-activity-7529193205884485632-CABh) | https://postzyo.com/blog/schedule-instagram-reels/ | The public post and its preview image returned 200 signed out on November 19, 2026. Verified the exact destination inside LinkedIn's outbound link. |
+| [Google Sites two-person campaign check](https://sites.google.com/view/postzyo-field-guides/home) | https://postzyo.com/blog/test-social-publishing-before-client-launch/ | The public article and native link returned 200 signed out on November 19, 2026. The published page rendered its sample Scheduler image from Postzyo's public asset URL. |
 | [AlternativeTo submission](https://alternativeto.net/my-submissions/) | https://postzyo.com/ | Normal review queue. The owner can see it after signing in. |
 
 ## LinkedIn article source
