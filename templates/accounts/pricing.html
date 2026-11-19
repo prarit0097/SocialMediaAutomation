@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="card">
+  <div class="section-head">
+    <div>
+      <h1>Postzyo plans and pricing</h1>
+      <p class="section-copy">Start with a {{ trial_days }}-day free trial. Choose monthly or annual billing when you’re ready to subscribe.</p>
+    </div>
+  </div>
+  <div class="lp-pricing-grid">
+    {% for plan in plans.values %}
+    <article class="lp-pricing-card">
+      <h2>{{ plan.title }}</h2>
+      <p>{{ plan.price_label }}</p>
+      {% if plan.billing_cycle == 'monthly' %}
+      <p>Pay monthly for ongoing access to your Postzyo workspace.</p>
+      {% else %}
+      <p>Pay annually for the same workspace features in one yearly payment.</p>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+</section>
+<section class="card">
+  <h2>What both plans include</h2>
+  <ul class="lp-check-list">
+    <li>Scheduling and publishing to connected Facebook Pages and linked Instagram business accounts</li>
+    <li>A content planner and publishing queue</li>
+    <li>Performance analytics and AI-powered content recommendations</li>
+  </ul>
+  <div class="lp-cta-row">
+    {% if request.user.is_authenticated %}
+    <a class="btn" href="{% url 'dashboard:subscription' %}">Manage subscription</a>
+    {% else %}
+    <a class="btn" href="{% url 'signup' %}">Start your free trial</a>
+    {% endif %}
+    <a class="btn muted" href="{% url 'help' %}">Get help with billing</a>
+  </div>
+</section>
+{% endblock %}

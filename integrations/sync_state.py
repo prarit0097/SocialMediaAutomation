@@ -10,11 +10,16 @@ from .models import ConnectedAccount
 
 
 SYNC_CACHE_KEY_TEMPLATE = "meta_last_sync:{user_id}"
+SYNC_STATUS_TTL = 60 * 60 * 12
 SYNC_FRESHNESS_WINDOW = timedelta(minutes=10)
 
 # Sentinel so callers can pass an already-resolved recent_sync_time (including a
 # legitimate None) and skip the per-account lookup.
 _SYNC_TIME_UNSET = object()
+
+
+def resync_cache_key(user_id: int, generation) -> str:
+    return f"meta_token_resync:{user_id}:{generation}"
 
 
 def get_recent_sync_time(user_id: int | None):
@@ -46,8 +51,7 @@ def build_account_sync_state(account, user_id: int | None, recent_sync_time=_SYN
             "is_sync_stale": True,
             "sync_state": "inactive",
             "sync_state_reason": (
-                "This profile is inactive because it was not included in the latest Meta reconnect. "
-                "Reconnect and select this profile again."
+                "Meta access to this profile was lost. Reconnect and select this profile again."
             ),
         }
 

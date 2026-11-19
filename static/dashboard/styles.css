@@ -2592,7 +2592,9 @@ button[disabled],
   color: #445260;
 }
 
-.queue-status-retrying {
+.queue-status-retry-wait,
+.queue-status-blocked,
+.queue-status-outcome-unknown {
   background: rgba(255, 236, 204, 0.96);
   color: #8a4b00;
   border-color: rgba(138, 75, 0, 0.2);

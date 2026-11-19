@@ -28,13 +28,8 @@ class Command(BaseCommand):
             self.stderr.write(self.style.ERROR("User not found. Pass --user-id or --email."))
             return
 
-        token = (
-            MetaUserToken.objects.filter(user_id=user.id)
-            .values_list("access_token", flat=True)
-            .first()
-        )
-        token = str(token or "").strip()
-        if not token:
+        credential = MetaUserToken.objects.filter(user_id=user.id).first()
+        if not credential or not credential.access_token:
             self.stderr.write(
                 self.style.ERROR(
                     f"No stored Meta user token for user {user.id}. "
@@ -44,5 +39,5 @@ class Command(BaseCommand):
             return
 
         self.stdout.write(f"Resyncing page tokens for user {user.id} ({user.email}) ...")
-        stats = resync_all_page_tokens(user, token, stdout=self.stdout)
+        stats = resync_all_page_tokens(user, credential.access_token, stdout=self.stdout, generation=credential.generation)
         self.stdout.write(self.style.SUCCESS(f"Done: {stats}"))

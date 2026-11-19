@@ -5,6 +5,7 @@ from django.db.utils import OperationalError
 from django.test import Client, TestCase
 from django.utils import timezone
 from unittest.mock import patch
+from uuid import uuid4
 
 from analytics.models import InsightSnapshot
 from publishing.models import ScheduledPost
@@ -450,6 +451,33 @@ class IntegrationsViewTests(TestCase):
 
     @patch("integrations.views.MetaClient._get")
     @patch("integrations.views.MetaClient.debug_token")
+    def test_old_catalog_lookup_cannot_reactivate_a_profile_after_reconnect(self, debug, get):
+        ConnectedAccount.objects.create(
+            user=self.user, platform="facebook", page_id="seed", page_name="Seed", access_token="seed-token",
+        )
+        revoked = ConnectedAccount.objects.create(
+            user=self.user, platform="facebook", page_id="revoked", page_name="Revoked", access_token="old",
+            is_active=False,
+        )
+        MetaUserToken.objects.create(user=self.user, access_token="old-user-token")
+        debug.return_value = {
+            "data": {"granular_scopes": [{"scope": "pages_show_list", "target_ids": ["revoked"]}]},
+        }
+
+        def finish_stale_lookup(path, params):
+            MetaUserToken.objects.filter(user=self.user).update(access_token="new-user-token", generation=uuid4())
+            return {"id": "revoked", "name": "Revoked", "access_token": "old-response"}
+
+        get.side_effect = finish_stale_lookup
+        response = self.client.get("/api/accounts/meta-pages/?refresh=1")
+
+        self.assertEqual(response.status_code, 200)
+        revoked.refresh_from_db()
+        self.assertFalse(revoked.is_active)
+        self.assertEqual(revoked.access_token, "old")
+
+    @patch("integrations.views.MetaClient._get")
+    @patch("integrations.views.MetaClient.debug_token")
     def test_meta_pages_catalog_shows_reconnect_hint_when_user_token_missing(self, mock_debug_token, mock_get):
         ConnectedAccount.objects.create(
             user=self.user,
@@ -475,6 +503,7 @@ class IntegrationsViewTests(TestCase):
         self.assertEqual(by_id["58"]["connectability"], "connectable")
         self.assertIn("Connect Facebook + Instagram", by_id["58"]["reason"])
 
+    @patch("integrations.views.MetaClient.exchange_user_token_for_long_lived", return_value={})
     @patch("integrations.views.MetaClient.debug_token")
     @patch("integrations.views.MetaClient.get_managed_pages")
     @patch("integrations.views.MetaClient.exchange_code_for_token")
@@ -483,6 +512,7 @@ class IntegrationsViewTests(TestCase):
         mock_exchange,
         mock_pages,
         mock_debug_token,
+        _exchange_long_lived,
     ):
         old_fb = ConnectedAccount.objects.create(
             user=self.user,
@@ -510,7 +540,16 @@ class IntegrationsViewTests(TestCase):
                 "instagram_business_account": {"id": "new-ig"},
             }
         ]
-        mock_debug_token.return_value = {"data": {"granular_scopes": []}}
+        mock_debug_token.return_value = {
+            "data": {
+                "is_valid": True,
+                "scopes": ["pages_show_list", "pages_manage_posts", "instagram_basic", "instagram_content_publish"],
+                "granular_scopes": [
+                    {"scope": "pages_show_list", "target_ids": ["new-fb"]},
+                    {"scope": "instagram_basic", "target_ids": ["new-ig"]},
+                ],
+            },
+        }
 
         response = self.client.get("/auth/meta/callback", {"code": "abc", "state": "state123"})
 
@@ -524,3 +563,106 @@ class IntegrationsViewTests(TestCase):
         self.assertTrue(bool(self.client.session.get("meta_user_access_token")))
         self.assertIsNone(cache.get(f"meta_pages_catalog:{self.user.id}"))
         self.assertTrue(MetaUserToken.objects.filter(user=self.user).exists())
+
+    @patch("integrations.views.MetaClient.exchange_user_token_for_long_lived", return_value={})
+    @patch("integrations.views.MetaClient.exchange_code_for_token", return_value={"access_token": "user-token"})
+    @patch("integrations.views.MetaClient.get_managed_pages")
+    @patch("integrations.views.MetaClient.debug_token", side_effect=MetaAPIError("Inventory temporarily unavailable"))
+    def test_failed_inventory_preserves_business_manager_profiles(self, _debug, pages, _exchange, _long_lived):
+        business_page = ConnectedAccount.objects.create(
+            user=self.user, platform="facebook", page_id="business", page_name="Business", access_token="previous",
+        )
+        pages.return_value = [{"id": "direct", "name": "Direct", "access_token": "fresh"}]
+        cache.set("meta_oauth_state:partial", {"user_id": self.user.id}, timeout=600)
+
+        response = self.client.get("/auth/meta/callback", {"code": "abc", "state": "partial"})
+
+        self.assertEqual(response.status_code, 302)
+        business_page.refresh_from_db()
+        self.assertTrue(business_page.is_active)
+        self.assertEqual(business_page.access_token, "previous")
+        self.assertTrue(self.client.get("/api/accounts/sync-status/").json()["warning"])
+
+    @patch("integrations.views.MetaClient.exchange_user_token_for_long_lived", return_value={})
+    @patch("integrations.views.MetaClient.exchange_code_for_token", return_value={"access_token": "user-token"})
+    @patch("integrations.views.MetaClient.get_managed_pages", return_value=[])
+    @patch("integrations.views.MetaClient.debug_token", return_value={"data": {"is_valid": True, "scopes": []}})
+    def test_confirmed_empty_grant_inventory_deactivates_only_the_reconnecting_owners_accounts(
+        self, debug, _pages, _exchange, _long_lived,
+    ):
+        account = ConnectedAccount.objects.create(
+            user=self.user, platform="facebook", page_id="shared", page_name="Mine", access_token="previous",
+        )
+        other = get_user_model().objects.create_user(username="other")
+        other_account = ConnectedAccount.objects.create(
+            user=other, platform="facebook", page_id="shared", page_name="Theirs", access_token="theirs",
+        )
+        cache.set("meta_oauth_state:empty", {"user_id": self.user.id}, timeout=600)
+
+        response = self.client.get("/auth/meta/callback", {"code": "abc", "state": "empty"})
+
+        self.assertEqual(response.status_code, 302)
+        account.refresh_from_db()
+        other_account.refresh_from_db()
+        self.assertFalse(account.is_active)
+        self.assertTrue(other_account.is_active)
+        self.assertEqual(self.client.get("/api/accounts/sync-status/").json()["facebook_connected_total"], 0)
+        debug.assert_called_once_with("user-token")
+
+    @patch("integrations.views.MetaClient.exchange_user_token_for_long_lived", return_value={})
+    @patch("integrations.views.MetaClient.exchange_code_for_token", return_value={"access_token": "user-token"})
+    @patch("integrations.views.MetaClient.get_managed_pages", return_value=[
+        {"id": "direct", "name": "Direct", "access_token": "page-token"},
+    ])
+    @patch("integrations.views.MetaClient.debug_token", return_value={
+        "data": {
+            "is_valid": True,
+            "scopes": ["pages_show_list", "pages_read_engagement"],
+            "granular_scopes": [{"scope": "pages_show_list", "target_ids": ["direct", "business"]}],
+        },
+    })
+    def test_partial_page_listing_keeps_granted_business_page_and_surfaces_missing_publish_permission(
+        self, _debug, _pages, _exchange, _long_lived,
+    ):
+        business_page = ConnectedAccount.objects.create(
+            user=self.user, platform="facebook", page_id="business", page_name="Business", access_token="previous",
+        )
+        cache.set("meta_oauth_state:business", {"user_id": self.user.id}, timeout=600)
+
+        response = self.client.get("/auth/meta/callback", {"code": "abc", "state": "business"})
+
+        self.assertEqual(response.status_code, 302)
+        business_page.refresh_from_db()
+        self.assertTrue(business_page.is_active)
+        self.assertIs(business_page.publishing_permission_granted, False)
+        status = self.client.get("/api/accounts/sync-status/").json()
+        self.assertIn("pages_manage_posts", status["missing_permissions"])
+        self.assertEqual(status["resync_status"], "pending")
+
+    @patch("integrations.views.MetaClient.exchange_user_token_for_long_lived", return_value={})
+    @patch("integrations.views.MetaClient.exchange_code_for_token", return_value={"access_token": "user-token"})
+    @patch("integrations.views.MetaClient.get_managed_pages", return_value=[
+        {"id": "retained", "name": "Retained", "access_token": "page-token", "instagram_business_account": {"id": "revoked-ig"}},
+    ])
+    @patch("integrations.views.MetaClient.debug_token", return_value={
+        "data": {
+            "is_valid": True,
+            "scopes": ["pages_show_list", "instagram_basic", "instagram_content_publish"],
+            "granular_scopes": [
+                {"scope": "pages_show_list", "target_ids": ["retained"]},
+                {"scope": "instagram_basic", "target_ids": []},
+            ],
+        },
+    })
+    def test_instagram_grant_revocation_keeps_the_linked_facebook_page(self, _debug, _pages, _exchange, _long_lived):
+        instagram = ConnectedAccount.objects.create(
+            user=self.user, platform="instagram", page_id="revoked-ig", page_name="Instagram", access_token="previous",
+        )
+        cache.set("meta_oauth_state:ig-revoked", {"user_id": self.user.id}, timeout=600)
+
+        response = self.client.get("/auth/meta/callback", {"code": "abc", "state": "ig-revoked"})
+
+        self.assertEqual(response.status_code, 302)
+        instagram.refresh_from_db()
+        self.assertFalse(instagram.is_active)
+        self.assertTrue(ConnectedAccount.objects.filter(user=self.user, platform="facebook", is_active=True).exists())

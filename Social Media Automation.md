@@ -4,7 +4,7 @@
 Postzyo is a Django-based Meta growth operations app. It connects Facebook Pages and linked Instagram Business accounts, schedules and publishes posts, stores insights snapshots, and keeps enough historical data for future analytics and AI-driven recommendations.
 
 This file is the high-level source of truth for what the project does, how the main workflows behave, and what operational rules currently apply.
-Primary product branding is `Postzyo`, and production rollout is planned on `postzyo.com`.
+Primary product branding is `Postzyo`. Its public site is `postzyo.com`.
 Primary Git repository: `https://github.com/prarit0097/SocialMediaAutomation`
 
 ## Core Outcomes
@@ -54,6 +54,12 @@ What it does:
 - production reverse-proxy chain preserves the original HTTPS protocol header through both host Nginx and container Nginx so Django secure redirects do not loop on live deployment
 - production container Nginx now re-resolves the Docker web service through Docker DNS, so web container restarts/redeploys do not leave stale upstream IPs that cause 502 errors
 
+### Public search and pricing
+
+- Public landing, pricing, help and legal pages render server-side with page-specific titles, descriptions, absolute canonical URLs, social metadata and structured data. `SEO_CANONICAL_ORIGIN` defaults to `https://postzyo.com` and is independent of the media URL configuration.
+- `/pricing/` shows the same INR plan prices and term lengths that checkout uses. `/robots.txt` points crawlers to `/sitemap.xml`, which includes only the registered public pages. Public sign-in utilities and authenticated workspace responses carry `noindex` directives.
+- The host proxy can direct HTTP and `www` traffic to the HTTPS apex in one path- and query-preserving redirect. See [VPS rollout](#vps-rollout-for-canonical-host-and-publishing-workers) for certificate, provider callback and Search Console checks.
+
 ### Home
 The Home page is now the workspace overview + navigation surface.
 
@@ -61,7 +67,7 @@ What it shows:
 - hero section rebuilt on the same shared dashboard layout system used by other app pages (`hero-card`, `hero-split`, shared buttons, shared stat rail), so live sizing and spacing stay consistent with already-stable production CSS
 - quick action row for the 3 most common jumps: `Accounts`, `Scheduler`, and `Insights`
 - trust/capability chips that summarize the operator promise: connected FB + IG workflow, queue-safe publishing, snapshot-backed reporting, and AI next-step guidance
-- hero-side visual preview with compact illustration frame plus 2 mini status cards (`03:00 AM` snapshot run and shared account model)
+- hero-side visual preview with a snapshot-run and shared-account summary
 - `Start Here` workflow section shown as a 4-step operator path: connect assets -> plan/schedule -> review results -> improve with AI
 - compact 6-card workspace grid for `Accounts`, `Scheduler`, `Planning`, `Insights`, `AI Insights`, and `Subscription`, each with a direct button and simpler plain-English purpose copy
 - final 2-panel guidance area: recommended daily rhythm on the left and operational reliability explanation on the right
@@ -87,7 +93,7 @@ What it does:
 - keeps a DB-backed `SubscriptionOrder` record for each checkout so verification is replay-safe and does not rely only on cache
 - monthly payment switches the user to `Monthly` and extends access by one calendar month
 - yearly payment switches the user to `Yearly` and extends access by one calendar year
-- same-cycle renewals extend from the current paid expiry, while switching between monthly/yearly restarts extension from today so plan label and duration stay aligned
+- prepaid upgrades and renewals preserve remaining time on an active paid term when the plan is activated
 - returns clear UI success/error messages for order creation and verification steps
 - redirects the user back into the app after successful payment verification
 - when Monthly plan is active, only the monthly button is disabled (yearly upgrade allowed)
@@ -156,7 +162,7 @@ What it does:
 - force-refresh run status is now auto-reconciled: if snapshot storage succeeds but callback bookkeeping misses, counters self-heal and stale `running` states are auto-finalized
 - force-refresh auto-reconcile now counts only that operator's snapshots, preventing cross-user snapshot activity from falsely completing someone else's run
 - a reconciled/completed force-refresh run no longer blocks the next refresh request for that same user
-- force-refresh run counters (`queued_count`, `skipped_no_token`) are now persisted BEFORE the first Celery task is dispatched, so a task that reports its outcome immediately (for example an account already under `insight_refresh_lock`) can no longer finalize the run on its first callback; the post-dispatch bookkeeping now re-reads the row under a lock and ADDS to the persisted counters instead of overwriting whatever the workers already wrote
+- force-refresh run counters (`queued_count`, `skipped_no_token`) are persisted before dispatch so an early result, such as an account already leased by another refresh, cannot finalize the run too early. Post-dispatch bookkeeping adds to the persisted counters under a row lock.
 - inline queue-down fallback results are folded into `queued_count` as already-reported outcomes, so the completion threshold stays correct when Celery dispatch fails; the API response still reports Celery-dispatched work separately as `queued`
 - the per-user force-refresh cooldown is armed only when Meta work actually started (`queued > 0` or an inline refresh succeeded); a run where every profile was skipped for a missing token no longer locks the operator out for the cooldown window
 - the force-refresh status endpoint is per-user throttled (`60/m`) and now clears the cached accounts list only once per finished run, instead of on every 7-second poll and every Accounts page load
@@ -173,10 +179,10 @@ What it does:
 - insight endpoints are now cache-first: if a profile has no stored snapshot yet, the UI gets an immediate placeholder response while a background Celery refresh is queued, avoiding first-load nginx timeouts
 - production Docker Compose file now omits the obsolete top-level `version` key, so `docker compose` commands no longer emit the legacy schema warning during routine ops
 - publish retries for transient Meta throttles now use DB-scheduled backoff instead of Celery self-retry, which avoids duplicate publish-task collisions on Instagram and keeps throttled posts in a paced auto-retry state until Meta recovers
-- scheduler queue now labels throttled pending rows as `retrying`, skips only the IG accounts currently under cooldown, and can now claim larger due batches (up to `50`) so high-volume schedules drain faster
+- scheduler shows a distinct `Retrying` state for deferred delivery and preserves the requested schedule alongside the next attempt
 - force refresh-all now refuses to start while Instagram due posts are already close to publish/processing, so operators do not create avoidable Meta contention right before scheduled delivery
 - publish health status is exposed to the dashboard, showing retrying/processing/due-pending pressure and the next known retry time for throttled posts
-- scheduler queue now shortens transient Meta throttle text into a compact retry note in the table while preserving the full raw detail in the cell tooltip
+- scheduler queue shows the current retry, account-block or delivery-verification action alongside each destination
 - uses user-token fallback for catalog detail checks in this order only: session token -> per-user cache -> encrypted per-user DB token
 - does not reuse another user's cached Meta user-access token for catalog lookups
 - scopes account listing, sync status, catalog rows, force-refresh runs, and downstream scheduler/insights actions to the current user only
@@ -203,79 +209,15 @@ What it does:
 - metrics are extracted from stored snapshots one account at a time, so only ~2 snapshot payloads are resident at once (memory-safe for large fleets); the 7-day follower change compares the latest snapshot to the newest snapshot at least 7 days old
 
 ### Scheduler
-The Scheduler page creates publishing jobs and monitors scheduled, published, and failed rows.
 
-Supported publishing modes:
-- Facebook only
-- Instagram only
-- Both Facebook + Instagram together
+Scheduler supports Facebook Pages, connected Instagram professional accounts, combined FB + IG posts, and one composed post sent to multiple selected accounts. The queue shows an independent delivery row for each destination. Users choose the account with a searchable picker, confirm the browser-local time, and can view profile-specific posting windows and caption guidance from stored insights.
 
-What happens:
-- user selects account, platform, content, media, and schedule time
-- Scheduler, Insights, and AI Insights no longer require typing a raw account ID: each shows a searchable account picker (dropdown) listing connected accounts by page name + thumbnail + FB/IG badge. Selecting a page sets the underlying account id internally and drives page-name/assist autofill; the list comes from the same connected-accounts source as the Accounts page, and stored `profile_picture_url` (populated on Meta connect/sync, backfillable via `manage.py backfill_account_pictures`) supplies the thumbnails.
-- app validates account freshness and rejects stale account rows
-- scheduler list, retry, stale-processing recovery, and publish-health checks only operate on the logged-in user's rows
-- local Instagram image uploads are auto-optimized to a lighter JPG variant for more reliable Meta download
-- local Instagram image optimization now keeps a slightly higher floor quality so large images compress enough for Meta reliability without degrading too aggressively
-- app preflights public media URLs before Instagram publish attempts
-- public media fetch now pins the outbound connection to the already-validated public IP to reduce DNS-rebinding SSRF risk
-- Django rejects uploads larger than `MAX_UPLOAD_FILE_BYTES`
-- Instagram/FB+IG scheduling stores optimized IG-safe media URLs at schedule time (not only at publish time)
-- Facebook publishing now prefers direct multipart upload from local stored media when available, so Meta receives the original file bytes instead of re-fetching a public URL
-- combined FB + IG scheduling now preserves the original media for Facebook while storing the optimized derivative only for the Instagram leg
-- Scheduler create endpoint is per-user throttled (`60/m`) so accidental UI bursts or abusive clients cannot flood the publish queue
-- post is stored in UTC internally
-- Celery beat checks every minute for due posts
-- Celery worker publishes due jobs to Meta Graph
-- scheduler list API now includes a self-healing dispatcher fallback: if due pending jobs exist (beat miss case), it auto-triggers due processing so queue does not stay stuck
-- stale `processing` rows are auto-recovered back to `pending` after safety window and re-queued, reducing long-lived stuck jobs
-- Celery uses fair scheduling (`prefetch=1`) and task priority routing so due publishing jobs are not starved by heavy analytics queues
-- due publish jobs are enqueued explicitly with higher priority while daily-heavy analytics refresh is queued with lower priority
-- publish task is idempotent against delayed duplicate deliveries (already-published rows are skipped safely)
-- publish task now uses a per-post execution lock (`publish_task_lock:<post_id>`) so duplicate deliveries do not run in parallel
-- failed jobs can be retried if the account row is current
-- invalid Meta token failures are stored with reconnect guidance so the operator knows to reconnect before retrying
-- the Dashboard Home shows a one-click "Review failed posts" alert whenever any scheduled posts are in the failed state, so permanent failures are surfaced proactively instead of only being discoverable on the Profile page; the alert deep-links to the Scheduler queue pre-filtered to `failed` (via `?status=failed`); the alert is now correctly hidden when there are zero failed posts (previously an inline `display:flex` overrode the `hidden` attribute, so the banner rendered on every load regardless of the failed count)
-- public/marketing copy no longer claims failures always auto-recover: messaging is "most failed posts auto-recover; anything that can't is flagged for one-click retry"
-- Instagram video / reel publishing prefers direct resumable upload from locally stored media when available, then waits for container processing before final publish
-- if Instagram resumable video upload fails during container setup, publish flow now falls back to `video_url` container creation instead of immediately failing the whole post
-- Meta media download timeouts are treated as transient and automatically retried
-- Instagram "media not ready to publish" responses (`code=9007`, `subcode=2207027`) are treated as transient and retried automatically
-- Meta Graph application/page rate-limit responses (`code=2`, `code=4`, plus common transient throttle codes/subcodes) are treated as transient instead of permanent failures
-- Instagram `code=25/subcode=2207050` "user restricted" publish responses are now treated as retryable, because Meta can return them transiently even when the account is otherwise active
-- transient publish errors no longer stay stuck as long `processing`; row is moved back to `pending` with visible auto-retry message/countdown context
-- transient publish retries now also move `scheduled_for` forward by the retry cooldown, preventing immediate re-pick loops each minute
-- Instagram publish now uses a per-account lane lock, so posts for different IG accounts can publish in parallel while duplicate/same-account publishes are still serialized
-- when Instagram gets app-level throttle (`code=4`), scheduler now sets a temporary per-account IG cooldown window so only that throttled account's due IG jobs are held briefly
-- Instagram publish now checks Meta's official `content_publishing_limit` endpoint before container creation and skips wasteful publish attempts when an account has exhausted its rolling 24-hour quota
-- Instagram media-ready polling now uses configurable defaults (`META_IG_READY_TIMEOUT`, `META_IG_READY_POLL_INTERVAL`), with the current poll default set to `12s`
-- Instagram media-ready polling now tolerates transient API failures/rate limits with jittered progressive backoff and continues polling instead of immediate hard-fail
-- Instagram resumable-upload video flow now starts polling after a short `8s` initial wait plus small jitter, reducing end-to-end Reel publish latency while avoiding synchronized first-poll bursts
-- Instagram media container IDs are cached per scheduled post for 30 minutes, so retries caused by polling/rate-limit issues reuse the existing container instead of creating duplicate containers
-- Instagram publish now fails fast with a clear permanent error if media URL or IG user ID is missing, instead of entering a vague downstream failure path
-- Instagram video publishing explicitly requests `share_to_feed=true` so Reels also surface in the main feed grid
-- combined FB + IG scheduling now keeps a small `5s` stagger between the Facebook leg and Instagram leg, while the per-account IG lane lock handles same-account serialization at publish time
-- internal Instagram lane-busy retries now requeue silently without leaving a visible transient error message in the scheduled row
-- media preflight stream read timeouts (while validating public URL) are now classified as transient, so scheduler auto-retry path handles temporary ngrok/network instability instead of immediate hard-fail
-- publishing retries now use longer cooldown for Graph rate-limit errors to reduce repeated burst failures during multi-profile scheduling
-- Instagram due-post dispatch now adds a wider `5-8s` stagger per IG job, and status-poll retries use shorter jittered rechecks when the media container already exists
-- Meta Graph responses are now checked for `X-App-Usage`, `X-Page-Usage`, and `X-Business-Use-Case-Usage`; high usage automatically injects short sleeps before the next request to proactively avoid app-level throttling
-- Instagram-specific permanent errors now surface clearer operator actions: 24-hour quota reached requeues the post for later, duplicate-content rejection asks for caption/media changes, account restriction asks for Instagram app review, and invalid aspect ratio errors explain supported formats
-- failed Instagram retries also re-apply IG media optimization before requeueing
-- if Celery/Redis dispatch is temporarily unavailable, scheduler fallback still tries to progress due posts but prefers queue dispatch over long inline request blocking
-- stale `processing` rows are only auto-recovered after a longer safety window that exceeds the Celery task hard limit, so live IG publishes are not reset too early
-- after a successful schedule action, UI shows an immediate toast notification with the scheduled local date-time
-- after successful scheduling, Create Scheduled Post form auto-clears so operators can start the next post without old field confusion
-- Scheduled Queue table trims long `message` text to 4 lines for clean layout while keeping full content accessible via hover tooltip
-- force-refresh post-stat calls retry transient Meta/network timeouts and backfill missing values from latest cached snapshot when possible
-- Scheduler now includes **Smart Posting Assist** (profile-wise) driven by stored insights:
-  - best posting windows (top weekday/time slots)
-  - current 7-day cadence vs recommended cadence (separate per FB/IG where available)
-  - caption A/B recommendation (short/medium/long) with reasoning from recent performance history
-
-Common failure pattern:
-- if a page was not refreshed in the latest reconnect, old stored tokens can still exist in the database
-- the app now blocks scheduling and retry on those stale rows instead of allowing a later `190/460` publish failure
+- The scheduling time is stored in UTC with a display timezone. `next_attempt_at` governs delivery and backoff. Schedule requests with the same user-scoped idempotency key and content return the original result. The composer reuses the key when retrying an unchanged submission after a network error.
+- Operators can edit, reschedule or cancel eligible queued destinations and retry known failures. The queue shows Scheduled, Processing, Retrying, Blocked, Verify outcome, Published, Failed and Cancelled. Opening it only reads the signed-in operator's rows.
+- The dispatcher selects due Facebook and Instagram work separately. PostgreSQL claims and attempt generations authorize the worker. A database constraint limits each Instagram account to one active publishing claim. The worker checks ownership, subscription, account and token eligibility at claim and again before sending to Meta.
+- Safe preparation or explicit provider-rejection retries retain the requested time. Exhausted Instagram publishing quota defers container creation. Worker loss before the final write can requeue. Loss during the final write enters `outcome_unknown` and preserves available provider evidence for read-only reconciliation. When confirmation is missing, the row remains visible for operator review.
+- Facebook uses direct multipart upload for eligible stored files and retains original media in combined schedules. Instagram uses an optimized image where applicable and supports resumable upload for stored Reel video. Validate public media reachability, file limits and platform requirements before sending. Persist the Instagram media container ID to support safe retry and recovery.
+- Facebook video upload can continue processing after acceptance. Video processing and Page publication checks are read-only. The queue marks Published after provider evidence confirms delivery. Instagram container status alone may lack the media ID required to confirm the corresponding post.
 
 ### Planning
 The Planning page is the first step toward full social media manager operations.
@@ -380,17 +322,17 @@ Important runtime meaning:
 - task: `publishing.tasks.process_due_posts`
 - frequency: every minute
 - purpose: move due scheduled posts into publish tasks
-- priority behavior: publishing tasks run at higher queue priority than heavy analytics refresh tasks
-- dispatcher errors are logged per-post so one failed enqueue does not abort the whole due batch
+- publishing and reconciliation run on the `publish` queue. Analytics refresh and token resync run on `insights` with a separate worker.
+- dispatcher errors are logged per post. If a broker acknowledgement is lost, the claim stays fenced until the lease expires. A delayed duplicate delivery cannot take over a newer claim.
 
 ### Daily Heavy Insights Automation
 - task: `analytics.tasks.queue_daily_heavy_insight_refresh`
-- default schedule: every day at `03:00 AM`
+- default schedule: every day at `05:00 AM`
 - timezone source: `CELERY_TIMEZONE`
 - intended timezone: `Asia/Kolkata`
 - purpose: fetch the heaviest practical insights snapshot for every connected profile and store it for UI and future analytics
-- each account refresh task uses a per-account lock (`insight_refresh_lock:<account_id>`) so duplicate queued jobs are safely skipped
-- self-heal on invalid tokens: if an account's refresh fails with a hard Meta `code=190` (access token invalidated), the task marks that account `is_active=False` so the daily fan-out stops re-hammering dead tokens and burning shared Meta app quota; a later reconnect or `resync_page_tokens` re-mints a valid token and flips `is_active` back on
+- manual and background refresh share an expiring lease on the account row. Lease ownership prevents an older refresh from releasing a newer claim.
+- nightly fan-out selects active accounts. A hard Meta `code=190` deactivates only the account token generation that produced the error. A fresh reconnect or successful resync can reactivate the account.
 
 Heavy insights collection currently stores:
 - account-level insights returned by Meta
@@ -500,12 +442,15 @@ Model: `publishing.ScheduledPost`
 
 Stores:
 - target account
+- schedule owner, original schedule and display timezone, next attempt time, and reschedule history
+- optional request key record for grouping FB + IG or bulk destinations
 - platform
 - message
 - media URL
 - scheduled time
 - status
 - external Meta post ID
+- attempt generation and lease, delivery stage, Instagram container ID, Facebook video upload ID, and outcome-verification context
 - publish time
 - error details
 
@@ -532,7 +477,7 @@ Stores:
 - Use PostgreSQL via `DATABASE_URL` (SQLite is not suitable for high concurrent writes).
 - Use Redis for cache (`CACHE_BACKEND=redis`) and Celery broker/result backend.
 - when Redis cache is enabled, sessions also live in Redis so authenticated traffic does not add per-request session writes to PostgreSQL
-- Keep multiple web workers + multiple Celery workers (separate worker pool for publishing vs analytics is recommended).
+- Use separate Celery workers for `publish` and `insights`. Verify queue isolation, claim recovery, latency and resource use with representative staging load before claiming a production capacity.
 - hot tables now ship with DB indexes for active-account lookups, due-post scans, account/status scans, snapshot recency, and subscription expiry checks so high-traffic dashboard queries avoid full-table scans
 - critical write paths now use DB row locks where needed (`select_for_update()` in bulk-refresh bookkeeping and subscription verification) so concurrent requests do not double-finalize the same workflow
 - Meta Graph calls reuse a shared `requests.Session` with HTTP connection pooling (`pool_connections=20`, `pool_maxsize=50`) so heavy publish/insight traffic avoids excessive TCP connection churn
@@ -544,16 +489,14 @@ Stores:
   - `CELERY_TASK_SOFT_TIME_LIMIT`, `CELERY_TASK_TIME_LIMIT`
   - `BULK_REFRESH_STALE_MINUTES`
   - `FORCE_REFRESH_IG_GUARD_MINUTES`, `FORCE_REFRESH_IG_GUARD_DUE_LIMIT`
-- current publishing defaults are tuned for slower Instagram processing windows:
-  - `CELERY_TASK_SOFT_TIME_LIMIT=420`
-  - `CELERY_TASK_TIME_LIMIT=480`
+- application defaults for Celery soft/hard time limits are `540` / `600` seconds. Deployments can set both through the environment. The production publishing worker uses prefork so Celery can enforce task time limits.
 - Restart web + worker processes after config changes so new concurrency controls apply.
 
 ### One-command Celery Startup (Windows)
 - Script: `start_celery_cluster.ps1` (project root)
 - Purpose: start these 3 processes automatically in separate PowerShell windows:
-  - `worker_a` (`--pool=threads -c 12`)
-  - `worker_b` (`--pool=threads -c 8`)
+  - `publish` (`-Q publish --pool=threads -c 4`)
+  - `insights` (`-Q insights --pool=threads -c 4`)
   - `beat`
 - Usage:
   - from project root: `.\start_celery_cluster.ps1`
@@ -566,8 +509,8 @@ Stores:
 2. App validates account freshness and platform rules.
 3. Post is saved with `pending` status.
 4. Beat queues due posts.
-5. Worker publishes to Meta.
-6. Post becomes `published` or `failed`.
+5. Worker claims the destination and checks ownership, entitlement and current account eligibility before the final Meta request.
+6. A provider confirmation marks that destination `published`. Recoverable delays go to `retry_wait` or `blocked`, known failures to `failed`, and uncertain writes to `outcome_unknown` for read-only verification.
 
 ### Insights Flow
 1. User opens insights for an account.
@@ -651,13 +594,13 @@ This project includes local MCP servers under `mcp_servers/` so Codex or future 
 - SQLite can still hit transient write locks under high parallel activity; PostgreSQL is strongly recommended for production workloads.
 
 ## Test Reliability Notes
-- full Django test suite currently runs with 190 tests (plus optional skips depending on environment).
+- The first publishing and technical SEO batch was verified with 237 Django tests on PostgreSQL 16. SQLite skips the two PostgreSQL locking regressions. Local browser checks exercised schedule replay, status filters and queue edits. Local Nginx checks covered redirects, callbacks, media and staging access.
 - static storage coverage (`core/tests_storage.py`) locks in hashed URLs when a manifest entry exists, unhashed fallback when it is missing or absent, and that the stock Django storage would raise in that case.
 - force-refresh-all regression coverage now explicitly checks counter seeding before dispatch, preservation of task-written counters against the post-dispatch save, cooldown suppression on no-op runs, once-per-run accounts-cache invalidation from the status endpoint, and that skipped/no-token accounts cannot prematurely finalize a run that still has live refresh tasks.
 - MCP helper tests are optional and auto-skip when the external `mcp` Python package is not installed.
 - Instagram local image optimization tests are auto-skip when Pillow (`PIL`) is not installed.
 - publishing task tests clear cache in setup to avoid stale lock-key side effects between tests.
-- scheduler regression coverage now explicitly checks inline auto-dispatch fallback, chained Instagram slot collision handling, and daily-heavy force-refresh queue rules.
+- scheduler regressions cover read-only queue requests, independent dispatch by platform, safe retry and reconciliation, schedule replay and conflicts, and user-scoped queue actions.
 - planning coverage now also checks invalid month validation, connected-account ownership boundaries, cross-user item isolation, and AI planner account-context isolation.
 
 ## Static Asset Cache-Busting
@@ -696,7 +639,7 @@ filename (`/static/dashboard/app.js`), so a returning visitor's browser kept the
   - resolves build context, `.env`, and Nginx config paths back to repo root even though the compose file lives under `deploy/prod/`
   - keeps Postgres/Redis private inside Docker network
   - serves Django via Gunicorn + app Nginx
-  - runs the production Celery worker with `--pool=gevent --concurrency=20` so IG-heavy publish batches can overlap on I/O instead of bottlenecking on the old low-thread worker config
+  - runs a prefork publish worker with concurrency 4 and a gevent insights worker with concurrency 4
   - binds app Nginx on loopback (`127.0.0.1:${APP_INTERNAL_PORT}`) so host reverse proxy can route multiple apps safely on one VPS
   - includes persistent Docker volumes for DB, Redis AOF, static, and media
 - local/dev `docker-compose.yml` also mounts shared media storage into web, worker, and nginx so uploaded media remains reachable across services
@@ -707,13 +650,21 @@ filename (`/static/dashboard/app.js`), so a returning visitor's browser kept the
   - writes host Nginx site for domain proxying
   - runs Docker production stack, migrations, collectstatic
   - attempts SSL certificate issuance with Certbot
-- Added `deploy/prod/update_on_vps.sh`:
-  - pulls latest code and performs rolling update (`up -d --build`, migrate, collectstatic)
-- Docker image build no longer runs `collectstatic`; static collection happens during deploy/update after the app containers start with real runtime env vars
+- `deploy/prod/update_on_vps.sh` pulls and builds, then quiesces web, beat and workers, including an active legacy drain worker. It runs migrations and `collectstatic` using one-shot containers before restarting app services. The change introduces a brief maintenance window. Set `POSTZYO_STOP_TIMEOUT_SECONDS` at or above the maximum in-flight publish time.
+- Docker image build leaves static collection to the installer and updater, using deployed environment settings and the shared static volume.
 - Upgraded app Nginx config (`deploy/nginx/nginx.conf`) to:
   - support larger upload limits
   - directly serve `/static/` and `/media/`
   - include safer proxy timeout settings for longer publish/insight requests
+
+### VPS rollout for canonical host and publishing workers
+
+1. Rehearse the PostgreSQL migration and queue handoff on isolated staging. Capture queue depth, in-flight publishing and a database backup. Use the updater to stop old web and worker writers before the migration. Keep beat stopped if migration or static collection fails.
+2. Start with `PUBLISH_CLAIMS_ENABLED=False` to pause new sends while keeping reconciliation available. To canary, enable it and set `PUBLISH_CANARY_USER_IDS` to the comma-separated IDs of approved operators before restarting the affected services. An empty allowlist enables all otherwise eligible users when claims are on.
+3. The publish worker consumes `publish` and the Insights worker consumes `insights`. For existing `celery` messages, inspect the old backlog and drain from the new code after migration with `docker compose -f deploy/prod/docker-compose.prod.yml --profile legacy-drain up -d worker-legacy`. Stop the drain worker when the legacy queue is empty. The migration preserves confirmed IDs and places legacy ambiguous outcomes into review. Preserve those records when rolling back.
+4. For the host redirect, render a candidate using `bash deploy/nginx/render_host_proxy.sh production postzyo.com 18010`. Verify the current configuration with `nginx -T`, confirm the certificate covers apex and `www`, and review its renewal method. Verify apex is allowed by Django and registered for Meta and Google OAuth callbacks. Check checkout returns, existing media URLs and proxy HTTPS forwarding. The application updater leaves host proxy configuration untouched.
+5. Apply a reviewed host config and verify it with `nginx -t` and one-hop redirect checks on representative paths with query strings. Check anonymous public HTML, the dashboard login redirect, robots and sitemap. In Search Console inspect priority pages, confirm the preferred host and submit the sitemap. Render staging host config with `staging` mode and an approved `POSTZYO_STAGING_HTPASSWD` file on a separate upstream port.
+6. Test real Facebook and Instagram publishing on approved test assets before expanding a canary. Use per-platform confirmation, latency and duplicate counts from [the rollout plan](plan.md#p04-qa-canary-and-rollback).
 
 ## VPS Access + Health Check Guide
 This section is for anyone new to the live environment who needs to access, inspect, or verify the production deployment quickly.
@@ -729,6 +680,7 @@ The live app runs in Docker containers under the Compose project name `postzyo`.
 Current production services/container names:
 - `postzyo-web-1`
 - `postzyo-worker-1`
+- `postzyo-worker-insights-1`
 - `postzyo-beat-1`
 - `postzyo-nginx-1`
 - `postzyo-db-1`
@@ -962,9 +914,9 @@ Meta app-usage protection:
 - `DAILY_INSIGHTS_POST_STATS_LIMIT` default is now `15` (was `40`). Per-post stats are one Meta Graph call per post per account per refresh, so this is the single largest lever on app-usage: for an 81-profile fleet a full "Force Refresh All" drops from roughly 3,400 calls to roughly 1,400. Only the newest 15 posts per profile get live per-post metrics; older posts still appear in Published Posts and reuse their last cached stats. Deployments that pin this value in their own `.env` must update it there — the settings default does not override an explicit env value.
 
 Memory / OOM protection:
-- new `analytics.tasks.prune_insight_snapshots` Celery beat task keeps only the latest `INSIGHT_SNAPSHOT_RETENTION_PER_ACCOUNT` (default `30`) snapshots per account and deletes the rest in id-batches; scheduled daily at `INSIGHT_SNAPSHOT_PRUNE_HOUR:MINUTE` (default `04:30`). Only the newest snapshot per account is ever read, so older rows were unbounded dead weight bloating Postgres.
+- `analytics.tasks.prune_insight_snapshots` keeps the latest `INSIGHT_SNAPSHOT_RETENTION_PER_ACCOUNT` (default `30`) per account and deletes older rows in batches daily at `04:30` by default. The Overview also reads an older snapshot for the seven-day follower comparison when available.
 - production gunicorn now recycles workers (`--max-requests 800 --max-requests-jitter 200`) to release accumulated RSS, and `--timeout` was raised to `310s` (just above the container Nginx `300s` proxy_read_timeout) so a slow-but-legitimate insight refresh completes instead of being SIGKILLed mid-request at `120s`.
-- production Celery worker concurrency was lowered from gevent `20` to `8`, capping simultaneous heavy insight payloads in the single worker process (RAM peak) and flattening the parallel Meta Graph burst.
+- production keeps insight workload on a dedicated gevent worker with concurrency 4, independently of publishing.
 - note: `CELERY_WORKER_MAX_TASKS_PER_CHILD` only recycles memory under the prefork pool; under gevent it is a no-op. If worker RSS still climbs after these changes, the recommended follow-up is a dedicated insights worker on `--pool=prefork --concurrency=4 --max-tasks-per-child=100 --max-memory-per-child`, and per-container `mem_limit` values tuned against live `docker stats`.
 
 ## Security Hardening (auth, payment, abuse)
@@ -972,7 +924,7 @@ Added after a focused security audit. All controls are additive and behavior-pre
 
 - Login brute-force lockout: the password login view blocks an IP after `LOGIN_FAILURE_LIMIT` (default `10`) failed attempts within `LOGIN_FAILURE_WINDOW_SECONDS` (default `900`). The limiter is IP-based (the per-user throttle is a no-op for anonymous requests) and fails open on cache errors so real users are never wrongly locked out.
 - Google OAuth account-takeover guard: Google email-matching login now refuses to sign into an existing **staff/superuser** account (those would unlock admin + runtime Meta-credential management). Regular operator accounts logging in via Google remains a supported flow; only privileged accounts must use their password.
-- Celery subscription enforcement (`ENFORCE_SUBSCRIPTION_IN_TASKS`, default on): scheduled publishing pauses (does not fail) and daily insight refresh skips for accounts whose owner's subscription has lapsed, so expired users cannot keep publishing to Meta or burning Meta/OpenAI quota. Publishing resumes automatically after renewal (paused posts re-checked after `SUBSCRIPTION_HOLD_SECONDS`, default 6h). Fails open for ownerless rows.
+- Celery subscription enforcement (`ENFORCE_SUBSCRIPTION_IN_TASKS`, default on) pauses publishing and skips daily insight refresh for lapsed operators. Publishing rechecks after `SUBSCRIPTION_HOLD_SECONDS` (default 6h). Ownerless deliveries remain blocked.
 - Public Help form abuse controls: a hidden honeypot field silently drops bots, and submissions are per-IP rate limited (`HELP_FORM_RATE`, default `5/h`); over-limit/bot submissions return the same generic success page but send no email.
 - AI endpoints (`ai_profile_insights`, `generate_ai_calendar_plan`) are now per-user throttled (`5/m`) and every OpenAI call is capped by `OPENAI_MAX_TOKENS` (default `1500`) to prevent shared-key cost drain.
 - Razorpay: create-order and verify-payment are per-user throttled. An optional capture-status check (`RAZORPAY_VERIFY_CAPTURE`, default off) fetches the payment and requires `status=captured` plus matching order/amount/currency before activating a plan — closing the authorized-but-not-captured gap; it fails open on a Razorpay API hiccup so genuine payments are never blocked. Enable only after confirming the merchant is on auto-capture.
@@ -990,7 +942,7 @@ Root cause:
 
 Fix (additive; no schema change; reuses `is_active`):
 - New `integrations.services.resync_all_page_tokens(user, user_access_token)` walks the FULL granted asset set (token `target_ids`) and re-mints every `ConnectedAccount.access_token` from the current user token. FB page tokens are fetched in quota-friendly batches (50 ids per Graph call, with per-id fallback on batch error) and each linked IG row is updated with its FB page token. Guarded by the shared app-usage budget (`meta_app_over_budget`) so it cannot re-trigger app-level rate-limit exhaustion, and it never deactivates rows (safe to re-run any time).
-- New Celery task `integrations.tasks.resync_page_tokens_task(user_id)` wraps it and is auto-enqueued on transaction commit at the end of the Meta reconnect callback, so every reconnect now refreshes tokens for ALL pages, not just `/me/accounts`.
+- The reconnect callback queues `integrations.tasks.resync_page_tokens_task` on transaction commit with the current OAuth generation. Confirmed revocations are scoped to affected profiles. An incomplete inventory preserves unverified grants. Budget or temporary API deferrals retry with backoff and appear as retrying or partial in sync status. Superseded tasks cannot rewrite newer tokens.
 - New management command for immediate recovery without another reconnect (uses the stored `MetaUserToken`):
   - `python manage.py resync_page_tokens --user-id <id>` (or `--email <addr>`)
 - Daily heavy insights self-heal (see "Daily Heavy Insights Automation"): a hard `code=190` failure now marks that account `is_active=False` so the nightly fan-out stops burning shared Meta app quota on dead tokens.

@@ -23,15 +23,15 @@ from publishing.models import ScheduledPost
 from publishing.media_utils import Image as PIL_IMAGE
 from publishing.media_utils import ensure_public_media_fetchable
 from publishing.services import publish_scheduled_post
-from publishing.tasks import _get_due_posts, _ig_cooldown_key, _ig_lane_key, publish_post_task
+from publishing.tasks import _get_due_posts, _ig_cooldown_key, publish_post_task
 
 
 class PublishingApiTests(TestCase):
     def setUp(self):
         cache.clear()
         self.client = Client()
-        self.user = get_user_model().objects.create_user(username="admin", password="pass12345")
-        self.client.login(username="admin", password="pass12345")
+        self.user = get_user_model().objects.create_user(username="admin")
+        self.client.force_login(self.user)
         self.account = ConnectedAccount.objects.create(
             user=self.user,
             platform=FACEBOOK,
@@ -100,38 +100,6 @@ class PublishingApiTests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
 
-    @patch("publishing.views.process_due_posts")
-    def test_list_scheduled_posts_triggers_auto_dispatch_for_due_pending(self, mock_process_due_posts):
-        ScheduledPost.objects.create(
-            account=self.account,
-            platform=FACEBOOK,
-            message="Due post",
-            scheduled_for=timezone.now() - timedelta(minutes=3),
-            status=POST_STATUS_PENDING,
-        )
-
-        response = self.client.get(reverse("list_scheduled_posts"))
-
-        self.assertEqual(response.status_code, 200)
-        mock_process_due_posts.assert_called_once_with(run_inline=True)
-
-    @patch("publishing.views.process_due_posts")
-    def test_list_scheduled_posts_falls_back_to_celery_when_inline_dispatch_fails(self, mock_process_due_posts):
-        ScheduledPost.objects.create(
-            account=self.account,
-            platform=FACEBOOK,
-            message="Due post",
-            scheduled_for=timezone.now() - timedelta(minutes=3),
-            status=POST_STATUS_PENDING,
-        )
-        mock_process_due_posts.side_effect = RuntimeError("inline failed")
-
-        response = self.client.get(reverse("list_scheduled_posts"))
-
-        self.assertEqual(response.status_code, 200)
-        mock_process_due_posts.assert_called_once_with(run_inline=True)
-        mock_process_due_posts.apply_async.assert_called_once_with(priority=9)
-
     def test_publish_health_status_counts_retrying_rows(self):
         ScheduledPost.objects.create(
             account=self.ig_account,
@@ -191,7 +159,7 @@ class PublishingApiTests(TestCase):
         self.assertEqual(created_platforms, {FACEBOOK, INSTAGRAM})
         posts_by_platform = {post.platform: post for post in ScheduledPost.objects.all()}
         self.assertEqual(
-            posts_by_platform[INSTAGRAM].scheduled_for - posts_by_platform[FACEBOOK].scheduled_for,
+            posts_by_platform[INSTAGRAM].next_attempt_at - posts_by_platform[FACEBOOK].next_attempt_at,
             timedelta(seconds=5),
         )
 
@@ -221,7 +189,8 @@ class PublishingApiTests(TestCase):
 
         self.assertEqual(response.status_code, 201)
         created = ScheduledPost.objects.exclude(message="Existing IG").get()
-        self.assertEqual(created.scheduled_for, desired_dt + timedelta(seconds=120))
+        self.assertEqual(created.scheduled_for, desired_dt)
+        self.assertEqual(created.next_attempt_at, desired_dt + timedelta(seconds=120))
 
     @patch("publishing.views.MetaClient.debug_token", return_value={"data": {"is_valid": True}})
     def test_schedule_post_instagram_keeps_stepping_until_free_slot_exists(self, _mock_debug_token):
@@ -257,7 +226,8 @@ class PublishingApiTests(TestCase):
 
         self.assertEqual(response.status_code, 201)
         created = ScheduledPost.objects.get(message="Hello IG chained")
-        self.assertEqual(created.scheduled_for, desired_dt + timedelta(seconds=240))
+        self.assertEqual(created.scheduled_for, desired_dt)
+        self.assertEqual(created.next_attempt_at, desired_dt + timedelta(seconds=240))
 
     @patch("publishing.views.MetaClient.debug_token", return_value={"data": {"is_valid": True}})
     def test_schedule_post_both_moves_instagram_leg_to_next_available_slot_when_conflict_exists(self, _mock_debug_token):
@@ -287,7 +257,8 @@ class PublishingApiTests(TestCase):
         fb_post = ScheduledPost.objects.get(platform=FACEBOOK, message="Hello both")
         ig_post = ScheduledPost.objects.get(platform=INSTAGRAM, message="Hello both")
         self.assertEqual(fb_post.scheduled_for, desired_dt)
-        self.assertEqual(ig_post.scheduled_for, desired_dt + timedelta(seconds=125))
+        self.assertEqual(ig_post.scheduled_for, desired_dt)
+        self.assertEqual(ig_post.next_attempt_at, desired_dt + timedelta(seconds=125))
 
     @patch("publishing.views.MetaClient.debug_token", return_value={"data": {"is_valid": True}})
     def test_schedule_post_allows_bm_account_with_old_sync_but_valid_token(self, _mock_debug_token):
@@ -361,7 +332,7 @@ class PublishingApiTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 400)
-        self.assertIn("inactive", response.json()["error"].lower())
+        self.assertIn("reconnect", response.json()["error"].lower())
 
     @patch("publishing.views.MetaClient.debug_token")
     def test_retry_failed_post_rejects_invalid_token_until_reconnected(self, mock_debug_token):
@@ -486,242 +457,74 @@ class PublishingApiTests(TestCase):
 class PublishingTaskTests(TestCase):
     def setUp(self):
         cache.clear()
-        self.account = ConnectedAccount.objects.create(
-            platform=FACEBOOK,
-            page_id="123",
-            page_name="FB Page",
-            access_token="token",
-        )
-        self.post = ScheduledPost.objects.create(
-            account=self.account,
-            platform=FACEBOOK,
-            message="Hello",
-            scheduled_for=timezone.now(),
-            status="processing",
+        self.user = get_user_model().objects.create_user(username="scheduled")
+        self.facebook = self.account(FACEBOOK, "123")
+
+    def account(self, platform, page_id):
+        return ConnectedAccount.objects.create(
+            user=self.user, platform=platform, page_id=page_id, page_name=platform, access_token="token",
         )
 
-    @patch("publishing.tasks.publish_scheduled_post", return_value="meta-post-id")
-    def test_publish_post_task_marks_published(self, _mock_publish):
-        publish_post_task(self.post.id)
-        self.post.refresh_from_db()
-        self.assertEqual(self.post.status, POST_STATUS_PUBLISHED)
-        self.assertEqual(self.post.external_post_id, "meta-post-id")
-
-    @patch("publishing.tasks.publish_scheduled_post")
-    def test_publish_post_task_does_not_republish_when_external_id_present(self, mock_publish):
-        # Worker died after Meta confirmed the publish (external id persisted) but before
-        # the status write. The retry must FINALIZE the row, not publish again.
-        self.post.external_post_id = "already-on-meta"
-        self.post.status = POST_STATUS_PENDING
-        self.post.save(update_fields=["external_post_id", "status"])
-        result = publish_post_task(self.post.id)
-        self.assertEqual(result.get("status"), "already_published")
-        mock_publish.assert_not_called()  # no second publish to Meta
-        self.post.refresh_from_db()
-        self.assertEqual(self.post.status, POST_STATUS_PUBLISHED)
-        self.assertIsNotNone(self.post.published_at)
-
-    def test_publish_post_task_skips_when_lock_exists(self):
-        cache.set(f"publish_task_lock:{self.post.id}", "busy", timeout=30)
-        result = publish_post_task(self.post.id)
-        self.assertEqual(result.get("status"), "locked")
-        self.post.refresh_from_db()
-        self.assertEqual(self.post.status, "processing")
-
-    @patch("publishing.tasks.publish_scheduled_post")
-    def test_publish_post_task_stores_reconnect_guidance_for_invalid_token(self, mock_publish):
-        mock_publish.side_effect = MetaPermanentError(
-            "Error validating access token: The session has been invalidated. (code=190, subcode=460)"
+    def due(self, account):
+        return ScheduledPost.objects.create(
+            account=account, platform=account.platform, message="Hello",
+            media_url="https://example.com/a.jpg" if account.platform == INSTAGRAM else None,
+            scheduled_for=timezone.now() - timedelta(minutes=1),
         )
 
-        publish_post_task(self.post.id)
+    @patch("publishing.services.MetaClient.publish_facebook_post")
+    def test_legacy_evidence_is_finalized_without_a_second_write(self, provider):
+        post = self.due(self.facebook)
+        ScheduledPost.objects.filter(pk=post.pk).update(external_post_id="123_987")
 
-        self.post.refresh_from_db()
-        self.assertEqual(self.post.status, POST_STATUS_FAILED)
-        self.assertIn("Reconnect the profile from Accounts", self.post.error_message)
+        self.assertEqual(publish_post_task(post.id)["status"], "already_published")
 
-    @patch("publishing.tasks.publish_scheduled_post")
-    def test_publish_post_task_uses_moderate_backoff_for_graph_rate_limit(self, mock_publish):
-        before_schedule = self.post.scheduled_for
-        mock_publish.side_effect = MetaTransientError("(#4) Application request limit reached (code=4)")
+        post.refresh_from_db()
+        self.assertEqual((post.status, post.external_post_id), (POST_STATUS_PUBLISHED, "123_987"))
+        self.assertIsNotNone(post.published_at)
+        provider.assert_not_called()
 
-        result = publish_post_task(self.post.id)
+    @patch("publishing.services.MetaClient.check_ig_publishing_limit", return_value={"quota_remaining": 1})
+    @patch("publishing.services.ensure_public_media_fetchable")
+    @patch("publishing.services.MetaClient.create_instagram_media", side_effect=MetaTransientError("Application request limit (code=4)"))
+    def test_instagram_rate_limit_defers_with_moderate_backoff_and_account_cooldown(self, provider, preflight, quota):
+        post = self.due(self.account(INSTAGRAM, "456"))
+        original = post.scheduled_for
 
-        self.assertEqual(result["status"], "requeued_transient")
+        result = publish_post_task(post.id)
+
+        post.refresh_from_db()
         self.assertEqual(result["retry_in"], 75)
-        self.post.refresh_from_db()
-        self.assertEqual(self.post.status, POST_STATUS_PENDING)
-        self.assertIn("Auto-retry in", self.post.error_message)
-        self.assertGreater(self.post.scheduled_for, before_schedule)
+        self.assertEqual((post.status, post.blocked_reason), ("retry_wait", "provider_cooldown"))
+        self.assertEqual(post.scheduled_for, original)
+        self.assertTrue(cache.get(_ig_cooldown_key(post.account_id)))
 
-    @patch("publishing.tasks.publish_scheduled_post")
-    def test_publish_post_task_requeues_instagram_user_restricted_signal(self, mock_publish):
-        ig_account = ConnectedAccount.objects.create(
-            platform=INSTAGRAM,
-            page_id="17890007",
-            page_name="IG Restricted Signal",
-            ig_user_id="17890007",
-            access_token="token",
-        )
-        ig_post = ScheduledPost.objects.create(
-            account=ig_account,
-            platform=INSTAGRAM,
-            message="IG retry",
-            media_url="https://example.com/a.jpg",
-            scheduled_for=timezone.now(),
-            status="processing",
-        )
-        mock_publish.side_effect = MetaTransientError(
-            "User access is restricted (code=25, subcode=2207050, title=User is restricted, user_msg=The Instagram account is restricted.)"
-        )
+    def test_instagram_claims_are_serialized_per_account(self):
+        account = self.account(INSTAGRAM, "456")
+        first = self.due(account)
+        second = self.due(account)
+        other = self.due(self.account(INSTAGRAM, "789"))
 
-        result = publish_post_task(ig_post.id)
+        selected = {post.id for post in _get_due_posts()}
 
-        self.assertEqual(result["status"], "requeued_transient")
-        ig_post.refresh_from_db()
-        self.assertEqual(ig_post.status, POST_STATUS_PENDING)
-        self.assertIn("Auto-retry in", ig_post.error_message)
+        self.assertEqual(selected, {first.id, other.id})
+        self.assertEqual(publish_post_task(second.id)["status"], "skipped_state")
+        second.refresh_from_db()
+        self.assertEqual(second.status, POST_STATUS_PENDING)
 
-    @patch("publishing.tasks.publish_scheduled_post")
-    def test_publish_post_task_sets_per_account_ig_cooldown_on_code4(self, mock_publish):
-        ig_account = ConnectedAccount.objects.create(
-            platform=INSTAGRAM,
-            page_id="17890003",
-            page_name="IG Page 3",
-            ig_user_id="17890003",
-            access_token="token",
-        )
-        ig_post = ScheduledPost.objects.create(
-            account=ig_account,
-            platform=INSTAGRAM,
-            message="IG hello",
-            media_url="https://example.com/a.jpg",
-            scheduled_for=timezone.now(),
-            status="processing",
-        )
-        mock_publish.side_effect = MetaTransientError("(#4) Application request limit reached (code=4)")
+    def test_due_selection_skips_only_the_cooled_instagram_account(self):
+        cooled = self.due(self.account(INSTAGRAM, "456"))
+        available = self.due(self.account(INSTAGRAM, "789"))
+        facebook = self.due(self.facebook)
+        cache.set(_ig_cooldown_key(cooled.account_id), True, timeout=60)
 
-        result = publish_post_task(ig_post.id)
-
-        self.assertEqual(result["status"], "requeued_transient")
-        self.assertTrue(bool(cache.get(_ig_cooldown_key(ig_account.id))))
-
-    @override_settings(IG_PUBLISH_LANE_RETRY_SECONDS=45)
-    @patch("publishing.tasks.publish_scheduled_post")
-    def test_publish_post_task_requeues_when_instagram_lane_busy(self, mock_publish):
-        ig_account = ConnectedAccount.objects.create(
-            platform=INSTAGRAM,
-            page_id="17890001",
-            page_name="IG Page",
-            ig_user_id="17890001",
-            access_token="token",
-        )
-        ig_post = ScheduledPost.objects.create(
-            account=ig_account,
-            platform=INSTAGRAM,
-            message="Hello",
-            media_url="https://example.com/a.jpg",
-            scheduled_for=timezone.now(),
-            status="processing",
-        )
-        cache.set(_ig_lane_key(ig_account.id), "busy", timeout=60)
-
-        result = publish_post_task(ig_post.id)
-
-        self.assertEqual(result.get("status"), "requeued_lane_busy")
-        mock_publish.assert_not_called()
-        ig_post.refresh_from_db()
-        self.assertEqual(ig_post.status, POST_STATUS_PENDING)
-        self.assertEqual(ig_post.error_message, "")
-
-    def test_get_due_posts_skips_only_the_cooled_instagram_account(self):
-        ig_account = ConnectedAccount.objects.create(
-            platform=INSTAGRAM,
-            page_id="17890002",
-            page_name="IG Page 2",
-            ig_user_id="17890002",
-            access_token="token",
-        )
-        fb_due = ScheduledPost.objects.create(
-            account=self.account,
-            platform=FACEBOOK,
-            message="fb due",
-            scheduled_for=timezone.now() - timedelta(minutes=1),
-            status=POST_STATUS_PENDING,
-        )
-        ig_due = ScheduledPost.objects.create(
-            account=ig_account,
-            platform=INSTAGRAM,
-            message="ig due",
-            media_url="https://example.com/a.jpg",
-            scheduled_for=timezone.now() - timedelta(minutes=1),
-            status=POST_STATUS_PENDING,
-        )
-        other_ig_account = ConnectedAccount.objects.create(
-            platform=INSTAGRAM,
-            page_id="17890005",
-            page_name="IG Page 5",
-            ig_user_id="17890005",
-            access_token="token",
-        )
-        other_ig_due = ScheduledPost.objects.create(
-            account=other_ig_account,
-            platform=INSTAGRAM,
-            message="ig due other",
-            media_url="https://example.com/b.jpg",
-            scheduled_for=timezone.now() - timedelta(minutes=1),
-            status=POST_STATUS_PENDING,
-        )
-        cache.set(_ig_cooldown_key(ig_account.id), "throttled", timeout=60)
-
-        due_posts = _get_due_posts(batch_size=10)
-        due_ids = {post.id for post in due_posts}
-
-        self.assertIn(fb_due.id, due_ids)
-        self.assertNotIn(ig_due.id, due_ids)
-        self.assertIn(other_ig_due.id, due_ids)
-
-    def test_get_due_posts_allows_multiple_instagram_accounts_in_same_batch(self):
-        first_ig_account = ConnectedAccount.objects.create(
-            platform=INSTAGRAM,
-            page_id="17890004",
-            page_name="IG Page 4",
-            ig_user_id="17890004",
-            access_token="token",
-        )
-        first_ig = ScheduledPost.objects.create(
-            account=first_ig_account,
-            platform=INSTAGRAM,
-            message="ig due 1",
-            media_url="https://example.com/a.jpg",
-            scheduled_for=timezone.now() - timedelta(minutes=2),
-            status=POST_STATUS_PENDING,
-        )
-        second_ig_account = ConnectedAccount.objects.create(
-            platform=INSTAGRAM,
-            page_id="17890006",
-            page_name="IG Page 6",
-            ig_user_id="17890006",
-            access_token="token",
-        )
-        second_ig = ScheduledPost.objects.create(
-            account=second_ig_account,
-            platform=INSTAGRAM,
-            message="ig due 2",
-            media_url="https://example.com/b.jpg",
-            scheduled_for=timezone.now() - timedelta(minutes=1),
-            status=POST_STATUS_PENDING,
-        )
-
-        due_posts = _get_due_posts(batch_size=10)
-        due_ids = {post.id for post in due_posts}
-
-        self.assertIn(first_ig.id, due_ids)
-        self.assertIn(second_ig.id, due_ids)
-
+        self.assertEqual({post.id for post in _get_due_posts()}, {available.id, facebook.id})
 
 class PublishingServiceTests(TestCase):
     def setUp(self):
+        quota = patch("publishing.services.MetaClient.check_ig_publishing_limit", return_value={"quota_remaining": 1})
+        quota.start()
+        self.addCleanup(quota.stop)
         self.account = ConnectedAccount.objects.create(
             platform=FACEBOOK,
             page_id="123",
@@ -747,7 +550,7 @@ class PublishingServiceTests(TestCase):
             scheduled_for=timezone.now(),
             status="processing",
         )
-        result = publish_scheduled_post(post)
+        result = publish_scheduled_post(post, before_final_write=lambda: None)
         self.assertEqual(result, "photo-post-id")
         mock_publish_photo.assert_called_once()
 
@@ -762,8 +565,8 @@ class PublishingServiceTests(TestCase):
             scheduled_for=timezone.now(),
             status="processing",
         )
-        result = publish_scheduled_post(post)
-        self.assertEqual(result, "fb-page_post-id")
+        result = publish_scheduled_post(post, before_final_write=lambda: None)
+        self.assertEqual(result, ("video-node-id", "fb-page_post-id"))
         mock_publish_video.assert_called_once()
 
     @patch("publishing.services.MetaClient.publish_instagram_media", return_value={"id": "ig-post-id"})
@@ -785,7 +588,7 @@ class PublishingServiceTests(TestCase):
             scheduled_for=timezone.now(),
             status="processing",
         )
-        publish_scheduled_post(post)
+        publish_scheduled_post(post, before_final_write=lambda: None)
         mock_create_media.assert_called_once()
         kwargs = mock_create_media.call_args.kwargs
         self.assertEqual(kwargs["media_kind"], "image")
@@ -810,7 +613,7 @@ class PublishingServiceTests(TestCase):
             scheduled_for=timezone.now(),
             status="processing",
         )
-        publish_scheduled_post(post)
+        publish_scheduled_post(post, before_final_write=lambda: None)
         mock_create_media.assert_called_once()
         kwargs = mock_create_media.call_args.kwargs
         self.assertEqual(kwargs["media_kind"], "video")
@@ -848,7 +651,7 @@ class PublishingServiceTests(TestCase):
         )
 
         try:
-            publish_scheduled_post(post)
+            publish_scheduled_post(post, before_final_write=lambda: None)
             kwargs = mock_create_media.call_args.kwargs
             self.assertEqual(kwargs["media_kind"], "image")
             self.assertTrue(kwargs["media_url"].endswith("_ig.jpg"))

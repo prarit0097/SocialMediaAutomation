@@ -92,13 +92,14 @@ def build_publishing_pipeline_status(limit: int = 20) -> dict:
     bootstrap_django()
 
     from core.constants import POST_STATUS_FAILED, POST_STATUS_PENDING, POST_STATUS_PROCESSING, POST_STATUS_PUBLISHED
-    from django.db.models import Count
+    from django.db.models import Count, Q
     from django.utils import timezone
-    from publishing.models import ScheduledPost
+    from publishing.models import DELIVERY_STATUSES, OUTCOME_UNKNOWN, WAITING_STATES, ScheduledPost
 
     now = timezone.now()
     processing_cutoff = now - timedelta(minutes=30)
     upcoming_cutoff = now + timedelta(hours=24)
+    waiting = ScheduledPost.objects.filter(status__in=WAITING_STATES, final_write_started_at__isnull=True)
 
     status_counts = {
         row["status"]: row["count"]
@@ -124,22 +125,25 @@ def build_publishing_pipeline_status(limit: int = 20) -> dict:
     ]
 
     return {
-        "status_counts": {
-            "pending": status_counts.get(POST_STATUS_PENDING, 0),
-            "processing": status_counts.get(POST_STATUS_PROCESSING, 0),
-            "published": status_counts.get(POST_STATUS_PUBLISHED, 0),
-            "failed": status_counts.get(POST_STATUS_FAILED, 0),
-        },
-        "overdue_pending": ScheduledPost.objects.filter(status=POST_STATUS_PENDING, scheduled_for__lte=now).count(),
-        "stuck_processing": ScheduledPost.objects.filter(status=POST_STATUS_PROCESSING, updated_at__lt=processing_cutoff).count(),
+        "status_counts": {status: status_counts.get(status, 0) for status, _ in DELIVERY_STATUSES},
+        "overdue_pending": waiting.filter(
+            Q(next_attempt_at__lte=now)
+            | Q(status=POST_STATUS_PENDING, next_attempt_at__isnull=True, scheduled_for__lte=now),
+        ).count(),
+        "stuck_processing": ScheduledPost.objects.filter(status=POST_STATUS_PROCESSING).filter(
+            Q(lease_expires_at__lte=now) | Q(lease_expires_at__isnull=True, updated_at__lt=processing_cutoff),
+        ).count(),
+        "unresolved_over_24h": ScheduledPost.objects.filter(status=OUTCOME_UNKNOWN).filter(
+            Q(final_write_started_at__lte=now - timedelta(hours=24))
+            | Q(final_write_started_at__isnull=True, updated_at__lte=now - timedelta(hours=24)),
+        ).count(),
         "published_last_24h": ScheduledPost.objects.filter(
             status=POST_STATUS_PUBLISHED,
             published_at__gte=now - timedelta(hours=24),
         ).count(),
-        "upcoming_next_24h": ScheduledPost.objects.filter(
-            status=POST_STATUS_PENDING,
-            scheduled_for__gt=now,
-            scheduled_for__lte=upcoming_cutoff,
+        "upcoming_next_24h": waiting.filter(
+            Q(next_attempt_at__gt=now, next_attempt_at__lte=upcoming_cutoff)
+            | Q(status=POST_STATUS_PENDING, next_attempt_at__isnull=True, scheduled_for__gt=now, scheduled_for__lte=upcoming_cutoff),
         ).count(),
         "failed_posts": failed_posts,
     }

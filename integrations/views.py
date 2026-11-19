@@ -2,6 +2,7 @@ import logging
 import secrets
 import re
 from datetime import datetime, timedelta, timezone as dt_timezone
+from uuid import uuid4
 
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
@@ -9,6 +10,7 @@ from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect
 from django.conf import settings
 from django.db.models import Max
+from django.db import transaction
 from django.db.utils import OperationalError
 from django.utils import timezone
 from django.views.decorators.http import require_GET
@@ -23,28 +25,12 @@ from publishing.models import ScheduledPost
 from .models import ConnectedAccount, MetaUserToken
 from accounts.pixel import queue_pixel_event
 from core.fields import decrypt_text, encrypt_text
-from .services import upsert_connected_accounts
-from .sync_state import SYNC_CACHE_KEY_TEMPLATE, build_account_sync_state, get_recent_sync_time
+from .services import TOKEN_HEALTH_CACHE_KEY, apply_meta_grants, read_meta_grants, upsert_connected_accounts
+from .sync_state import SYNC_CACHE_KEY_TEMPLATE, SYNC_STATUS_TTL, build_account_sync_state, get_recent_sync_time, resync_cache_key
 
 logger = logging.getLogger("integrations")
-TOKEN_HEALTH_CACHE_KEY = "meta_token_health_summary_v1"
 META_USER_ACCESS_TOKEN_TTL = 60 * 60 * 24 * 30
 META_USER_SESSION_TOKEN_KEY = "meta_user_access_token"
-
-
-def _persist_user_access_token(user_id: int | None, token: str) -> None:
-    normalized = str(token or "").strip()
-    if not user_id or not normalized:
-        return
-
-    cache.set(f"meta_user_access_token:{user_id}", encrypt_text(normalized), timeout=META_USER_ACCESS_TOKEN_TTL)
-    try:
-        MetaUserToken.objects.update_or_create(
-            user_id=user_id,
-            defaults={"access_token": normalized},
-        )
-    except OperationalError:
-        logger.warning("Failed to persist Meta user token for user_id=%s due to database lock", user_id)
 
 
 def _parse_snapshot_datetime(value):
@@ -103,37 +89,6 @@ def _latest_published_post_times(account_ids: list[int]) -> dict[int, datetime |
     return latest_by_account
 
 
-def _deactivate_disconnected_accounts(user, pages: list[dict]) -> None:
-    if not pages:
-        return
-
-    active_fb_page_ids = {str(page.get("id")) for page in pages if page.get("id")}
-    active_ig_user_ids = {
-        str((page.get("instagram_business_account") or {}).get("id"))
-        for page in pages
-        if (page.get("instagram_business_account") or {}).get("id")
-    }
-
-    ConnectedAccount.objects.filter(is_active=True, user=user, platform=FACEBOOK).exclude(
-        page_id__in=active_fb_page_ids
-    ).update(is_active=False, token_expires_at=None)
-
-    # Also preserve IG accounts that are linked from an active FB account
-    # (via ig_user_id).  These were auto-created by the catalog from
-    # debug_token target_ids and would be lost if we only check /me/accounts
-    # which returns limited instagram_business_account links.
-    fb_linked_ig_ids = set(
-        ConnectedAccount.objects.filter(
-            is_active=True, user=user, platform=FACEBOOK,
-        ).exclude(ig_user_id__isnull=True).exclude(ig_user_id="").values_list("ig_user_id", flat=True)
-    )
-    safe_ig_ids = active_ig_user_ids | {str(uid) for uid in fb_linked_ig_ids}
-
-    ConnectedAccount.objects.filter(is_active=True, user=user, platform=INSTAGRAM).exclude(
-        page_id__in=safe_ig_ids
-    ).update(is_active=False, token_expires_at=None)
-
-
 def _lookup_catalog_target(client: MetaClient, target_id: str, access_token: str) -> tuple[str, dict]:
     facebook_error = None
     try:
@@ -164,29 +119,48 @@ def _lookup_catalog_target(client: MetaClient, target_id: str, access_token: str
         raise exc from facebook_error
 
 
-def _resolve_user_access_token(request: HttpRequest, user_id: int | None) -> str:
-    session_token = str(decrypt_text(request.session.get(META_USER_SESSION_TOKEN_KEY)) or "").strip()
-    if session_token:
-        _persist_user_access_token(user_id, session_token)
-        return session_token
+def _resolve_user_access_token(request: HttpRequest, user_id: int | None) -> MetaUserToken | None:
+    if not user_id:
+        return None
+    stored = MetaUserToken.objects.filter(user_id=user_id).first()
+    if stored is not None:
+        return stored
+    # Older sessions may predate persistent tokens. Import one only if no newer token exists.
+    token = request.session.get(META_USER_SESSION_TOKEN_KEY) or cache.get(f"meta_user_access_token:{user_id}")
+    if not token:
+        return None
+    stored, _ = MetaUserToken.objects.get_or_create(
+        user_id=user_id, defaults={"access_token": decrypt_text(token)},
+    )
+    return stored
 
-    if user_id:
-        cached_user_token = str(decrypt_text(cache.get(f"meta_user_access_token:{user_id}")) or "").strip()
-        if cached_user_token:
-            _persist_user_access_token(user_id, cached_user_token)
-            return cached_user_token
 
-        db_token = (
-            MetaUserToken.objects.filter(user_id=user_id)
-            .values_list("access_token", flat=True)
-            .first()
+def _sync_catalog_account(credential: MetaUserToken, platform: str, page_id: str, defaults: dict, linked_fb=None):
+    with transaction.atomic():
+        if not MetaUserToken.objects.select_for_update().filter(
+            user_id=credential.user_id, generation=credential.generation,
+        ).first():
+            return None
+        if linked_fb is not None and not ConnectedAccount.objects.select_for_update().filter(
+            pk=linked_fb.pk, user_id=credential.user_id, is_active=True, token_generation=linked_fb.token_generation,
+        ).first():
+            return None
+
+        sync = cache.get(SYNC_CACHE_KEY_TEMPLATE.format(user_id=credential.user_id)) or {}
+        if sync.get("generation") and sync["generation"] != str(credential.generation):
+            sync = {}
+        resync = cache.get(resync_cache_key(credential.user_id, credential.generation)) or {}
+        missing = resync.get("missing_permissions", sync.get("missing_permissions", []))
+        if platform == INSTAGRAM and "instagram_basic" in missing:
+            return None
+        publish_scope = "pages_manage_posts" if platform == FACEBOOK else "instagram_content_publish"
+        if publish_scope in missing:
+            defaults["publishing_permission_granted"] = False
+        account, _ = ConnectedAccount.objects.update_or_create(
+            user_id=credential.user_id, platform=platform, page_id=page_id,
+            defaults={**defaults, "token_expires_at": None},
         )
-        db_token = str(db_token or "").strip()
-        if db_token:
-            cache.set(f"meta_user_access_token:{user_id}", encrypt_text(db_token), timeout=META_USER_ACCESS_TOKEN_TTL)
-            return db_token
-
-    return ""
+        return account
 
 
 @require_GET
@@ -235,109 +209,52 @@ def meta_callback(request: HttpRequest) -> HttpResponse:
     except Exception as exc:  # noqa: BLE001 - best-effort upgrade; fall back to short-lived
         logger.warning("long-lived token exchange failed user_id=%s error=%s", request.user.id, exc)
 
-    pages = client.get_managed_pages(user_access_token)
-    upsert_connected_accounts(pages, request.user)
+    if not user_access_token:
+        return JsonResponse({"error": "Meta did not return an access token. Reconnect to try again."}, status=502)
 
-    # Re-activate any previously-connected IG accounts that are linked
-    # from a now-active FB account. /me/accounts only returns directly
-    # linked IG pages, but the user may have many more that were synced
-    # via catalog discovery. We must re-activate them BEFORE any deactivation pass.
-    active_fb_accounts = ConnectedAccount.objects.filter(
-        user=request.user, platform=FACEBOOK, is_active=True
-    ).exclude(ig_user_id__isnull=True).exclude(ig_user_id="")
-    for fb_account in active_fb_accounts:
-        ConnectedAccount.objects.filter(
-            user=request.user,
-            platform=INSTAGRAM,
-            page_id=fb_account.ig_user_id,
-        ).update(is_active=True, access_token=fb_account.access_token)
+    pages_complete = False
+    try:
+        pages = client.get_managed_pages(user_access_token)
+        pages_complete = True
+    except MetaAPIError:
+        pages = []
+    grants = read_meta_grants(client, user_access_token)
+    target_ids = set().union(*grants.targets.values())
+    generation = uuid4()
+    from .tasks import resync_page_tokens_task
 
-    # Figure out whether /me/accounts returned the COMPLETE set of granted pages
-    # (token target_ids) BEFORE deactivating anything. A partial/flaky Meta response
-    # must not disconnect live pages.
-    target_ids_count = None
-    sync_warning = None
-    if pages:
+    def queue_resync():
         try:
-            debug_data = client.debug_token(pages[0]["access_token"]).get("data", {})
-            target_ids: set[str] = set()
-            for scope_item in (debug_data.get("granular_scopes") or []):
-                for target_id in (scope_item.get("target_ids") or []):
-                    target_ids.add(str(target_id))
-            target_ids_count = len(target_ids) or None
-        except MetaAPIError:
-            target_ids_count = None
+            resync_page_tokens_task.delay(user_id, str(generation))
+        except Exception:  # noqa: BLE001 - keep the completed direct reconnect usable
+            cache.set(resync_cache_key(user_id, generation), {"status": "partial"}, timeout=SYNC_STATUS_TTL)
+            logger.warning("token resync enqueue failed user_id=%s", user_id)
 
-    # /me/accounts returns FB PAGES (each may nest a linked IG account), while target_ids
-    # counts BOTH FB pages AND IG accounts — so comparing len(pages) directly to
-    # target_ids_count was always "incomplete" (e.g. 44 FB pages < 80 FB+IG grants) and
-    # falsely warned/skipped on every healthy sync. Count the IG accounts we got back too,
-    # and treat >=90% of granted assets as complete (target_ids can include an asset with
-    # no usable role).
-    returned_ig = sum(1 for p in pages if (p.get("instagram_business_account") or {}).get("id"))
-    returned_assets = len(pages) + returned_ig
-    response_is_complete = (
-        target_ids_count is None
-        or returned_assets >= target_ids_count
-        or returned_assets >= target_ids_count * 0.9
-    )
-    if response_is_complete:
-        _deactivate_disconnected_accounts(request.user, pages)
-    else:
-        # Suppress the "fewer pages" warning for Business-Manager setups: /me/accounts only
-        # returns the user's directly-managed pages, but the user already has more pages
-        # connected via catalog discovery — so a smaller response is EXPECTED, not lost
-        # pages, and reconnecting won't change it. Only warn on a genuine first-connect
-        # shortfall (the user doesn't yet have more connected than this response returned).
-        existing_active = ConnectedAccount.objects.filter(user=request.user, is_active=True).count()
-        if existing_active <= returned_assets:
-            sync_warning = (
-                "Meta returned fewer pages than your token grants, so account removal was "
-                "skipped this time to avoid disconnecting live pages. Reconnect and allow "
-                "access to all pages to fully resync."
-            )
-        logger.warning(
-            "partial /me/accounts response user_id=%s pages=%s target_ids=%s active=%s — deactivation skipped",
-            request.user.id, len(pages), target_ids_count, existing_active,
+    with transaction.atomic():
+        MetaUserToken.objects.update_or_create(
+            user_id=user_id, defaults={"access_token": user_access_token, "generation": generation},
         )
-    cache.delete(f"{TOKEN_HEALTH_CACHE_KEY}:{request.user.id}")
-
-    if user_id:
-        _persist_user_access_token(user_id, user_access_token)
-        # The sync timestamp is the per-account staleness baseline. On a COMPLETE reconnect
-        # advance it to now; on a PARTIAL response (Meta returned fewer pages than granted)
-        # KEEP the previous baseline — otherwise a partial sync would falsely flag every
-        # un-returned (but still working) account as "Stale sync".
+        upsert_connected_accounts(pages, request.user, grants)
+        response_is_complete = apply_meta_grants(request.user, pages, grants, pages_complete=pages_complete)
         previous_sync = cache.get(SYNC_CACHE_KEY_TEMPLATE.format(user_id=user_id)) or {}
-        if response_is_complete:
-            synced_at = timezone.now().isoformat()
-        else:
-            synced_at = previous_sync.get("synced_at") or timezone.now().isoformat()
         cache.set(
             SYNC_CACHE_KEY_TEMPLATE.format(user_id=user_id),
             {
                 "meta_pages_synced": len(pages),
-                "facebook_connected_total": ConnectedAccount.objects.filter(user_id=user_id, is_active=True, platform="facebook")
-                .count(),
-                "instagram_connected_total": ConnectedAccount.objects.filter(user_id=user_id, is_active=True, platform="instagram")
-                .count(),
-                "token_target_ids_count": target_ids_count,
-                "warning": sync_warning,
-                "synced_at": synced_at,
+                "token_target_ids_count": len(target_ids) if grants.scopes is not None else None,
+                "missing_permissions": grants.missing_permissions,
+                "inventory_status": "complete" if response_is_complete else "partial",
+                "synced_at": timezone.now().isoformat() if response_is_complete else previous_sync.get("synced_at"),
+                "generation": str(generation),
             },
-            timeout=60 * 60 * 12,
+            timeout=SYNC_STATUS_TTL,
         )
-        cache.delete(f"meta_pages_catalog:{user_id}")
-        cache.delete(f"accounts_list_v1:{user_id}")
-
-        # /me/accounts only refreshed DIRECTLY-managed pages above. Business-Manager
-        # pages keep stale per-page tokens on reconnect and then fail insight/publish
-        # with OAuth 190. Re-mint tokens for the FULL granted asset set in the
-        # background (can be ~100+ Meta calls) once the token row is committed.
-        from django.db import transaction
-        from .tasks import resync_page_tokens_task
-
-        transaction.on_commit(lambda uid=user_id: resync_page_tokens_task.delay(uid))
+        cache.set(resync_cache_key(user_id, generation), {"status": "pending"}, timeout=SYNC_STATUS_TTL)
+        cache.delete_many([
+            f"meta_user_access_token:{user_id}", f"meta_pages_catalog:{user_id}", f"accounts_list_v1:{user_id}",
+            f"{TOKEN_HEALTH_CACHE_KEY}:{user_id}",
+        ])
+        transaction.on_commit(queue_resync)
 
     # Encrypt at rest in the session — with the cache-backed session engine this token
     # would otherwise sit in plaintext in shared Redis, unlike its encrypted DB/cache copies.
@@ -420,22 +337,36 @@ def list_accounts(request: HttpRequest) -> JsonResponse:
 @login_required
 def accounts_sync_status(request: HttpRequest) -> JsonResponse:
     data = cache.get(f"meta_last_sync:{request.user.id}") or {}
+    generation = MetaUserToken.objects.filter(user=request.user).values_list("generation", flat=True).first()
+    if data.get("generation") and data["generation"] != str(generation):
+        data = {}
+    resync = (cache.get(resync_cache_key(request.user.id, generation)) or {}) if generation else {}
     fb_total = ConnectedAccount.objects.filter(is_active=True, user=request.user, platform="facebook").count()
     ig_total = ConnectedAccount.objects.filter(is_active=True, user=request.user, platform="instagram").count()
     latest_updated = (
         ConnectedAccount.objects.filter(is_active=True, user=request.user).aggregate(latest=Max("updated_at")).get("latest")
     )
-    # Distinguish a genuine cached 0 (user revoked all pages) from an absent key — `0 or
-    # fb_total` would wrongly overwrite a real zero with the recomputed live count.
     synced = data.get("meta_pages_synced")
-    fb_cached = data.get("facebook_connected_total")
-    ig_cached = data.get("instagram_connected_total")
+    inventory_status = resync.get("inventory_status") or data.get("inventory_status")
+    missing_permissions = resync.get("missing_permissions", data.get("missing_permissions", []))
+    warnings = []
+    if inventory_status == "partial":
+        warnings.append("Meta did not verify the full profile inventory. Profiles with unverified access were kept connected.")
+    if missing_permissions:
+        warnings.append(f"Meta permissions missing: {', '.join(missing_permissions)}.")
+    if resync.get("status") == "retrying":
+        warnings.append("Meta token resync is incomplete. Another attempt is queued.")
+    elif resync.get("status") == "partial":
+        warnings.append("Some profile tokens could not be refreshed. Reconnect or check Meta profile permissions.")
     data = {
         "meta_pages_synced": synced if synced is not None else fb_total,
-        "facebook_connected_total": fb_cached if fb_cached is not None else fb_total,
-        "instagram_connected_total": ig_cached if ig_cached is not None else ig_total,
-        "token_target_ids_count": data.get("token_target_ids_count") or None,
-        "warning": data.get("warning"),
+        "facebook_connected_total": data.get("facebook_connected_total", fb_total),
+        "instagram_connected_total": data.get("instagram_connected_total", ig_total),
+        "token_target_ids_count": data.get("token_target_ids_count"),
+        "missing_permissions": missing_permissions,
+        "inventory_status": inventory_status,
+        "resync_status": resync.get("status"),
+        "warning": " ".join(warnings) or data.get("warning"),
         "synced_at": data.get("synced_at") or (latest_updated.isoformat() if latest_updated else None),
     }
     return JsonResponse(data)
@@ -460,7 +391,8 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
 
     seed_account = next((a for a in accounts if a.platform == "facebook"), accounts[0])
     connected_ids = {str(a.page_id) for a in accounts}
-    user_access_token = _resolve_user_access_token(request, getattr(request.user, "id", None))
+    credential = _resolve_user_access_token(request, request.user.id)
+    user_access_token = credential.access_token if credential else ""
     app_access_token = f"{settings.META_APP_ID}|{settings.META_APP_SECRET}"
     client = MetaClient()
 
@@ -540,10 +472,11 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                         linked_fb = fb_by_ig_id.get(target_id)
                         if linked_fb:
                             try:
-                                ConnectedAccount.objects.update_or_create(
-                                    user=request.user,
-                                    platform="instagram",
+                                synced = _sync_catalog_account(
+                                    credential=credential,
+                                    platform=INSTAGRAM,
                                     page_id=target_id,
+                                    linked_fb=linked_fb,
                                     defaults={
                                         "page_name": page_name or f"{linked_fb.page_name} (IG)",
                                         "ig_user_id": target_id,
@@ -551,8 +484,11 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                                         "is_active": True,
                                     },
                                 )
-                                reason = "Instagram profile is linked and has been synced in app."
-                                connectability = "connected"
+                                if synced:
+                                    reason = "Instagram profile is linked and has been synced in app."
+                                    connectability = "connected"
+                                else:
+                                    reason = "Meta could not confirm this profile for the current connection. Refresh again."
                             except OperationalError:
                                 reason = (
                                     "Instagram profile is connectable but app database is busy. "
@@ -573,9 +509,9 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                         # Auto-sync connectable Facebook pages discovered in token target_ids.
                         try:
                             ig_id = (page_data.get("instagram_business_account") or {}).get("id")
-                            ConnectedAccount.objects.update_or_create(
-                                user=request.user,
-                                platform="facebook",
+                            synced = _sync_catalog_account(
+                                credential=credential,
+                                platform=FACEBOOK,
                                 page_id=target_id,
                                 defaults={
                                     "page_name": page_name or "(name unavailable)",
@@ -584,17 +520,13 @@ def meta_pages_catalog(request: HttpRequest) -> JsonResponse:
                                     "is_active": True,
                                 },
                             )
-                            if ig_id:
-                                fb_by_ig_id[str(ig_id)] = ConnectedAccount(
-                                    user=request.user,
-                                    platform="facebook",
-                                    page_id=target_id,
-                                    page_name=page_name or "(name unavailable)",
-                                    access_token=page_data.get("access_token"),
-                                    ig_user_id=ig_id,
-                                )
-                            reason = "Page token was available from page node and has been synced in app."
-                            connectability = "connected"
+                            if synced:
+                                if ig_id:
+                                    fb_by_ig_id[str(ig_id)] = synced
+                                reason = "Page token was available from page node and has been synced in app."
+                                connectability = "connected"
+                            else:
+                                reason = "Meta could not confirm this page for the current connection. Refresh again."
                         except OperationalError:
                             reason = (
                                 "Page token is available but app database is busy. "

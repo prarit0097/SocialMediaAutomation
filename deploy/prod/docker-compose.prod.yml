@@ -23,10 +23,7 @@ services:
     build:
       context: ../..
       dockerfile: Dockerfile
-    # concurrency lowered 20->8: caps simultaneous heavy insight payloads in the single
-    # gevent process (reduces RAM peak / OOM) and flattens the parallel Meta Graph burst
-    # that was driving X-App-Usage to 142%. Raise again only if RAM + Meta quota allow.
-    command: celery -A social_automation worker -l info --pool=gevent --concurrency=8 -n worker_main@%h
+    command: celery -A social_automation worker -l info -Q publish --concurrency=4 -n publish@%h
     env_file:
       - ../../.env
     volumes:
@@ -35,6 +32,34 @@ services:
       - db
       - redis
     restart: unless-stopped
+
+  worker-insights:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    command: celery -A social_automation worker -l info -Q insights --pool=gevent --concurrency=4 -n insights@%h
+    env_file:
+      - ../../.env
+    volumes:
+      - media_volume:/app/media
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+
+  worker-legacy:
+    profiles: [legacy-drain]
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    command: celery -A social_automation worker -l info -Q celery --concurrency=1 -n legacy@%h
+    env_file:
+      - ../../.env
+    volumes:
+      - media_volume:/app/media
+    depends_on:
+      - db
+      - redis
 
   beat:
     build:

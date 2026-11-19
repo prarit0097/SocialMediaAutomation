@@ -525,6 +525,11 @@
     }
   }
 
+  function scheduleQueueStatus(row) {
+    if (row.status === "pending" && /auto-retry in/i.test(String(row.error_message || ""))) return "retry_wait";
+    return row.status;
+  }
+
   function renderScheduledTable(container, rows) {
     if (!container) return;
     if (!rows.length) {
@@ -538,8 +543,8 @@
         <th>platform</th>
         <th>message</th>
         <th>media_url</th>
-        <th>scheduled_for</th>
-        <th>due_in</th>
+        <th>Scheduled for</th>
+        <th>Due / retry</th>
         <th>status</th>
         <th>status_note</th>
         <th>page_name</th>
@@ -549,21 +554,22 @@
 
     const body = rows
       .map((row) => {
-        const canRetry = row.status === "failed";
-        const normalizedError = String(row.error_message || "");
-        const isRetrying = row.status === "pending" && /auto-retry in/i.test(normalizedError);
-        const statusLabel = isRetrying ? "retrying" : String(row.status || "");
-        const statusClass = `queue-status queue-status-${String(statusLabel || "unknown")
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")}`;
-        let errorDisplay = normalizedError;
-        if (isRetrying) {
-          const retryWindowMatch = normalizedError.match(/auto-retry in\s+\d+s/i);
-          const retryWindow = retryWindowMatch ? retryWindowMatch[0].replace(/^auto/i, "Auto") : "Auto-retry scheduled";
-          errorDisplay = `Meta is pacing requests. ${retryWindow}.`;
-        }
-        const errorCellTitle = normalizedError || errorDisplay;
-        const prettyStatusLabel = statusLabel ? statusLabel.charAt(0).toUpperCase() + statusLabel.slice(1) : "Unknown";
+        const state = scheduleQueueStatus(row);
+        const label = {
+          pending: "Scheduled", processing: "Processing", retry_wait: "Retrying",
+          blocked: "Blocked", outcome_unknown: "Verify outcome", published: "Published",
+          failed: "Failed", cancelled: "Cancelled",
+        }[state] || "Unknown";
+        const statusClass = `queue-status queue-status-${String(state || "unknown").replace(/[^a-z0-9]+/g, "-")}`;
+        const note = row.error_message || row.blocked_reason || (state === "outcome_unknown"
+          ? "Check the destination in Meta before scheduling this content again."
+          : "");
+        const button = (action, text) => `<button type="button" class="btn retry-failed-btn" data-post-action="${action}" data-post-id="${escapeHtml(row.id)}">${text}</button>`;
+        const actions = [
+          row.editable && button("edit", "Edit"),
+          (row.cancelable || row.cancellable) && button("cancel", "Cancel post"),
+          (row.retryable ?? state === "failed") && button("retry", "Retry"),
+        ].filter(Boolean).join(" ");
         return `
           <tr>
             <td>${escapeHtml(row.id)}</td>
@@ -574,10 +580,10 @@
             <td>${escapeHtml(row.media_url)}</td>
             <td>${escapeHtml(row.scheduled_for)}</td>
             <td>${escapeHtml(row.due_in)}</td>
-            <td><span class="${statusClass}">${escapeHtml(prettyStatusLabel)}</span></td>
-            <td title="${escapeHtml(errorCellTitle)}">${escapeHtml(errorDisplay)}</td>
+            <td><span class="${statusClass}">${label}</span></td>
+            <td title="${escapeHtml(note)}">${escapeHtml(note)}</td>
             <td>${escapeHtml(row.page_name)}</td>
-            <td>${canRetry ? `<button class="btn retry-failed-btn" data-post-id="${row.id}">Retry Failed</button>` : "-"}</td>
+            <td>${actions || "-"}</td>
           </tr>
         `;
       })
@@ -894,8 +900,8 @@
         if (Number.isNaN(target.getTime())) return "-";
 
         const diffMs = target.getTime() - now.getTime();
-        if (status !== "pending") return "-";
-        if (diffMs <= 0) return "Due now";
+        if (status !== "pending" && status !== "retry_wait") return "-";
+        if (diffMs <= 0) return status === "retry_wait" ? "Retry due" : "Due now";
 
         const totalMinutes = Math.ceil(diffMs / 60000);
         const hours = Math.floor(totalMinutes / 60);
@@ -906,15 +912,16 @@
 
       const rowsWithLocalTime = rows.map((row) => {
         const utcValue = row.scheduled_for;
+        const state = scheduleQueueStatus(row);
         const localValue = utcValue
           ? new Date(utcValue).toLocaleString("en-IN", {
-              timeZone: "Asia/Kolkata",
+              timeZone: row.display_timezone || "Asia/Kolkata",
               day: "2-digit",
               month: "2-digit",
               year: "numeric",
               hour: "2-digit",
               minute: "2-digit",
-              second: "2-digit",
+              timeZoneName: "short",
               hour12: true,
             })
           : "";
@@ -922,18 +929,14 @@
           ...row,
           scheduled_for: localValue,
           scheduled_for_utc: utcValue,
-          due_in: formatDueIn(utcValue, row.status),
+          due_in: formatDueIn(row.next_attempt_at || utcValue, state),
         };
       });
       cachedScheduledRows = rowsWithLocalTime;
       const selectedStatus = scheduledStatusFilter ? String(scheduledStatusFilter.value || "all") : "all";
-      const filteredRows = cachedScheduledRows.filter((row) => {
-        const normalizedError = String(row.error_message || "").toLowerCase();
-        const retrying = row.status === "pending" && normalizedError.includes("auto-retry in");
-        if (selectedStatus === "all") return true;
-        if (selectedStatus === "retrying") return retrying;
-        return String(row.status || "").toLowerCase() === selectedStatus;
-      });
+      const filteredRows = cachedScheduledRows.filter((row) =>
+        selectedStatus === "all" || scheduleQueueStatus(row) === selectedStatus
+      );
       renderScheduledTable(table, filteredRows);
     } catch (err) {
       table.innerHTML = `<p>${escapeHtml(err.message)}</p>`;
@@ -952,6 +955,7 @@
         `${Number(data.due_pending_count || 0)} due pending`,
         `${Number(data.published_last_6h || 0)} published in last 6h`,
       ];
+      if (Number(data.outcome_unknown_count)) parts.push(`${Number(data.outcome_unknown_count)} to verify`);
       const latestRetry = String(data.latest_retry_scheduled_for || "").trim();
       const retrySuffix = latestRetry ? ` Next retry: ${toIndianDateTime(latestRetry) || latestRetry}.` : "";
       const summary = `${parts.join(" | ")}.${retrySuffix}`;
@@ -964,14 +968,14 @@
     }
   }
 
-  async function retryFailedPost(postId) {
-    await fetchJSON(`/api/posts/${postId}/retry/`, {
+  async function updateScheduledPost(postId, action, payload = {}) {
+    await fetchJSON(`/api/posts/${postId}/${action}/`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-CSRFToken": csrfToken,
       },
-      body: JSON.stringify({}),
+      body: JSON.stringify(payload),
     });
     await loadScheduledPosts();
   }
@@ -1213,6 +1217,41 @@
   const scheduledTable = document.getElementById("scheduledTable");
   const scheduledStatusFilter = document.getElementById("scheduledStatusFilter");
   if (scheduledTable) {
+    const editor = document.getElementById("scheduledPostEditor");
+    const editForm = editor?.querySelector("form");
+    const editResult = document.getElementById("scheduledPostEditResult");
+    let editingPostId = null;
+    let originalTime = "";
+
+    editor?.querySelector("[data-close-editor]").addEventListener("click", () => editor.close());
+    editForm?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = new FormData(editForm);
+      const payload = { message: form.get("message"), media_url: form.get("media_url") };
+      const dateTime = form.get("scheduled_for");
+      if (dateTime !== originalTime) {
+        const date = new Date(dateTime);
+        if (Number.isNaN(date.getTime())) {
+          editResult.textContent = "Enter a valid date and time.";
+          return;
+        }
+        payload.scheduled_for = date.toISOString();
+        payload.display_timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+      }
+      const submit = editForm.querySelector("button[type='submit']");
+      if (submit.disabled || !editingPostId) return;
+      submit.disabled = true;
+      try {
+        await updateScheduledPost(editingPostId, "edit", payload);
+        editor.close();
+        showAppToast("Scheduled post updated.", "success");
+        await loadPublishHealthStatus();
+      } catch (err) {
+        editResult.textContent = err.message;
+      } finally {
+        submit.disabled = false;
+      }
+    });
     if (scheduledStatusFilter) {
       // Honor ?status=<value> (e.g. the dashboard "Review failed posts" alert links here).
       try {
@@ -1226,19 +1265,34 @@
       scheduledStatusFilter.addEventListener("change", () => loadScheduledPosts());
     }
     scheduledTable.addEventListener("click", async (event) => {
-      const target = event.target;
-      if (!(target instanceof HTMLElement) || !target.classList.contains("retry-failed-btn")) {
-        return;
-      }
+      const target = event.target instanceof Element ? event.target.closest("button[data-post-action]") : null;
+      if (!target || target.disabled) return;
       const postId = Number(target.dataset.postId);
       if (!postId) return;
-      const ok = window.confirm(`Retry failed post #${postId} now?`);
-      if (!ok) return;
+      const action = target.dataset.postAction;
+      if (action === "edit" && editor && editForm) {
+        const row = cachedScheduledRows.find((item) => Number(item.id) === postId);
+        if (!row) return;
+        const date = new Date(row.scheduled_for_utc);
+        originalTime = Number.isNaN(date.getTime()) ? "" : new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+        editingPostId = postId;
+        editForm.elements.namedItem("message").value = row.message || "";
+        editForm.elements.namedItem("media_url").value = row.media_url || "";
+        editForm.elements.namedItem("scheduled_for").value = originalTime;
+        editResult.textContent = "";
+        editor.showModal();
+        return;
+      }
+      const verb = action === "cancel" ? "Cancel" : "Retry";
+      if (!window.confirm(`${verb} post #${postId}?`)) return;
+      target.disabled = true;
       try {
-        await retryFailedPost(postId);
+        await updateScheduledPost(postId, action);
         await loadPublishHealthStatus();
       } catch (err) {
-        window.alert(`Retry failed: ${err.message}`);
+        showAppToast(`${verb} failed: ${err.message}`, "error");
+      } finally {
+        target.disabled = false;
       }
     });
   }
@@ -1477,6 +1531,33 @@
 
     const scheduleSubmitBtn = scheduleForm.querySelector("button[type='submit']");
     const runWithScheduleLoading = withButtonLoading(scheduleSubmitBtn, "Schedule Post", "Scheduling...");
+    const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    let scheduleAttempt;
+
+    async function submitSchedule(endpoint, payload, fileInput) {
+      payload.append("display_timezone", browserTimezone);
+      const signature = JSON.stringify([endpoint, ...Array.from(payload).filter(([key]) => key !== "media_file")]);
+      if (scheduleAttempt?.signature !== signature || scheduleAttempt.fileInput !== fileInput) {
+        scheduleAttempt = {
+          signature,
+          fileInput,
+          key: window.crypto.randomUUID?.() || Array.from(
+            window.crypto.getRandomValues(new Uint8Array(16)),
+            (byte) => byte.toString(16).padStart(2, "0"),
+          ).join(""),
+        };
+      }
+      const data = await fetchJSON(endpoint, {
+        method: "POST",
+        headers: { "X-CSRFToken": csrfToken, "Idempotency-Key": scheduleAttempt.key },
+        body: payload,
+      });
+      if (!data || typeof data !== "object" || (!data.id && !Array.isArray(data.posts) && !Array.isArray(data.created))) {
+        throw new Error("The schedule could not be confirmed. Retry this submission to check its result.");
+      }
+      scheduleAttempt = undefined;
+      return data;
+    }
 
     // --- Bulk multi-account scheduling ---
     const bulkToggle = document.getElementById("bulkScheduleToggle");
@@ -1585,7 +1666,7 @@
       if (mediaFile instanceof File && mediaFile.size > 0) payload.append("media_file", mediaFile);
       try {
         const data = await runWithScheduleLoading(() =>
-          fetchJSON("/api/posts/bulk-schedule/", { method: "POST", headers: { "X-CSRFToken": csrfToken }, body: payload })
+          submitSchedule("/api/posts/bulk-schedule/", payload, scheduleForm.elements.namedItem("media_file").files[0])
         );
         const created = Number(data.created_count || 0);
         const skipped = Number(data.skipped_count || 0);
@@ -1609,6 +1690,7 @@
 
     scheduleForm.addEventListener("submit", async (event) => {
       event.preventDefault();
+      if (scheduleSubmitBtn.disabled) return;
       const formData = new FormData(scheduleForm);
       if (bulkToggle && bulkToggle.checked) { await submitBulk(formData); return; }
       const payload = new FormData();
@@ -1633,13 +1715,7 @@
       const resultEl = document.getElementById("scheduleResult");
       try {
         const data = await runWithScheduleLoading(() =>
-          fetchJSON("/api/posts/schedule/", {
-            method: "POST",
-            headers: {
-              "X-CSRFToken": csrfToken,
-            },
-            body: payload,
-          })
+          submitSchedule("/api/posts/schedule/", payload, scheduleForm.elements.namedItem("media_file").files[0])
         );
         if (Array.isArray(data.posts) && data.posts.length) {
           const summary = data.posts.map((p) => `#${p.id} (${p.platform})`).join(", ");

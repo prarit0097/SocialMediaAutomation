@@ -19,11 +19,12 @@ from analytics.tasks import (
     queue_daily_heavy_insight_refresh,
     refresh_account_insights_snapshot,
 )
-from analytics.views import _build_combined_response, _extract_error_message
+from analytics.views import _build_combined_response, _extract_error_message, _force_refresh_guard_payload
 from core.constants import FACEBOOK, INSTAGRAM
 from core.exceptions import MetaPermanentError, MetaTransientError
 from core.services.meta_client import MetaClient
 from integrations.models import ConnectedAccount
+from publishing.models import BLOCKED, RETRY_WAIT, ScheduledPost
 
 
 class AnalyticsApiTests(TestCase):
@@ -56,6 +57,46 @@ class AnalyticsApiTests(TestCase):
         self.assertIn("posting_strategy_assist", body)
         self.assertIn("low_distribution_alerts", body)
         self.assertIn("early_engagement_monitor", body)
+
+    @patch("analytics.tasks.fetch_and_store_insights", return_value={"snapshot_id": 2})
+    @patch("analytics.views.fetch_and_store_insights")
+    def test_manual_refresh_and_background_worker_share_account_lock(self, fetch, worker_fetch):
+        def fetch_while_worker_attempts_refresh(*args, **kwargs):
+            attempted = refresh_account_insights_snapshot.run(self.account.id, force=True)
+            self.assertEqual(attempted["status"], "skipped_locked")
+            return {"published_posts": []}
+
+        fetch.side_effect = fetch_while_worker_attempts_refresh
+        response = self.client.get(f"/api/insights/{self.account.id}/?refresh=1")
+        self.assertEqual(response.status_code, 200)
+        worker_fetch.assert_not_called()
+
+    def test_instagram_refresh_guard_counts_due_retries_using_next_attempt_time(self):
+        ig = ConnectedAccount.objects.create(
+            user=self.user, platform=INSTAGRAM, page_id="ig", page_name="Instagram", access_token="token",
+        )
+        now = timezone.now()
+        retry = ScheduledPost.objects.create(
+            account=ig, platform=INSTAGRAM, media_url="https://example.test/photo.jpg", status=RETRY_WAIT,
+            scheduled_for=now - timedelta(hours=1), next_attempt_at=now + timedelta(hours=1),
+        )
+        self.assertIsNone(_force_refresh_guard_payload(self.user))
+
+        ScheduledPost.objects.filter(pk=retry.pk).update(next_attempt_at=now - timedelta(minutes=1))
+        result = _force_refresh_guard_payload(self.user)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["ig_due_soon"], 1)
+
+    def test_overview_counts_waiting_delivery_legs(self):
+        for status in (BLOCKED, RETRY_WAIT):
+            ScheduledPost.objects.create(
+                account=self.account, platform=FACEBOOK, status=status, scheduled_for=timezone.now(), message="queued",
+            )
+
+        response = self.client.get("/api/insights/overview/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["accounts"][0]["pending_count"], 2)
 
     def test_accounts_overview_returns_metrics(self):
         InsightSnapshot.objects.create(
@@ -1297,11 +1338,64 @@ class AnalyticsAutomationTaskTests(TestCase):
         self.assertEqual(kwargs["payload_metadata"]["collection_timezone"], "Asia/Kolkata")
 
     def test_refresh_account_insights_snapshot_skips_when_lock_exists(self):
-        cache.set(f"insight_refresh_lock:{self.account.id}", "busy", timeout=60)
+        from analytics.refresh_lock import acquire_insight_refresh
+
+        acquire_insight_refresh(self.account.id, self.user.id)
 
         task_result = refresh_account_insights_snapshot.apply(args=[self.account.id], kwargs={"force": False}).result
 
         self.assertEqual(task_result["status"], "skipped_locked")
+
+    def test_expired_refresh_owner_cannot_release_successor_lock(self):
+        from analytics.refresh_lock import acquire_insight_refresh, release_insight_refresh
+
+        first = acquire_insight_refresh(self.account.id, self.user.id)
+        self.assertIsNotNone(first)
+        ConnectedAccount.objects.filter(pk=self.account.id).update(
+            insight_refresh_expires_at=timezone.now() - timedelta(seconds=1),
+        )
+        second = acquire_insight_refresh(self.account.id, self.user.id)
+        self.assertIsNotNone(second)
+        self.assertNotEqual(first, second)
+
+        release_insight_refresh(self.account.id, first)
+
+        self.assertIsNone(acquire_insight_refresh(self.account.id, self.user.id))
+        release_insight_refresh(self.account.id, second)
+        self.assertIsNotNone(acquire_insight_refresh(self.account.id, self.user.id))
+
+    @patch("analytics.tasks.refresh_account_insights_snapshot.apply_async")
+    @patch("analytics.tasks.fetch_and_store_insights")
+    def test_oauth_failure_inactivates_the_account_and_stops_the_next_nightly_pull(self, fetch, enqueue):
+        fetch.side_effect = MetaPermanentError("Expired", payload={"error": {"code": 190}})
+
+        refresh_account_insights_snapshot.run(self.account.id, force=True)
+        self.account.refresh_from_db()
+        self.assertFalse(self.account.is_active)
+        self.assertEqual(queue_daily_heavy_insight_refresh(force=True)["queued"], 0)
+        enqueue.assert_not_called()
+
+    @patch("analytics.tasks.fetch_and_store_insights")
+    def test_inactive_account_is_skipped_when_a_queued_refresh_starts(self, fetch):
+        ConnectedAccount.objects.filter(pk=self.account.pk).update(is_active=False)
+
+        result = refresh_account_insights_snapshot.run(self.account.pk, force=True)
+
+        self.assertEqual(result["status"], "skipped_inactive")
+        fetch.assert_not_called()
+
+    @patch("analytics.tasks.fetch_and_store_insights")
+    def test_late_oauth_error_preserves_a_reconnected_account(self, fetch):
+        def fail_after_reconnect(*args, **kwargs):
+            ConnectedAccount.objects.filter(pk=self.account.pk).update(access_token="rotated")
+            raise MetaPermanentError("Expired", payload={"error": {"code": 190}})
+
+        fetch.side_effect = fail_after_reconnect
+        refresh_account_insights_snapshot.run(self.account.pk, force=True)
+
+        self.account.refresh_from_db()
+        self.assertEqual(self.account.access_token, "rotated")
+        self.assertTrue(self.account.is_active)
 
     def test_record_bulk_run_outcome_marks_completed_with_errors_when_enqueue_failed_exists(self):
         run = BulkInsightRefreshRun.objects.create(

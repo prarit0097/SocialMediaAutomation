@@ -15,6 +15,8 @@
   .bulk-badge { font-size:10px; font-weight:800; padding:1px 7px; border-radius:999px; color:#fff; letter-spacing:0.3px; }
   .bulk-badge.fb { background:#1877f2; } .bulk-badge.ig { background:#c13584; }
   .bulk-name { font-size:14px; }
+  #scheduledPostEditor { width:min(30rem, calc(100% - 2rem)); border:0; }
+  #scheduledPostEditor::backdrop { background:rgba(15, 23, 42, 0.55); }
 </style>
 <section class="card hero-card hero-split">
   <div class="hero-main">
@@ -81,7 +83,7 @@
       <small class="form-note">Your browser timezone is used. We store UTC internally. If both URL and upload are provided, upload takes priority.</small>
       <button type="submit">Schedule Post</button>
     </form>
-    <p id="scheduleResult" class="result-note"></p>
+    <p id="scheduleResult" class="result-note" role="status"></p>
   </section>
 
   <aside class="card accent-card">
@@ -90,7 +92,7 @@
     <ul class="info-list">
       <li>Pick the connected account from the dropdown — search by page name.</li>
       <li>Instagram and combined publishing generally require a public media URL or uploaded file.</li>
-      <li>Failed jobs stay traceable in the queue and can be retried from the same screen.</li>
+      <li>Review each destination in the queue. A post marked “Verify outcome” needs a check in Meta before you schedule it again.</li>
     </ul>
     <div class="scheduler-assist-block">
       <p class="eyebrow">&#x1F9E0; Smart Posting Assist</p>
@@ -113,20 +115,37 @@
     <div>
       <p class="eyebrow">Queue Monitor</p>
       <h2>Scheduled Queue</h2>
-      <p class="section-copy">Refresh the queue to review pending, published, and failed jobs without leaving the page.</p>
+      <p class="section-copy">Follow each Facebook or Instagram destination from scheduling to delivery.</p>
     </div>
     <div class="inline-controls">
       <select id="scheduledStatusFilter" aria-label="Filter scheduled posts by status">
         <option value="all">All statuses</option>
-        <option value="retrying">Retrying</option>
-        <option value="pending">Pending</option>
+        <option value="retry_wait">Retrying</option>
+        <option value="pending">Scheduled</option>
         <option value="processing">Processing</option>
+        <option value="blocked">Blocked</option>
+        <option value="outcome_unknown">Verify outcome</option>
         <option value="published">Published</option>
         <option value="failed">Failed</option>
+        <option value="cancelled">Cancelled</option>
       </select>
       <button id="refreshScheduledBtn" class="btn muted">Refresh</button>
     </div>
   </div>
   <div id="scheduledTable" class="table-wrap table-wrap-strong"></div>
 </section>
+
+<dialog id="scheduledPostEditor" class="card" aria-labelledby="scheduledPostEditorTitle">
+  <h2 id="scheduledPostEditorTitle">Edit scheduled post</h2>
+  <form class="form-grid">
+    <label>Message <textarea name="message" rows="4"></textarea></label>
+    <label>Media URL <input type="url" name="media_url"></label>
+    <label>Scheduled for (local time) <input type="datetime-local" name="scheduled_for" required></label>
+    <p id="scheduledPostEditResult" class="result-note" role="status"></p>
+    <div class="inline-controls">
+      <button type="button" class="btn muted" data-close-editor>Close</button>
+      <button type="submit">Save changes</button>
+    </div>
+  </form>
+</dialog>
 {% endblock %}

@@ -16,7 +16,19 @@ services:
 
   worker:
     build: .
-    command: celery -A social_automation worker -l info
+    command: celery -A social_automation worker -l info -Q publish --concurrency=4 -n publish@%h
+    volumes:
+      - .:/app
+      - media_volume:/app/media
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+
+  worker-insights:
+    build: .
+    command: celery -A social_automation worker -l info -Q insights --concurrency=4 -n insights@%h
     volumes:
       - .:/app
       - media_volume:/app/media

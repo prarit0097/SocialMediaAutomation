@@ -10,7 +10,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
 from django.db import OperationalError, transaction
-from django.db.models import Count, Max
+from django.db.models import Count, Max, Q
 from django.http import HttpRequest, JsonResponse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
@@ -27,10 +27,12 @@ from core.exceptions import MetaAPIError
 from core.services.meta_client import meta_app_usage_peak
 from core.throttle import throttle_per_user
 from integrations.models import ConnectedAccount
-from publishing.models import ScheduledPost
+from integrations.services import deactivate_if_current_oauth_failure
+from publishing.models import WAITING_STATES, ScheduledPost
 
 from .ai_service import AIInsightsError, active_ai_model, generate_profile_ai_insights
 from .models import BulkInsightRefreshRun, InsightSnapshot
+from .refresh_lock import acquire_insight_refresh, release_insight_refresh
 from .services import (
     _coerce_numeric_value,
     _first_metric_value,
@@ -62,13 +64,15 @@ def _force_refresh_guard_payload(user=None) -> dict | None:
     except (TypeError, ValueError):
         due_limit = 1
 
-    now = timezone.now()
+    cutoff = timezone.now() + timedelta(minutes=horizon_minutes)
     ig_due_qs = ScheduledPost.objects.filter(
-        platform="instagram",
-        status="pending",
-        scheduled_for__lte=now + timedelta(minutes=horizon_minutes),
-    )
-    ig_processing_qs = ScheduledPost.objects.filter(platform="instagram", status="processing")
+        platform=INSTAGRAM,
+        status__in=WAITING_STATES,
+        final_write_started_at__isnull=True,
+        scheduled_for__lte=cutoff,
+        account__is_active=True,
+    ).filter(Q(next_attempt_at__lte=cutoff) | Q(next_attempt_at__isnull=True, status=POST_STATUS_PENDING))
+    ig_processing_qs = ScheduledPost.objects.filter(platform=INSTAGRAM, status=POST_STATUS_PROCESSING)
     if user is not None:
         ig_due_qs = ig_due_qs.filter(account__user=user)
         ig_processing_qs = ig_processing_qs.filter(account__user=user)
@@ -97,7 +101,7 @@ def _insight_cache_ttl() -> int:
 
 
 def _queue_background_insight_refresh(account: ConnectedAccount) -> None:
-    if not account.access_token:
+    if not account.is_active or not account.access_token:
         return
     lock_key = f"insight-background-refresh:{account.id}"
     if not cache.add(lock_key, 1, timeout=180):
@@ -338,8 +342,10 @@ def _load_single_account_insights(
     if force_refresh:
         if not cache.add(throttle_key, 1, timeout=30):
             return None, JsonResponse({"error": "Too many refresh requests"}, status=429)
-        refresh_lock_key = f"insight-live-refresh-lock:{account.id}"
-        if not cache.add(refresh_lock_key, request.user.id, timeout=120):
+        if not account.is_active:
+            return None, JsonResponse({"error": "Reconnect this profile to refresh Insights"}, status=409)
+        refresh_owner = acquire_insight_refresh(account.id, request.user.id)
+        if refresh_owner is None:
             return None, JsonResponse(
                 {
                     "error": "Refresh already in progress for this profile",
@@ -348,6 +354,9 @@ def _load_single_account_insights(
                 status=429,
             )
         try:
+            account.refresh_from_db()
+            if not account.is_active or not account.access_token:
+                return None, JsonResponse({"error": "Reconnect this profile to refresh Insights"}, status=409)
             data = fetch_and_store_insights(
                 account,
                 include_post_stats=True,
@@ -355,6 +364,7 @@ def _load_single_account_insights(
                 post_stats_limit=20,
             )
         except MetaAPIError as exc:
+            deactivate_if_current_oauth_failure(account, exc)
             logger.warning("insights fetch failed account_id=%s error=%s", account.id, exc)
             return None, JsonResponse(
                 {
@@ -364,7 +374,7 @@ def _load_single_account_insights(
                 status=502,
             )
         finally:
-            cache.delete(refresh_lock_key)
+            release_insight_refresh(account.id, refresh_owner)
         logger.info("insights refreshed account_id=%s user_id=%s", account.id, request.user.id)
         return data, None
 
@@ -394,22 +404,8 @@ def _load_single_account_insights(
         cache.set(cache_key, data, timeout=_insight_cache_ttl())
         return data, None
 
-    if not force_refresh:
-        _queue_background_insight_refresh(account)
-        return _empty_insight_placeholder(account), None
-
-    try:
-        data = fetch_and_store_insights(account)
-    except MetaAPIError as exc:
-        logger.warning("insights fetch failed account_id=%s error=%s", account.id, exc)
-        return None, JsonResponse(
-            {
-                "error": "Failed to fetch insights from Meta",
-                "details": _sanitize_error_text(str(exc), "Meta temporarily returned an unreadable error response."),
-            },
-            status=502,
-        )
-    return data, None
+    _queue_background_insight_refresh(account)
+    return _empty_insight_placeholder(account), None
 
 
 def _resolve_linked_account(account: ConnectedAccount, user=None):
@@ -1155,7 +1151,7 @@ def accounts_overview(request: HttpRequest) -> JsonResponse:
         .values("account_id", "status")
         .annotate(c=Count("id"))
     ):
-        if row["status"] in (POST_STATUS_PENDING, POST_STATUS_PROCESSING):
+        if row["status"] == POST_STATUS_PROCESSING or row["status"] in WAITING_STATES:
             pending_counts[row["account_id"]] += row["c"]
         elif row["status"] == POST_STATUS_FAILED:
             failed_counts[row["account_id"]] += row["c"]
@@ -1438,7 +1434,15 @@ def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
                 request.user.id, run.id, len(inline_targets), inline_deferred,
             )
         for account in inline_targets:
+            refresh_owner = acquire_insight_refresh(account.id, request.user.id)
+            if refresh_owner is None:
+                inline_failed += 1
+                continue
             try:
+                account.refresh_from_db()
+                if not account.is_active or not account.access_token:
+                    inline_failed += 1
+                    continue
                 fetch_and_store_insights(
                     account,
                     include_post_stats=True,
@@ -1454,6 +1458,7 @@ def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
                 )
             except MetaAPIError as exc:
                 inline_failed += 1
+                deactivate_if_current_oauth_failure(account, exc)
                 logger.warning(
                     "bulk force refresh inline fallback failed account_id=%s user_id=%s run_id=%s error=%s",
                     account.id,
@@ -1470,6 +1475,9 @@ def force_refresh_all_accounts_insights(request: HttpRequest) -> JsonResponse:
                     run.id,
                     str(exc),
                 )
+
+            finally:
+                release_insight_refresh(account.id, refresh_owner)
 
     unresolved_enqueue_failed = enqueue_failed if not inline_queue_fallback else (inline_failed + inline_deferred)
 

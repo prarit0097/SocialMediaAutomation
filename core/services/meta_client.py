@@ -9,16 +9,15 @@ from django.conf import settings
 from django.utils import timezone
 
 from core.constants import META_SCOPES
-from core.exceptions import MetaAPIError, MetaPermanentError, MetaTransientError
+from core.exceptions import MetaAPIError, MetaPermanentError, MetaPublishOutcomeUnknown, MetaTransientError
 
 logger = logging.getLogger("meta_client")
 
 TRANSIENT_GRAPH_ERROR_CODES = {2, 4, 17, 32, 613}
 TRANSIENT_GRAPH_ERROR_SUBCODES = {2207003, 2207027, 2207051}
+FINAL_WRITE_REJECTION_CODES = {4, 10, 17, 32, 100, 102, 190, 200, 299, 368, 613, 9007, 36003}
+FINAL_WRITE_REJECTION_SUBCODES = (2207006, 2207027, 2207042, 2207050)
 MAX_PAGING_REQUESTS = 100
-# Meta's default Instagram content-publishing limit (posts / rolling 24h).
-IG_DEFAULT_PUBLISH_QUOTA = 50
-
 # Wording Meta uses when a requested insights metric is invalid/removed for the
 # node or API version. Any of these means "skip this metric", not "fail the whole
 # fetch" — Meta deprecates page/IG metrics frequently (e.g. page_impressions_unique).
@@ -253,7 +252,7 @@ class MetaClient:
         return count
 
     def publish_facebook_post(self, page_id: str, page_access_token: str, message: str) -> dict:
-        return self._post(
+        return self._post_publication(
             f"/{page_id}/feed",
             {
                 "access_token": page_access_token,
@@ -291,10 +290,11 @@ class MetaClient:
         elif image_url:
             payload["url"] = image_url
 
-        return self._post(
+        return self._post_publication(
             f"/{page_id}/photos",
             payload,
             files=files,
+            id_fields=("post_id", "id"),
         )
 
     def publish_facebook_video(
@@ -321,12 +321,40 @@ class MetaClient:
         elif video_url:
             payload["file_url"] = video_url
 
-        return self._post(
+        return self._post_publication(
             f"/{page_id}/videos",
             payload,
             timeout=120,
             files=files,
+            id_fields=("post_id", "id"),
         )
+
+    def get_facebook_video_publish_status(self, video_id: str, page_access_token: str) -> dict:
+        return self._get(f"/{video_id}", {"fields": "status", "access_token": page_access_token})
+
+    def get_facebook_page_post_status(self, post_id: str, page_access_token: str) -> dict:
+        return self._get(f"/{post_id}", {"fields": "is_published", "access_token": page_access_token})
+
+    def find_facebook_page_post_for_video(self, page_id: str, video_id: str, page_access_token: str) -> str | None:
+        try:
+            video = self._get(f"/{video_id}", {"fields": "post_id", "access_token": page_access_token})
+        except MetaAPIError:
+            video = {}
+        direct_id = str(video.get("post_id") or "") if isinstance(video, dict) else ""
+        if direct_id.startswith(f"{page_id}_"):
+            return direct_id
+
+        payload = self._get(
+            f"/{page_id}/published_posts",
+            {"fields": "id,object_id", "limit": 25, "access_token": page_access_token},
+        )
+        rows = payload.get("data") if isinstance(payload, dict) else None
+        if not isinstance(rows, list):
+            return None
+        for row in rows:
+            if isinstance(row, dict) and str(row.get("object_id") or "") == str(video_id) and row.get("id"):
+                return str(row["id"])
+        return None
 
     def create_instagram_media(
         self,
@@ -418,12 +446,18 @@ class MetaClient:
         )
 
     def publish_instagram_media(self, ig_user_id: str, page_access_token: str, creation_id: str) -> dict:
-        return self._post(
+        return self._post_publication(
             f"/{ig_user_id}/media_publish",
             {
                 "access_token": page_access_token,
                 "creation_id": creation_id,
             },
+        )
+
+    def get_instagram_container_status(self, creation_id: str, page_access_token: str) -> dict:
+        return self._get(
+            f"/{creation_id}",
+            {"access_token": page_access_token, "fields": "status,status_code"},
         )
 
     def check_ig_publishing_limit(
@@ -434,25 +468,21 @@ class MetaClient:
         Returns dict with keys: quota_usage, quota_total, quota_remaining.
         Raises MetaTransientError if the endpoint is unreachable.
         """
+        payload = self._get(
+            f"/{ig_user_id}/content_publishing_limit",
+            {"access_token": page_access_token, "fields": "config,quota_usage"},
+        )
+        row = payload
+        if isinstance(payload, dict) and "data" in payload:
+            rows = payload["data"]
+            row = rows[0] if isinstance(rows, list) and rows else None
         try:
-            data = self._get(
-                f"/{ig_user_id}/content_publishing_limit",
-                {
-                    "access_token": page_access_token,
-                    "fields": "config,quota_usage",
-                },
-            )
-        except MetaPermanentError:
-            # Some older accounts / permission sets don't expose this endpoint.
-            # Treat as "unknown" — don't block publishing, let the actual
-            # publish call fail if over quota.
-            return {"quota_usage": 0, "quota_total": IG_DEFAULT_PUBLISH_QUOTA, "quota_remaining": IG_DEFAULT_PUBLISH_QUOTA}
-
-        config = data.get("config") or {}
-        # Meta's default IG content publishing limit is 50 posts / rolling 24h
-        # (was 25 on older docs). Defaulting to 25 caused false "quota reached".
-        quota_total = int(config.get("quota_total", IG_DEFAULT_PUBLISH_QUOTA))
-        quota_usage = int(data.get("quota_usage", 0))
+            quota_total = int(row["config"]["quota_total"])
+            quota_usage = int(row["quota_usage"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise MetaTransientError("Instagram returned no usable publishing quota.") from exc
+        if quota_total <= 0 or quota_usage < 0:
+            raise MetaTransientError("Instagram returned an invalid publishing quota.")
         return {
             "quota_usage": quota_usage,
             "quota_total": quota_total,
@@ -481,13 +511,7 @@ class MetaClient:
         time.sleep(initial_wait)
         while time.monotonic() - started < timeout:
             try:
-                latest_payload = self._get(
-                    f"/{creation_id}",
-                    {
-                        "access_token": page_access_token,
-                        "fields": "status,status_code",
-                    },
-                )
+                latest_payload = self.get_instagram_container_status(creation_id, page_access_token)
                 latest_transient_error = None
                 consecutive_rate_limits = 0
             except MetaTransientError as exc:
@@ -980,6 +1004,21 @@ class MetaClient:
         )
         return self._handle_response(response)
 
+    def _post_publication(
+        self, path: str, data: dict, *, timeout: int = 60,
+        files: dict | None = None, id_fields: tuple[str, ...] = ("id",),
+    ) -> dict:
+        # A retry or a followed redirect can repeat an already-applied Graph mutation.
+        post = requests.post if requests.post is not _DEFAULT_REQUESTS_POST else self._session.post
+        try:
+            response = post(
+                f"{self.base_url}{path}", data=data, files=files, timeout=timeout, allow_redirects=False,
+            )
+        except requests.RequestException as exc:
+            raise MetaPublishOutcomeUnknown("Connection lost during Meta publish. Verify the outcome before retrying.") from exc
+
+        return self._handle_response(response, publication_id_fields=id_fields)
+
     # ------------------------------------------------------------------ #
     # X-App-Usage / X-Page-Usage proactive throttle
     # ------------------------------------------------------------------ #
@@ -1045,26 +1084,50 @@ class MetaClient:
         if regain_minutes > 0:
             _cache.set("meta_buc_regain_minutes", regain_minutes, timeout=ttl)
 
-    def _handle_response(self, response: requests.Response) -> dict:
+    def _handle_response(
+        self, response: requests.Response, *, publication_id_fields: tuple[str, ...] = (),
+    ) -> dict:
         # Track X-App-Usage to proactively throttle when approaching limits.
         self._check_usage_headers(response)
 
-        if response.status_code < 400:
-            try:
-                return response.json()
-            except (ValueError, requests.exceptions.JSONDecodeError):
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            if publication_id_fields:
+                raise MetaPublishOutcomeUnknown(
+                    "Meta returned an unreadable publish response. Verify the outcome before retrying.",
+                    status_code=response.status_code,
+                ) from exc
+            if response.status_code < 400:
                 raise MetaTransientError(
                     f"Meta returned HTTP {response.status_code} with non-JSON body",
                     status_code=response.status_code,
-                )
-
-        payload = {}
-        try:
-            payload = response.json()
-        except ValueError:
+                ) from exc
             payload = {"raw": response.text}
 
-        error = payload.get("error", {})
+        error = payload.get("error") if isinstance(payload, dict) else None
+        if publication_id_fields:
+            success = 200 <= response.status_code < 300 and not error and isinstance(payload, dict)
+            if success and any(
+                isinstance(payload.get(field), str) and payload[field].strip()
+                for field in publication_id_fields
+            ):
+                return payload
+            definitive_error = (
+                400 <= response.status_code < 500 and response.status_code != 408
+                and isinstance(error, dict) and type(error.get("code")) is int
+                and (error["code"] in FINAL_WRITE_REJECTION_CODES
+                     or error.get("error_subcode") in FINAL_WRITE_REJECTION_SUBCODES)
+            )
+            if not definitive_error:
+                raise MetaPublishOutcomeUnknown(
+                    "Meta did not confirm or definitively reject the publication. Verify the outcome before retrying.",
+                    status_code=response.status_code,
+                )
+        elif response.status_code < 400:
+            return payload
+
+        error = error if isinstance(error, dict) else {}
         message = error.get("message", "Meta API request failed")
         code = error.get("code")
         subcode = error.get("error_subcode")

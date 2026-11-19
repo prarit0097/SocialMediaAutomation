@@ -11,3 +11,7 @@ class MetaTransientError(MetaAPIError):
 
 class MetaPermanentError(MetaAPIError):
     pass
+
+
+class MetaPublishOutcomeUnknown(MetaAPIError):
+    """Meta may have applied the publish request. It must be reconciled before retry."""

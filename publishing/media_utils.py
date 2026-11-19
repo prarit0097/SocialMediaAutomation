@@ -56,6 +56,8 @@ def build_public_media_url(relative_url: str) -> str:
 
 def resolve_local_media_storage_path(media_url: str) -> str | None:
     parsed = urlparse(media_url)
+    if settings.PUBLIC_BASE_URL and parsed.netloc and parsed.netloc != urlparse(settings.PUBLIC_BASE_URL).netloc:
+        return None
     media_prefix = settings.MEDIA_URL.rstrip("/")
     if not parsed.path.startswith(media_prefix + "/"):
         return None
@@ -157,7 +159,7 @@ def _optimize_local_image_for_instagram(media_url: str) -> str:
                 quality -= 4
 
             derived_path = f"{os.path.splitext(storage_path)[0]}_ig.jpg"
-            return _save_public_media_file(derived_path, output.getvalue())
+            return urljoin(media_url, _save_public_media_file(derived_path, output.getvalue()))
     except OSError as exc:
         logger.warning("ig image optimization failed, using original path=%s error=%s", storage_path, exc)
         return media_url
@@ -213,7 +215,7 @@ def _resolved_public_ips(parsed) -> list[str]:
     return resolved
 
 
-def _validate_public_media_url(media_url: str) -> None:
+def validate_public_media_url(media_url: str) -> None:
     parsed = urlparse(str(media_url or "").strip())
     scheme = str(parsed.scheme or "").lower()
     hostname = str(parsed.hostname or "").strip().lower()
@@ -235,9 +237,6 @@ def _validate_public_media_url(media_url: str) -> None:
     else:
         raise MetaPermanentError("Media URL must not target private or reserved IP addresses.")
 
-    _resolved_public_ips(parsed)
-
-
 class _PinnedHTTPConnection(HTTPConnection):
     def __init__(self, resolved_ip: str, host: str, port: int, timeout: int):
         super().__init__(host=host, port=port, timeout=timeout)
@@ -258,7 +257,7 @@ class _PinnedHTTPSConnection(HTTPSConnection):
 
 
 def ensure_public_media_fetchable(media_url: str) -> None:
-    _validate_public_media_url(media_url)
+    validate_public_media_url(media_url)
     parsed = urlparse(str(media_url or "").strip())
     resolved_ip = _resolved_public_ips(parsed)[0]
     path = parsed.path or "/"

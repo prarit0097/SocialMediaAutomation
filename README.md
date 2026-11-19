@@ -96,10 +96,15 @@ python manage.py runserver
 
 Terminal 2:
 ```bash
-celery -A social_automation worker -l info
+celery -A social_automation worker -l info -Q publish -n publish@%h
 ```
 
 Terminal 3:
+```bash
+celery -A social_automation worker -l info -Q insights -n insights@%h
+```
+
+Terminal 4:
 ```bash
 celery -A social_automation beat -l info
 ```

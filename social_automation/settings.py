@@ -158,6 +158,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "accounts.context_processors.pixel_events",
+                "accounts.seo.public_metadata",
             ],
         },
     },
@@ -212,6 +213,7 @@ STORAGES = {
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 PUBLIC_BASE_URL = env("PUBLIC_BASE_URL", default="")
+SEO_CANONICAL_ORIGIN = env("SEO_CANONICAL_ORIGIN", default="https://postzyo.com").strip().rstrip("/")
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
@@ -250,15 +252,12 @@ CELERY_TASK_SOFT_TIME_LIMIT = env("CELERY_TASK_SOFT_TIME_LIMIT")
 CELERY_TASK_TIME_LIMIT = env("CELERY_TASK_TIME_LIMIT")
 CELERY_TASK_DEFAULT_PRIORITY = 5
 CELERY_TASK_QUEUE_MAX_PRIORITY = 10
+PUBLISH_CLAIMS_ENABLED = env.bool("PUBLISH_CLAIMS_ENABLED", default=True)
+PUBLISH_CANARY_USER_IDS = [int(value) for value in env.list("PUBLISH_CANARY_USER_IDS", default=[]) if value.strip()]
 CELERY_TASK_ROUTES = {
-    # Redis priority buckets are coarse (default steps [0,3,6,9]), so the real, working
-    # split is publishing (9 -> bucket 9) ahead of analytics (1 -> bucket 0). The former
-    # 1-vs-2 distinction between the two analytics tasks collapsed into the same bucket
-    # and had no effect — set both to 1 so the config doesn't imply an ordering it can't keep.
-    "publishing.tasks.process_due_posts": {"priority": 9},
-    "publishing.tasks.publish_post_task": {"priority": 9},
-    "analytics.tasks.queue_daily_heavy_insight_refresh": {"priority": 1},
-    "analytics.tasks.refresh_account_insights_snapshot": {"priority": 1},
+    "publishing.tasks.*": {"queue": "publish", "priority": 0},
+    "analytics.tasks.*": {"queue": "insights"},
+    "integrations.tasks.*": {"queue": "insights"},
 }
 CELERY_BROKER_TRANSPORT_OPTIONS = {"queue_order_strategy": "priority"}
 CELERY_TASK_ANNOTATIONS = {

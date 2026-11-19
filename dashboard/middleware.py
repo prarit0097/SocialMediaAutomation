@@ -46,6 +46,7 @@ class SubscriptionAccessMiddleware:
             reverse("dashboard:subscription_create_order"),
             reverse("dashboard:subscription_verify_payment"),
             reverse("logout"),
+            reverse("pricing"),
             reverse("help"),
         }
         if request.path in allowed_paths:

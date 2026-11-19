@@ -1,34 +1,34 @@
+import hashlib
 import json
-import logging
 import os
 import uuid
 from datetime import datetime, timedelta, timezone as dt_timezone
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-import requests
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
 from django.db import transaction
+from django.db.models import Q
 from django.http import HttpRequest, JsonResponse
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.views.decorators.http import require_GET, require_POST
 
 from core.constants import FACEBOOK, INSTAGRAM, PLATFORM_CHOICES, POST_STATUS_FAILED, POST_STATUS_PENDING, POST_STATUS_PROCESSING
-from core.exceptions import MetaAPIError
+from core.exceptions import MetaAPIError, MetaPermanentError
 from core.throttle import throttle_per_user
 from core.services.meta_client import MetaClient
 from integrations.models import ConnectedAccount
 from integrations.sync_state import build_account_sync_state
-from publishing.media_utils import prepare_instagram_media_url
+from publishing.media_utils import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, media_extension, prepare_instagram_media_url, resolve_local_media_storage_path, validate_public_media_url
 
-from .models import ScheduledPost
+from .models import BLOCKED, CANCELLED, OUTCOME_UNKNOWN, RETRY_WAIT, WAITING_STATES, ScheduleChange, ScheduledPost, ScheduleRequest
 from .services import is_invalid_token_error, token_reconnect_message
-from .tasks import PUBLISH_TRANSIENT_ATTEMPT_KEY_PREFIX, process_due_posts
 
-logger = logging.getLogger("publishing")
 ALLOWED_MEDIA_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".mp4", ".mov", ".webm", ".m4v", ".avi"}
 INSTAGRAM_SCHEDULE_BUFFER_SECONDS = 120
 
@@ -41,7 +41,9 @@ def _bad_request(message: str, details: dict | None = None) -> JsonResponse:
 
 
 def _is_retrying_post(row: dict) -> bool:
-    return str(row.get("status") or "").lower() == POST_STATUS_PENDING and "auto-retry in" in str(row.get("error_message") or "").lower()
+    return row["status"] == RETRY_WAIT or (
+        row["status"] == POST_STATUS_PENDING and "auto-retry in" in str(row.get("error_message") or "").lower()
+    )
 
 
 def _build_public_media_url(request: HttpRequest, relative_url: str) -> str:
@@ -164,7 +166,7 @@ def _ensure_account_is_currently_synced(request: HttpRequest, account: Connected
 
 
 def _current_token_validity(account: ConnectedAccount) -> bool | None:
-    cache_key = f"token_valid:{account.id}"
+    cache_key = f"token_valid:{account.id}:{account.token_generation}"
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
@@ -179,6 +181,8 @@ def _current_token_validity(account: ConnectedAccount) -> bool | None:
 
 
 def _ensure_account_token_is_valid(account: ConnectedAccount):
+    if account.publishing_permission_granted is False:
+        return _bad_request("Reconnect and grant publishing permission for this destination.")
     if not account.is_active:
         return _bad_request(
             "This connected profile is inactive because it was not included in the latest Meta reconnect. "
@@ -205,374 +209,331 @@ def _prepare_media_for_instagram_schedule(media_url: str | None) -> tuple[str | 
         return media_url, None
     try:
         prepared = prepare_instagram_media_url(media_url)
-    except Exception as exc:  # noqa: BLE001
+    except MetaPermanentError as exc:
         return None, _bad_request(str(exc))
+    except OSError:
+        return None, _bad_request("Instagram media could not be prepared. Re-upload the file and try again.")
     return prepared, None
 
 
-def _next_available_instagram_slot(account: ConnectedAccount, desired_dt: datetime) -> datetime:
+def _next_available_instagram_slot(account: ConnectedAccount, desired_dt: datetime, exclude_id=None) -> datetime:
     candidate = desired_dt
     window = timedelta(seconds=INSTAGRAM_SCHEDULE_BUFFER_SECONDS)
-    while ScheduledPost.objects.filter(
+    active = ScheduledPost.objects.filter(
         account=account,
         platform=INSTAGRAM,
-        status__in=[POST_STATUS_PENDING, POST_STATUS_PROCESSING],
-        scheduled_for__gte=candidate - window + timedelta(seconds=1),
-        scheduled_for__lte=candidate + window - timedelta(seconds=1),
+        status__in=[*WAITING_STATES, POST_STATUS_PROCESSING],
+    ).exclude(pk=exclude_id)
+    while active.filter(
+        next_attempt_at__gt=candidate - window,
+        next_attempt_at__lt=candidate + window,
     ).exists():
         candidate += window
     return candidate
 
 
-def _auto_dispatch_due_posts_guarded() -> None:
-    """
-    Self-healing fallback:
-    If beat misses a cycle and due pending posts exist, run an inline
-    dispatch immediately. If inline execution fails, fall back to Celery.
-    """
-    now = timezone.now()
-    has_due_pending = ScheduledPost.objects.filter(status=POST_STATUS_PENDING, scheduled_for__lte=now).exists()
-    if not has_due_pending:
-        return
-
-    lock_key = "publishing:auto_dispatch_due_posts_lock"
-    if not cache.add(lock_key, now.isoformat(), timeout=30):
-        return
-
+def _parse_schedule_time(value):
     try:
-        process_due_posts(run_inline=True)
-    except Exception:  # noqa: BLE001
-        logger.warning("auto dispatcher inline run failed", exc_info=True)
+        dt = parse_datetime(value)
+    except (ValueError, TypeError):
+        return None
+    if dt and timezone.is_naive(dt):
+        return timezone.make_aware(dt, timezone=dt_timezone.utc)
+    return dt.astimezone(dt_timezone.utc) if dt else None
+
+
+def _display_timezone(value):
+    try:
+        return ZoneInfo(value).key
+    except (ValueError, TypeError, ZoneInfoNotFoundError):
+        return None
+
+
+def _request_payload(request):
+    if request.content_type == "application/json":
         try:
-            process_due_posts.apply_async(priority=9)
-        except Exception:  # noqa: BLE001
-            logger.warning("auto dispatcher celery enqueue failed")
-    finally:
-        cache.delete(lock_key)
+            payload = json.loads(request.body)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return None
+        return payload if isinstance(payload, dict) else None
+    return request.POST
 
 
-def _recover_stale_processing_posts(user=None, stale_minutes: int = 12) -> int:
-    # stale_minutes must exceed the Celery hard time limit (default 480s = 8 min)
-    # so we never reset a post that a worker is still actively processing.
-    lock_key = f"publishing:recover_stale_processing_posts:{getattr(user, 'id', 'global')}"
-    if not cache.add(lock_key, timezone.now().isoformat(), timeout=30):
-        return 0
-
-    cutoff = timezone.now() - timedelta(minutes=stale_minutes)
-    stale_qs = ScheduledPost.objects.filter(
-        status=POST_STATUS_PROCESSING,
-        updated_at__lt=cutoff,
+def _schedule_receipt(request, kind, targets, dt, display_timezone, message, media_url):
+    key = request.headers.get("Idempotency-Key")
+    if key is None:
+        return None, None
+    if not key.strip() or len(key) > 128:
+        return None, _bad_request("Idempotency-Key must contain between 1 and 128 characters.")
+    upload = request.FILES.get("media_file")
+    file_fingerprint = None
+    if upload:
+        maximum = int(getattr(settings, "MAX_UPLOAD_FILE_BYTES", 0) or 0)
+        if maximum <= 0:
+            maximum = 100 * 1024 * 1024
+        if upload.size > maximum:
+            return None, _bad_request("Uploaded media exceeds the configured upload size limit.")
+        digest = hashlib.sha256()
+        for chunk in upload.chunks():
+            digest.update(chunk)
+        upload.seek(0)
+        file_fingerprint = [os.path.splitext(upload.name)[1].lower(), digest.hexdigest()]
+    canonical = [kind, targets, dt.isoformat(), display_timezone, message, media_url if not upload else None, file_fingerprint]
+    fingerprint = hashlib.sha256(json.dumps(canonical, separators=(",", ":")).encode()).hexdigest()
+    receipt, _ = ScheduleRequest.objects.get_or_create(
+        user=request.user, key=key, defaults={"fingerprint": fingerprint},
     )
-    if user is not None:
-        stale_qs = stale_qs.filter(account__user=user)
-    stale_ids = list(stale_qs.values_list("id", flat=True))
+    if receipt.fingerprint != fingerprint:
+        return None, JsonResponse({"error": "This scheduling key was already used for different content."}, status=409)
+    return receipt, None
+
+
+def _leg(post):
+    return {
+        "id": post.id, "platform": post.platform, "account_id": post.account_id, "page_name": post.account.page_name,
+        "status": post.status, "scheduled_for": post.scheduled_for.isoformat(),
+        "next_attempt_at": post.next_attempt_at.isoformat() if post.next_attempt_at else None,
+        "display_timezone": post.display_timezone, "external_post_id": post.external_post_id,
+    }
+
+
+def _single_result(posts, receipt, replay=False):
+    payload = {
+        "status": posts[0].status if len(posts) == 1 else POST_STATUS_PENDING,
+        "media_url": posts[0].media_url, "created": len(posts),
+        "posts": [_leg(post) for post in posts], "schedule_request_id": receipt.id if receipt else None,
+    }
+    if len(posts) == 1:
+        payload["id"] = posts[0].id
+    else:
+        payload["ids"] = [post.id for post in posts]
+    return JsonResponse(payload, status=200 if replay else 201)
+
+
+def _target_media(account, media_url):
+    if not media_url:
+        return (None, _bad_request("Instagram requires an image or video.")) if account.platform == INSTAGRAM else (None, None)
     try:
-        if not stale_ids:
-            return 0
-        ScheduledPost.objects.filter(id__in=stale_ids).update(
-            status=POST_STATUS_PENDING,
-            error_message="Recovered from stale processing state; auto re-queued.",
-            updated_at=timezone.now(),
-        )
-        logger.warning("recovered stale processing posts count=%s ids=%s", len(stale_ids), stale_ids[:20])
-        return len(stale_ids)
-    finally:
-        cache.delete(lock_key)
+        parsed = urlparse(media_url)
+    except ValueError:
+        return None, _bad_request("Provide a valid media URL.")
+    local = resolve_local_media_storage_path(media_url)
+    if not parsed.hostname or parsed.username or parsed.password or (parsed.scheme != "https" and not local):
+        return None, _bad_request("Provide a public HTTPS media URL.")
+    if not local:
+        try:
+            validate_public_media_url(media_url)
+        except MetaPermanentError as exc:
+            return None, _bad_request(str(exc))
+    ext = media_extension(media_url)
+    if account.platform == INSTAGRAM:
+        supported = IMAGE_EXTENSIONS | {".mp4", ".mov"} if local else {".jpg", ".jpeg", ".mp4", ".mov"}
+        if ext not in supported:
+            return None, _bad_request("Instagram link media must be a JPEG image or MP4/MOV video. Upload local images directly to convert them.")
+        return _prepare_media_for_instagram_schedule(media_url)
+    if ext and ext not in IMAGE_EXTENSIONS | VIDEO_EXTENSIONS:
+        return None, _bad_request("Unsupported Facebook media format.")
+    return media_url, None
+
+
+def _create_leg(account, receipt, message, media_url, dt, display_timezone, initial_delay=0):
+    current_account = ConnectedAccount.objects.select_for_update().filter(pk=account.pk, user_id=account.user_id).first()
+    if current_account is None or not current_account.is_active or current_account.token_generation != account.token_generation:
+        raise ValidationError("Destination changed before the schedule was saved.")
+    next_attempt_at = dt
+    if account.platform == INSTAGRAM:
+        next_attempt_at = _next_available_instagram_slot(account, dt + timedelta(seconds=initial_delay))
+    return ScheduledPost.objects.create(
+        account=current_account, platform=account.platform, message=message, media_url=media_url,
+        scheduled_for=dt, next_attempt_at=next_attempt_at, display_timezone=display_timezone, schedule_request=receipt,
+    )
 
 
 @require_POST
 @login_required
 @throttle_per_user("60/m", scope="schedule_post")
-def schedule_post(request: HttpRequest) -> JsonResponse:
-    is_json_request = request.content_type and request.content_type.startswith("application/json")
-    if is_json_request:
-        try:
-            payload = json.loads(request.body.decode())
-        except json.JSONDecodeError:
-            return _bad_request("Invalid JSON body")
-        account_id = payload.get("account_id")
-        platform = payload.get("platform")
-        message = payload.get("message")
-        media_url = payload.get("media_url")
-        scheduled_for = payload.get("scheduled_for")
-    else:
-        account_id = request.POST.get("account_id")
-        platform = request.POST.get("platform")
-        message = request.POST.get("message")
-        media_url = request.POST.get("media_url")
-        scheduled_for = request.POST.get("scheduled_for")
-        uploaded_media_url, upload_error = _upload_file_to_media(request)
-        if upload_error:
-            return _bad_request(upload_error)
-        if uploaded_media_url:
-            media_url = uploaded_media_url
-
-    if not account_id or not platform or not scheduled_for:
-        return _bad_request("account_id, platform, and scheduled_for are required")
-
+def schedule_post(request):
+    payload = _request_payload(request)
+    if payload is None:
+        return _bad_request("Invalid JSON body")
+    try:
+        account_id = int(payload.get("account_id"))
+    except (ValueError, TypeError):
+        return _bad_request("A valid account_id is required.")
+    platform = payload.get("platform")
     valid_platforms = {choice[0] for choice in PLATFORM_CHOICES}
-    if platform not in valid_platforms and platform != "both":
+    if not isinstance(platform, str) or (platform not in valid_platforms and platform != "both"):
         return _bad_request("platform must be facebook, instagram, or both")
+    dt = _parse_schedule_time(payload.get("scheduled_for"))
+    display_timezone = _display_timezone(payload.get("display_timezone", "Asia/Kolkata"))
+    message, media_url = payload.get("message") or "", payload.get("media_url") or None
+    if not dt or not display_timezone or not isinstance(message, str) or (media_url and not isinstance(media_url, str)):
+        return _bad_request("Provide valid schedule time, timezone, message and media URL.")
+    message = message.strip()
+    receipt, error = _schedule_receipt(request, "single", [account_id, platform], dt, display_timezone, message, media_url)
+    if error:
+        return error
+    if receipt:
+        existing = list(_user_legs(request.user).filter(schedule_request=receipt).select_related("account").order_by("id"))
+        if existing:
+            return _single_result(existing, receipt, replay=True)
 
     account = ConnectedAccount.objects.filter(id=account_id, user=request.user).first()
     if not account:
         return JsonResponse({"error": "Connected account not found"}, status=404)
-    if platform in valid_platforms and account.platform != platform:
+    if platform != "both" and account.platform != platform:
         return _bad_request("account_id does not belong to selected platform")
-    stale_response = _ensure_account_is_currently_synced(request, account)
-    if stale_response:
-        return stale_response
-    invalid_token_response = _ensure_account_token_is_valid(account)
-    if invalid_token_response:
-        return invalid_token_response
-
-    dt = parse_datetime(scheduled_for)
-    if not isinstance(dt, datetime):
-        return _bad_request("scheduled_for must be valid ISO8601 datetime")
-    if timezone.is_naive(dt):
-        dt = timezone.make_aware(dt, timezone=dt_timezone.utc)
-
     if platform == "both":
-        if not media_url:
-            return _bad_request("media_url or media_file is required when platform is both")
-        # Keep the original URL for Facebook (full quality, direct upload)
-        # and prepare a separate optimized URL for Instagram.
-        fb_media_url = media_url
-        ig_media_url, media_error = _prepare_media_for_instagram_schedule(media_url)
-        if media_error:
-            return media_error
-        fb_account, ig_account, resolve_error = _resolve_dual_accounts(account)
-        if resolve_error:
-            return _bad_request(resolve_error)
-        for target in [fb_account, ig_account]:
-            stale_response = _ensure_account_is_currently_synced(request, target)
-            if stale_response:
-                return stale_response
-            invalid_token_response = _ensure_account_token_is_valid(target)
-            if invalid_token_response:
-                return invalid_token_response
-
-        # Small stagger: FB at scheduled time, IG at scheduled time + 5s.
-        # Per-user lane lock serializes each user's IG posts, so different
-        # users' IG posts can run in parallel (separate rate-limit buckets).
-        ig_dt = _next_available_instagram_slot(ig_account, dt + timedelta(seconds=5))
-        targets = [
-            (fb_account, FACEBOOK, dt, fb_media_url),
-            (ig_account, INSTAGRAM, ig_dt, ig_media_url),
-        ]
-
-        created_posts = []
-        try:
-            with transaction.atomic():
-                for target_account, target_platform, target_dt, target_media in targets:
-                    post = ScheduledPost(
-                        account=target_account,
-                        platform=target_platform,
-                        message=message,
-                        media_url=target_media,
-                        scheduled_for=target_dt,
-                    )
-                    post.save()
-                    created_posts.append(post)
-                    logger.info(
-                        "post scheduled id=%s platform=%s account_id=%s scheduled_for=%s",
-                        post.id,
-                        post.platform,
-                        post.account_id,
-                        post.scheduled_for,
-                    )
-        except Exception as exc:  # noqa: BLE001
-            return _bad_request("Validation failed", {"message": str(exc)})
-
-        return JsonResponse(
-            {
-                "ids": [p.id for p in created_posts],
-                "status": POST_STATUS_PENDING,
-                "media_url": media_url,
-                "created": len(created_posts),
-                "posts": [
-                    {"id": p.id, "platform": p.platform, "account_id": p.account_id, "page_name": p.account.page_name}
-                    for p in created_posts
-                ],
-            },
-            status=201,
-        )
-
-    if platform == INSTAGRAM:
-        dt = _next_available_instagram_slot(account, dt)
-
-    post = ScheduledPost(account=account, platform=platform, message=message, media_url=media_url, scheduled_for=dt)
-    if platform == INSTAGRAM:
-        media_url, media_error = _prepare_media_for_instagram_schedule(media_url)
-        if media_error:
-            return media_error
-        post.media_url = media_url
+        fb_account, ig_account, error = _resolve_dual_accounts(account)
+        if error:
+            return _bad_request(error)
+        accounts = (fb_account, ig_account)
+    else:
+        accounts = (account,)
+    for target in accounts:
+        error = _ensure_account_is_currently_synced(request, target) or _ensure_account_token_is_valid(target)
+        if error:
+            return error
 
     try:
-        post.save()
-    except Exception as exc:  # noqa: BLE001
-        return _bad_request("Validation failed", {"message": str(exc)})
-
-    logger.info(
-        "post scheduled id=%s platform=%s account_id=%s scheduled_for=%s",
-        post.id,
-        post.platform,
-        post.account_id,
-        post.scheduled_for,
-    )
-    return JsonResponse({"id": post.id, "status": post.status, "media_url": post.media_url}, status=201)
+        with transaction.atomic():
+            if receipt:
+                receipt = ScheduleRequest.objects.select_for_update().get(pk=receipt.pk)
+                existing = list(_user_legs(request.user).filter(schedule_request=receipt).select_related("account").order_by("id"))
+                if existing:
+                    return _single_result(existing, receipt, replay=True)
+            uploaded_url, upload_error = _upload_file_to_media(request)
+            if upload_error:
+                return _bad_request(upload_error)
+            media_url = uploaded_url or media_url
+            prepared = []
+            for target in accounts:
+                target_url, error = _target_media(target, media_url)
+                if error:
+                    return error
+                prepared.append((target, target_url))
+            posts = [
+                _create_leg(target, receipt, message, target_url, dt, display_timezone, initial_delay=5 if platform == "both" else 0)
+                for target, target_url in prepared
+            ]
+    except ValidationError as exc:
+        return _bad_request("Validation failed", {"messages": exc.messages})
+    return _single_result(posts, receipt)
 
 
 @require_POST
 @login_required
 @throttle_per_user("20/m", scope="bulk_schedule")
-def bulk_schedule_post(request: HttpRequest) -> JsonResponse:
-    """Compose once, schedule the same post to many connected accounts.
-
-    Each selected account is validated independently (ownership, freshness, token,
-    media compatibility) and gets its own ScheduledPost at the chosen time. One bad
-    account never blocks the rest — the response reports created and skipped accounts
-    with reasons. Each account publishes to its own native platform (FB or IG).
-    """
-    is_json = bool(request.content_type and request.content_type.startswith("application/json"))
-    if is_json:
+def bulk_schedule_post(request):
+    payload = _request_payload(request)
+    if payload is None:
+        return _bad_request("Invalid JSON body")
+    account_ids = payload.get("account_ids")
+    if isinstance(account_ids, str):
         try:
-            payload = json.loads(request.body.decode())
+            account_ids = json.loads(account_ids) if account_ids.startswith("[") else account_ids.split(",")
         except json.JSONDecodeError:
-            return _bad_request("Invalid JSON body")
-        account_ids = payload.get("account_ids")
-        message = payload.get("message")
-        media_url = payload.get("media_url")
-        scheduled_for = payload.get("scheduled_for")
-    else:
-        raw_ids = (request.POST.get("account_ids") or "").strip()
-        try:
-            account_ids = json.loads(raw_ids) if raw_ids.startswith("[") else [x for x in raw_ids.split(",") if x.strip()]
-        except json.JSONDecodeError:
-            account_ids = [x for x in raw_ids.split(",") if x.strip()]
-        message = request.POST.get("message")
-        media_url = request.POST.get("media_url")
-        scheduled_for = request.POST.get("scheduled_for")
-        uploaded_media_url, upload_error = _upload_file_to_media(request)
-        if upload_error:
-            return _bad_request(upload_error)
-        if uploaded_media_url:
-            media_url = uploaded_media_url
-
+            return _bad_request("Invalid account_ids.")
     if not isinstance(account_ids, list) or not account_ids:
         return _bad_request("account_ids (a non-empty list) is required")
-    if not scheduled_for:
-        return _bad_request("scheduled_for is required")
-
-    # De-dup + bound the fan-out so one request can't flood the publish queue.
-    deduped: list[int] = []
+    deduped = {}
     for raw in account_ids:
         try:
-            aid = int(raw)
+            deduped[int(raw)] = None
         except (TypeError, ValueError):
             continue
-        if aid not in deduped:
-            deduped.append(aid)
-    if not deduped:
-        return _bad_request("account_ids contained no valid ids")
     max_accounts = int(getattr(settings, "BULK_SCHEDULE_MAX_ACCOUNTS", 100) or 100)
-    if len(deduped) > max_accounts:
-        return _bad_request(f"Too many accounts in one bulk schedule (max {max_accounts}).")
+    if not deduped or len(deduped) > max_accounts:
+        return _bad_request(f"Provide between 1 and {max_accounts} account IDs.")
+    dt = _parse_schedule_time(payload.get("scheduled_for"))
+    display_timezone = _display_timezone(payload.get("display_timezone", "Asia/Kolkata"))
+    message, media_url = payload.get("message") or "", payload.get("media_url") or None
+    if not dt or not display_timezone or not isinstance(message, str) or (media_url and not isinstance(media_url, str)):
+        return _bad_request("Provide valid schedule time, timezone, message and media URL.")
+    message = message.strip()
+    receipt, error = _schedule_receipt(request, "bulk", sorted(deduped), dt, display_timezone, message, media_url)
+    if error:
+        return error
 
-    dt = parse_datetime(scheduled_for)
-    if not isinstance(dt, datetime):
-        return _bad_request("scheduled_for must be a valid ISO8601 datetime")
-    if timezone.is_naive(dt):
-        dt = timezone.make_aware(dt, timezone=dt_timezone.utc)
-
-    owned = {a.id: a for a in ConnectedAccount.objects.filter(id__in=deduped, user=request.user)}
-
-    # Optimize media once for Instagram — the IG-safe derivative is the same for every
-    # IG account, so we don't recompute it per account.
-    ig_media_url, ig_media_error = (None, None)
-    if media_url:
-        ig_media_url, ig_media_error = _prepare_media_for_instagram_schedule(media_url)
-
-    created: list[dict] = []
-    skipped: list[dict] = []
+    owned = {a.id: a for a in ConnectedAccount.objects.filter(pk__in=deduped, user=request.user)}
+    existing = {
+        post.account_id: post for post in _user_legs(request.user).filter(schedule_request=receipt).select_related("account")
+    } if receipt else {}
+    created = []
+    skipped = []
+    new_count = 0
+    upload_checked = False
     for aid in deduped:
+        if aid in existing:
+            created.append(_leg(existing[aid]))
+            continue
         account = owned.get(aid)
         if not account:
             skipped.append({"account_id": aid, "reason": "Not found or not your account"})
             continue
-        label = account.page_name
-        if _ensure_account_is_currently_synced(request, account) is not None:
-            skipped.append({"account_id": aid, "page_name": label, "reason": "Stale account — reconnect required before scheduling"})
+        error = _ensure_account_is_currently_synced(request, account) or _ensure_account_token_is_valid(account)
+        if not error:
+            if not upload_checked:
+                uploaded_url, upload_error = _upload_file_to_media(request)
+                if upload_error:
+                    return _bad_request(upload_error)
+                media_url = uploaded_url or media_url
+                upload_checked = True
+            target_media, error = _target_media(account, media_url)
+        if error:
+            skipped.append({"account_id": aid, "page_name": account.page_name, "reason": json.loads(error.content)["error"]})
             continue
-        if _ensure_account_token_is_valid(account) is not None:
-            skipped.append({"account_id": aid, "page_name": label, "reason": "Invalid Meta token — reconnect this account"})
-            continue
-        if account.platform == INSTAGRAM:
-            if not media_url:
-                skipped.append({"account_id": aid, "page_name": label, "reason": "Instagram requires an image or video"})
-                continue
-            if ig_media_error is not None:
-                skipped.append({"account_id": aid, "page_name": label, "reason": "Media is not Instagram-compatible"})
-                continue
-            target_dt = _next_available_instagram_slot(account, dt)
-            target_media = ig_media_url
-        else:
-            target_dt = dt
-            target_media = media_url
         try:
-            post = ScheduledPost.objects.create(
-                account=account,
-                platform=account.platform,
-                message=message,
-                media_url=target_media,
-                scheduled_for=target_dt,
-            )
-        except Exception as exc:  # noqa: BLE001
-            skipped.append({"account_id": aid, "page_name": label, "reason": f"Could not schedule: {exc}"})
+            with transaction.atomic():
+                if receipt:
+                    ScheduleRequest.objects.select_for_update().get(pk=receipt.pk)
+                    accepted = _user_legs(request.user).select_related("account").filter(schedule_request=receipt, account_id=aid).first()
+                    if accepted:
+                        created.append(_leg(accepted))
+                        continue
+                post = _create_leg(account, receipt, message, target_media, dt, display_timezone)
+        except ValidationError as exc:
+            skipped.append({"account_id": aid, "page_name": account.page_name, "reason": " ".join(exc.messages)})
             continue
-        created.append({
-            "id": post.id,
-            "account_id": aid,
-            "page_name": label,
-            "platform": account.platform,
-            "scheduled_for": target_dt.isoformat(),
-        })
-        logger.info("bulk post scheduled id=%s account_id=%s platform=%s", post.id, aid, account.platform)
+        new_count += 1
+        created.append(_leg(post))
 
-    return JsonResponse(
-        {
-            "created_count": len(created),
-            "skipped_count": len(skipped),
-            "total_requested": len(deduped),
-            "status": POST_STATUS_PENDING,
-            "created": created,
-            "skipped": skipped,
-        },
-        status=201 if created else 400,
-    )
-
+    return JsonResponse({
+        "created_count": len(created), "new_count": new_count, "skipped_count": len(skipped),
+        "total_requested": len(deduped), "status": POST_STATUS_PENDING, "schedule_request_id": receipt.id if receipt else None,
+        "created": created, "skipped": skipped,
+    }, status=201 if new_count else 200 if created else 400)
 
 @require_GET
 @login_required
 def list_scheduled_posts(request: HttpRequest) -> JsonResponse:
-    _recover_stale_processing_posts(request.user)
-    _auto_dispatch_due_posts_guarded()
     rows = list(
-        ScheduledPost.objects.select_related("account").filter(account__user=request.user).values(
+        _user_legs(request.user).values(
             "id",
             "platform",
             "message",
             "media_url",
             "scheduled_for",
+            "display_timezone",
+            "next_attempt_at",
+            "schedule_request_id",
             "status",
+            "stage",
+            "blocked_reason",
             "error_message",
+            "final_write_started_at",
             "external_post_id",
+            "provider_upload_id",
             "account__page_name",
         )
         .order_by("-scheduled_for", "-id")
     )
     for row in rows:
         row["page_name"] = row.pop("account__page_name")
+        unconfirmed = not (row["external_post_id"] or row["provider_upload_id"])
+        can_change = unconfirmed and not row["final_write_started_at"] and row["status"] in [*WAITING_STATES, POST_STATUS_PROCESSING]
+        row["cancelable"] = row["editable"] = can_change
+        row["retryable"] = unconfirmed and row["status"] == POST_STATUS_FAILED
     return JsonResponse(rows, safe=False)
 
 
@@ -581,11 +542,12 @@ def list_scheduled_posts(request: HttpRequest) -> JsonResponse:
 def publish_health_status(request: HttpRequest) -> JsonResponse:
     now = timezone.now()
     rows = list(
-        ScheduledPost.objects.filter(account__user=request.user).values(
+        _user_legs(request.user).values(
             "id",
             "status",
             "platform",
             "scheduled_for",
+            "next_attempt_at",
             "published_at",
             "error_message",
         ).order_by("-updated_at")[:200]
@@ -596,7 +558,7 @@ def publish_health_status(request: HttpRequest) -> JsonResponse:
     due_pending = [
         row
         for row in rows
-        if str(row.get("status") or "").lower() == POST_STATUS_PENDING and row.get("scheduled_for") and row["scheduled_for"] <= now
+        if row["status"] == POST_STATUS_PENDING and (row["next_attempt_at"] or row["scheduled_for"]) <= now
     ]
     published_recent = [row for row in rows if row.get("published_at") and row["published_at"] >= now - timedelta(hours=6)]
 
@@ -608,78 +570,115 @@ def publish_health_status(request: HttpRequest) -> JsonResponse:
         "due_pending_count": len(due_pending),
         "published_last_6h": len(published_recent),
         "latest_retry_message": str((latest_retry or {}).get("error_message") or ""),
-        "latest_retry_scheduled_for": latest_retry["scheduled_for"].isoformat() if latest_retry and latest_retry.get("scheduled_for") else None,
+        "latest_retry_scheduled_for": (latest_retry["next_attempt_at"] or latest_retry["scheduled_for"]).isoformat() if latest_retry else None,
+        "outcome_unknown_count": sum(row["status"] == OUTCOME_UNKNOWN for row in rows),
+        "blocked_count": sum(row["status"] == BLOCKED for row in rows),
     }
     return JsonResponse(payload)
 
 
-@require_POST
-@login_required
-def retry_failed_post(request: HttpRequest, post_id: int) -> JsonResponse:
-    post = ScheduledPost.objects.select_related("account").filter(id=post_id, account__user=request.user).first()
-    if not post:
-        return JsonResponse({"error": "Scheduled post not found"}, status=404)
+def _user_legs(user):
+    return ScheduledPost.objects.filter(owner=user, account__user=user)
 
-    if post.status != POST_STATUS_FAILED:
-        return _bad_request("Only failed posts can be retried")
-    stale_response = _ensure_account_is_currently_synced(request, post.account)
-    if stale_response:
-        return stale_response
 
-    if is_invalid_token_error(post.error_message):
-        token_valid = _current_token_validity(post.account)
-        if token_valid is False:
-            return _bad_request(token_reconnect_message(post.account, post.error_message))
+def _modifiable(legs):
+    return legs.filter(
+        status__in=[*WAITING_STATES, POST_STATUS_PROCESSING],
+        final_write_started_at__isnull=True, provider_upload_id="",
+    ).filter(Q(external_post_id__isnull=True) | Q(external_post_id=""))
 
-    retry_time = timezone.now()
-    try:
-        payload = json.loads(request.body.decode() or "{}")
-    except json.JSONDecodeError:
-        return _bad_request("Invalid JSON body")
 
-    requested_time = payload.get("scheduled_for")
-    if requested_time:
-        dt = parse_datetime(requested_time)
-        if not isinstance(dt, datetime):
-            return _bad_request("scheduled_for must be valid ISO8601 datetime")
-        if timezone.is_naive(dt):
-            dt = timezone.make_aware(dt, timezone=dt_timezone.utc)
-        retry_time = dt
-
-    if post.platform == INSTAGRAM and post.media_url:
-        prepared_media_url, media_error = _prepare_media_for_instagram_schedule(post.media_url)
-        if media_error:
-            return media_error
-        post.media_url = prepared_media_url
-
-    # Never schedule a retry in the past; for IG also space it into a free per-account
-    # slot so two retried IG posts can't collide inside the <120s lane window.
-    retry_time = max(retry_time, timezone.now())
-    if post.platform == INSTAGRAM:
-        retry_time = _next_available_instagram_slot(post.account, retry_time)
-
-    # Clear all stale caches from prior failed attempts so the retry
-    # starts clean (fresh container, no skip-resumable flag, etc.).
-    cache.delete(f"ig_creation:{post.id}")
-    cache.delete(f"ig_skip_resumable:{post.id}")
-    cache.delete(f"{PUBLISH_TRANSIENT_ATTEMPT_KEY_PREFIX}:{post.id}")
-
-    post.status = POST_STATUS_PENDING
-    post.error_message = ""
-    post.external_post_id = ""
-    post.published_at = None
-    post.scheduled_for = retry_time
-    post.save(
-        update_fields=[
-            "status",
-            "error_message",
-            "external_post_id",
-            "published_at",
-            "scheduled_for",
-            "media_url",
-            "updated_at",
-        ]
+def _retryable(legs):
+    return legs.filter(status=POST_STATUS_FAILED, provider_upload_id="").filter(
+        Q(external_post_id__isnull=True) | Q(external_post_id=""),
     )
 
-    logger.info("failed post retried id=%s by_user=%s scheduled_for=%s", post.id, request.user.id, post.scheduled_for)
-    return JsonResponse({"id": post.id, "status": post.status, "scheduled_for": post.scheduled_for.isoformat()})
+
+def _conflict():
+    return JsonResponse({"error": "This post changed or has already entered delivery. Reload to see its status."}, status=409)
+
+
+@require_POST
+@login_required
+def cancel_scheduled_post(request, post_id):
+    legs = _user_legs(request.user).filter(pk=post_id)
+    with transaction.atomic():
+        post = legs.select_for_update(of=("self",)).first()
+        if post is None or not ConnectedAccount.objects.select_for_update().filter(pk=post.account_id, user=request.user).first():
+            return JsonResponse({"error": "Scheduled post not found"}, status=404)
+        now = timezone.now()
+        if not _modifiable(ScheduledPost.objects.filter(pk=post_id, owner=request.user)).update(
+            status=CANCELLED, stage="cancelled", error_message="", blocked_reason="",
+            next_attempt_at=None, lease_expires_at=None, updated_at=now,
+        ):
+            return _conflict()
+    return JsonResponse({"id": post_id, "status": CANCELLED})
+
+
+@require_POST
+@login_required
+def edit_scheduled_post(request, post_id):
+    return _update_scheduled_post(request, post_id, is_retry=False)
+
+
+@require_POST
+@login_required
+def retry_failed_post(request, post_id):
+    return _update_scheduled_post(request, post_id, is_retry=True)
+
+
+def _update_scheduled_post(request, post_id, *, is_retry):
+    legs = _user_legs(request.user).filter(pk=post_id)
+    post = legs.select_related("account").first()
+    if not post:
+        return JsonResponse({"error": "Scheduled post not found"}, status=404)
+    eligible = _retryable(legs) if is_retry else _modifiable(legs)
+    if not eligible.exists():
+        return _conflict()
+    error = _ensure_account_is_currently_synced(request, post.account)
+    if error:
+        return error
+    if is_retry and is_invalid_token_error(post.error_message):
+        if _current_token_validity(post.account) is False:
+            return _bad_request(token_reconnect_message(post.account))
+    payload = _request_payload(request)
+    if payload is None:
+        return _bad_request("Invalid JSON body")
+    dt = _parse_schedule_time(payload.get("scheduled_for")) if "scheduled_for" in payload else post.scheduled_for
+    display_timezone = _display_timezone(payload.get("display_timezone", post.display_timezone))
+    message, media_url = payload.get("message", post.message) or "", payload.get("media_url", post.media_url) or None
+    if not dt or not display_timezone or not isinstance(message, str) or (media_url and not isinstance(media_url, str)):
+        return _bad_request("Provide valid schedule time, timezone, message and media URL.")
+    media_url, error = _target_media(post.account, media_url)
+    if error:
+        return error
+    candidate = ScheduledPost(account=post.account, platform=post.platform, message=message, media_url=media_url, scheduled_for=dt)
+    try:
+        candidate.full_clean()
+    except ValidationError as exc:
+        return _bad_request("Validation failed", {"messages": exc.messages})
+    with transaction.atomic():
+        current = eligible.select_for_update(of=("self",)).filter(updated_at=post.updated_at).first()
+        if current is None:
+            return _conflict()
+        account = ConnectedAccount.objects.select_for_update().filter(pk=post.account_id, user=request.user).first()
+        if account is None or not account.is_active or account.token_generation != post.account.token_generation:
+            return _conflict()
+        now = timezone.now()
+        next_attempt = max(dt, now)
+        if post.platform == INSTAGRAM:
+            next_attempt = _next_available_instagram_slot(post.account, next_attempt, exclude_id=post.id)
+        current_leg = ScheduledPost.objects.filter(pk=post.pk, owner=request.user)
+        updating = _retryable(current_leg) if is_retry else _modifiable(current_leg)
+        if not updating.update(
+            status=POST_STATUS_PENDING, stage="", blocked_reason="", error_message="",
+            message=message.strip(), media_url=media_url, scheduled_for=dt, display_timezone=display_timezone,
+            next_attempt_at=next_attempt, claim_generation=current.claim_generation + 1, lease_expires_at=None,
+            attempt_count=0, final_write_started_at=None, ig_container_id="", ig_container_created_at=None, updated_at=now,
+        ):
+            return _conflict()
+        if post.scheduled_for != dt:
+            ScheduleChange.objects.create(
+                post=post, changed_by=request.user, previous_scheduled_for=post.scheduled_for, scheduled_for=dt,
+            )
+    return JsonResponse(_leg(legs.get()))

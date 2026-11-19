@@ -20,8 +20,9 @@ from core.throttle import (
 )
 
 from .forms import HelpRequestForm
-from .models import UserProfile
+from .models import TRIAL_PERIOD_DAYS, UserProfile
 from .pixel import queue_pixel_event
+from .subscriptions import SUBSCRIPTION_PLAN_CONFIG
 
 
 def _post_login_redirect_name(user) -> str:
@@ -70,7 +71,15 @@ class AdminLoginView(LoginView):
 def landing_page(request):
     if request.user.is_authenticated:
         return redirect(_post_login_redirect_name(request.user))
-    return render(request, "accounts/landing.html")
+    return render(request, "accounts/landing.html", {"plans": SUBSCRIPTION_PLAN_CONFIG})
+
+
+def pricing_view(request):
+    return render(
+        request,
+        "accounts/pricing.html",
+        {"plans": SUBSCRIPTION_PLAN_CONFIG, "trial_days": TRIAL_PERIOD_DAYS},
+    )
 
 
 def _legal_page_context(page_key: str) -> dict:

@@ -19,6 +19,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
 from accounts.models import UserProfile
+from accounts.subscriptions import SUBSCRIPTION_PLAN_CONFIG
 from core.exceptions import MetaAPIError
 from core.services.meta_client import MetaClient
 from core.throttle import throttle_per_user
@@ -33,8 +34,7 @@ def _normalize_base_url(value: str) -> str:
 
 ENV_META_KEYS = ("META_APP_ID", "META_APP_SECRET", "META_REDIRECT_URI")
 ENV_SIMPLE_VALUE_RE = re.compile(r"^[A-Za-z0-9_./:@+-]+$")
-SUBSCRIPTION_MONTHLY_AMOUNT_PAISE = 600000
-SUBSCRIPTION_YEARLY_AMOUNT_PAISE = 7000000
+SUBSCRIPTION_ORDER_CACHE_TTL = 3600
 
 logger = logging.getLogger("dashboard")
 
@@ -85,27 +85,6 @@ def _razorpay_capture_verified(order_id: str, payment_id: str, billing_cycle: st
     if str(data.get("currency") or "").upper() != expected_currency:
         return False, "Payment currency does not match."
     return True, None
-SUBSCRIPTION_ORDER_CACHE_TTL = 3600
-SUBSCRIPTION_PLAN_CONFIG = {
-    "monthly": {
-        "plan_key": "monthly",
-        "title": "Monthly Growth Plan",
-        "profile_label": UserProfile.SUBSCRIPTION_PLAN_MONTHLY,
-        "price_label": "INR 6,000 / month",
-        "amount_paise": SUBSCRIPTION_MONTHLY_AMOUNT_PAISE,
-        "billing_cycle": "monthly",
-        "tagline": "Perfect for fast monthly execution and iteration.",
-    },
-    "yearly": {
-        "plan_key": "yearly",
-        "title": "Yearly Scale Plan",
-        "profile_label": UserProfile.SUBSCRIPTION_PLAN_YEARLY,
-        "price_label": "INR 70,000 / year",
-        "amount_paise": SUBSCRIPTION_YEARLY_AMOUNT_PAISE,
-        "billing_cycle": "yearly",
-        "tagline": "Best value for long-term growth operations.",
-    },
-}
 
 
 def _env_file_path() -> Path:
@@ -202,7 +181,7 @@ def _validate_meta_config(app_id: str, app_secret: str, redirect_uri: str) -> li
 
 
 def _profile_payload(user) -> dict:
-    from publishing.models import ScheduledPost
+    from publishing.models import WAITING_STATES, ScheduledPost
 
     profile, _ = UserProfile.objects.get_or_create(user=user)
     profile.refresh_subscription_state()
@@ -212,10 +191,10 @@ def _profile_payload(user) -> dict:
     fb_accounts = accounts.filter(platform="facebook").count()
     ig_accounts = accounts.filter(platform="instagram").count()
 
-    post_qs = ScheduledPost.objects.filter(account__user=user)
+    post_qs = ScheduledPost.objects.filter(owner=user, account__user=user)
     total_published = post_qs.filter(status="published").count()
     total_failed = post_qs.filter(status="failed").count()
-    total_pending = post_qs.filter(status="pending").count()
+    total_pending = post_qs.filter(status__in=WAITING_STATES).count()
     total_scheduled = post_qs.count()
 
     today = timezone.now().date()

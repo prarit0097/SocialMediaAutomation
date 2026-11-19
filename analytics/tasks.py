@@ -4,15 +4,16 @@ from zoneinfo import ZoneInfo
 
 from celery import shared_task
 from django.conf import settings
-from django.core.cache import cache
-from django.db import close_old_connections, transaction
+from django.db import connections, transaction
 from django.utils import timezone
 
 from core.exceptions import MetaAPIError, MetaTransientError
 from core.services.meta_client import meta_app_over_budget
 from integrations.models import ConnectedAccount
+from integrations.services import deactivate_if_current_oauth_failure
 
 from .models import BulkInsightRefreshRun, InsightSnapshot
+from .refresh_lock import acquire_insight_refresh, release_insight_refresh
 from .services import fetch_and_store_insights
 
 logger = logging.getLogger("analytics")
@@ -124,7 +125,7 @@ def queue_daily_heavy_insight_refresh(force: bool = False):
     total = 0
 
     account_qs = (
-        ConnectedAccount.objects.filter(user__isnull=False)
+        ConnectedAccount.objects.filter(user__isnull=False, is_active=True)
         .order_by("id")
         .values_list("id", "access_token")
     )
@@ -172,23 +173,36 @@ def queue_daily_heavy_insight_refresh(force: bool = False):
     }
 
 
+def _close_idle_connections():
+    # An eager task can share its caller's active transaction.
+    for connection in connections.all(initialized_only=True):
+        if not connection.in_atomic_block:
+            connection.close_if_unusable_or_obsolete()
+
+
 @shared_task(bind=True, max_retries=2, default_retry_delay=300, name="analytics.tasks.refresh_account_insights_snapshot")
 def refresh_account_insights_snapshot(self, account_id: int, force: bool = False, bulk_run_id: int | None = None):
-    close_old_connections()
-    lock_key = f"insight_refresh_lock:{account_id}"
-    lock_acquired = cache.add(lock_key, timezone.now().isoformat(), timeout=20 * 60)
-    if not lock_acquired:
-        outcome = "skipped_existing"
-        _record_bulk_run_outcome(bulk_run_id, outcome)
-        return {"status": "skipped_locked", "account_id": account_id}
-
+    _close_idle_connections()
     outcome = None
     account = None
+    refresh_owner = None
     try:
         account = ConnectedAccount.objects.filter(id=account_id).first()
         if not account:
             outcome = "missing"
             return {"status": "missing", "account_id": account_id}
+        if not account.is_active or not account.user_id:
+            outcome = "skipped_existing"
+            return {"status": "skipped_inactive", "account_id": account_id}
+
+        refresh_owner = acquire_insight_refresh(account_id, account.user_id)
+        if refresh_owner is None:
+            outcome = "skipped_existing"
+            return {"status": "skipped_locked", "account_id": account_id}
+        account.refresh_from_db()
+        if not account.is_active or not account.access_token:
+            outcome = "skipped_existing"
+            return {"status": "skipped_inactive", "account_id": account_id}
 
         # Subscription enforcement: don't spend Meta/OpenAI quota refreshing insights
         # for a lapsed owner. Counts as a benign skip so any bulk run still finalizes.
@@ -249,29 +263,18 @@ def refresh_account_insights_snapshot(self, account_id: int, force: bool = False
     except MetaAPIError as exc:
         logger.warning("daily heavy insights failed account_id=%s error=%s", account.id if account else account_id, str(exc))
         outcome = "failed"
-        # Self-heal: a hard token invalidation (OAuth code=190) will keep failing every
-        # run and burn shared Meta app quota across the whole fleet. Deactivate the row so
-        # the daily/force fan-out stops hammering it. A reconnect or `resync_page_tokens`
-        # re-mints a valid token and flips is_active back on (update_or_create sets it True).
-        try:
-            err = (getattr(exc, "payload", None) or {}).get("error", {})
-            if account is not None and err.get("code") == 190:
-                ConnectedAccount.objects.filter(id=account.id).update(is_active=False)
-                logger.warning(
-                    "deactivated account_id=%s: invalid token (code=190) — reconnect/resync needed",
-                    account.id,
-                )
-        except Exception:  # noqa: BLE001 - self-heal must never mask the original failure
-            pass
+        if account is not None:
+            deactivate_if_current_oauth_failure(account, exc)
         return {"status": "failed", "account_id": account.id if account else account_id, "error": str(exc)}
     except Exception as exc:  # noqa: BLE001
         logger.exception("daily heavy insights unexpected failure account_id=%s", account.id if account else account_id)
         outcome = "failed"
         return {"status": "failed", "account_id": account.id if account else account_id, "error": str(exc)}
     finally:
+        if refresh_owner is not None:
+            release_insight_refresh(account_id, refresh_owner)
         _record_bulk_run_outcome(bulk_run_id, outcome or "")
-        cache.delete(lock_key)
-        close_old_connections()
+        _close_idle_connections()
 
 
 @shared_task(name="analytics.tasks.prune_insight_snapshots")
@@ -282,7 +285,7 @@ def prune_insight_snapshots(retention_per_account: int | None = None, batch_size
     rows are dead weight that bloat Postgres (and every multi-row reader). This task
     is purely additive: it touches no read path. Deletes in id-batches to bound memory.
     """
-    close_old_connections()
+    _close_idle_connections()
     if retention_per_account is None:
         retention_per_account = getattr(settings, "INSIGHT_SNAPSHOT_RETENTION_PER_ACCOUNT", 30)
     try:
@@ -317,7 +320,7 @@ def prune_insight_snapshots(retention_per_account: int | None = None, batch_size
         "prune_insight_snapshots done accounts_pruned=%s deleted=%s keep_per_account=%s",
         accounts_pruned, deleted_total, retention_per_account,
     )
-    close_old_connections()
+    _close_idle_connections()
     return {
         "accounts_pruned": accounts_pruned,
         "deleted": deleted_total,
