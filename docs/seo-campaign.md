@@ -5,9 +5,9 @@
 | Deliverable | Verified state |
 | --- | --- |
 | Guides on Postzyo | Thirty-two guides live after the November 19, 2026 web release at `80995d5`. Verified the blog links, canonicals, BlogPosting metadata, images and all 64 related-guide links. |
-| External illustrated articles | Eleven live articles with illustrations or product screenshots, on GitHub, LinkedIn, Blogger and Google Sites. |
+| External illustrated articles | Thirteen live articles with illustrations or product screenshots, on GitHub, LinkedIn, Blogger and Google Sites. |
 | Social and news placements | One public LinkedIn article and two public LinkedIn short posts with illustrated link previews. The Public City draft is ready for author review. |
-| External backlinks | Thirteen verified links across four sites. The latest GitHub article links to the Postzyo launch rehearsal guide. The AlternativeTo entry is pending review. |
+| External backlinks | Fifteen verified links across four sites. The two latest Blogger articles link to the guides on campaign date changes and auditing old links. The AlternativeTo entry is pending review. |
 | Search Console | The verified `https://postzyo.com/` property reported Success and 28 discovered pages before accepting the November 19, 2026 resubmission of the 39-URL sitemap. Indexing of the newest guides has yet to be verified. |
 
 The campaign uses free publishing and submission routes. For an external placement, record the final public URL, the exact Postzyo destination and the verification date. Test the page signed out, check that the image renders, and inspect the link on the published page before counting it.
@@ -19,7 +19,7 @@ The production rollout applied the homepage lead migration and refreshed static 
 | Channel | Evidence and next action |
 | --- | --- |
 | WordPress.com | The free plan includes hosting on a WordPress.com subdomain. Create a branded publication and publish original tutorials. [Plan details](https://wordpress.com/pricing/) |
-| Blogger | Postzyo Field Notes has five live illustrated guides. Its newest article shows how a fitness studio can use follow-up posts to cover registration, arrival and a full class. [Publication](https://postzyo-field-notes.blogspot.com/) |
+| Blogger | Postzyo Field Notes has seven live illustrated guides. The two newest articles cover a store returns-policy change and a mobile registration-link audit. [Publication](https://postzyo-field-notes.blogspot.com/) |
 | Google Sites | Postzyo Field Guides has three public illustrated guides on the free Google Sites address. They cover campaign review, a reporting handoff and sold-out promotions. [Publication](https://sites.google.com/view/postzyo-field-guides/home) |
 | GitHub Gist | The signed-in editor uses the signup address as the public commit email. The release rehearsal guide was published through the existing public repository instead. [Gist editor](https://gist.github.com/) |
 | LinkedIn | Published to Anyone. The original article has an inline Scheduler screenshot. The newer Reels checklist uses the illustrated Postzyo link preview. [Article](https://www.linkedin.com/pulse/preflight-check-publishing-same-announcement-facebook-prarit-sidana-jslnc/) [Reels checklist](https://www.linkedin.com/posts/prarit-sidana_how-to-schedule-an-instagram-reel-postzyo-activity-7529193205884485632-CABh) |
@@ -28,6 +28,7 @@ The production rollout applied the homepage lead migration and refreshed static 
 | SaaSHub | The workflow requests direct submission by the product owner and asks for a product-domain email address for higher-priority verification. [Submission form](https://www.saashub.com/services/submit) |
 | Medium | The author account was signed out. The editor redirects to sign-in and states that proceeding accepts Medium's terms. [Terms](https://policy.medium.com/medium-terms-of-service-9db0094a1e0f) |
 | Pinterest and Tumblr | Pinterest's creation route opens the free signup flow, which requests a date of birth. Tumblr's editor redirects to a sign-in that accepts its Terms of Service. [Pinterest](https://www.pinterest.com/pin-creation-tool/) [Tumblr Terms](https://www.tumblr.com/policy/terms-of-service) |
+| Reddit | The community submission route redirects to sign-in. Continuing explicitly accepts the Reddit User Agreement. [User Agreement](https://redditinc.com/policies/user-agreement) |
 | Rentry | The public Markdown editor timed out in the connected Chrome browser. No placement was attempted. [Editor](https://rentry.co/) |
 | SaaS Place | Free manual review with no account. The submission form states that sending an entry accepts its terms. Approval is pending. Marketing is the relevant category. [Submission form](https://saasplace.io/submit/) |
 | ASBN Small Business Network | The owner asked to skip this channel. Editorial draft retained locally. |
@@ -68,6 +69,8 @@ The production rollout applied the homepage lead migration and refreshed static 
 | [Blogger fitness class follow-up guide](https://postzyo-field-notes.blogspot.com/2026/11/three-follow-up-posts-after-fitness.html) | https://postzyo.com/blog/turn-customer-faqs-into-social-posts/ | The article, WebP illustration and direct Postzyo destination returned 200 signed out on November 19, 2026. |
 | [Google Sites sold-out promotion guide](https://sites.google.com/view/postzyo-field-guides/when-a-promotion-sells-out) | https://postzyo.com/blog/close-out-a-social-media-campaign/ | The public guide, WebP illustration and direct destination returned 200 signed out on November 19, 2026. Verified navigation from the publication home. |
 | [GitHub staging release rehearsal](https://github.com/prarit0097/SocialMediaAutomation/blob/b145fab7d3574051ac3ae457077cacf23ba00558/docs/staging-social-publishing-release-rehearsal.md) | https://postzyo.com/blog/test-social-publishing-before-client-launch/ | The rendered article, image and destination returned 200 signed out on November 19, 2026. The published link is marked `rel="nofollow"`. |
+| [Blogger returns-policy update](https://postzyo-field-notes.blogspot.com/2026/11/how-to-announce-store-returns-change-on.html) | https://postzyo.com/blog/update-scheduled-posts-when-a-campaign-date-changes/ | Article, WebP illustration and direct destination returned 200 signed out on November 19, 2026. |
+| [Blogger mobile registration-link audit](https://postzyo-field-notes.blogspot.com/2026/11/a-phone-first-link-audit-after-moving.html) | https://postzyo.com/blog/audit-old-social-links-after-a-website-update/ | Article, WebP illustration and direct destination returned 200 signed out on November 19, 2026. |
 | [AlternativeTo submission](https://alternativeto.net/my-submissions/) | https://postzyo.com/ | Normal review queue. The owner can see it after signing in. |
 
 ## LinkedIn article source
