@@ -9,6 +9,7 @@ from django.contrib.staticfiles.storage import staticfiles_storage
 from django.test import SimpleTestCase, override_settings
 
 from accounts.models import TRIAL_PERIOD_DAYS
+from accounts.articles import ARTICLES
 
 
 class PublicHTML(HTMLParser):
@@ -58,7 +59,8 @@ class PublicHTML(HTMLParser):
 )
 class PublicSEOTests(SimpleTestCase):
     origin = "https://postzyo.com"
-    paths = ("/", "/pricing/", "/help/", "/privacy-policy/", "/terms/", "/data-deletion/")
+    public_paths = ("/", "/pricing/", "/help/", "/privacy-policy/", "/terms/", "/data-deletion/", "/blog/")
+    paths = public_paths + tuple(f"/blog/{slug}/" for slug in ARTICLES)
 
     def get(self, path, host="postzyo.com"):
         return self.client.get(path, secure=True, HTTP_HOST=host)
@@ -88,7 +90,21 @@ class PublicSEOTests(SimpleTestCase):
 
     def test_homepage_links_to_public_pages_in_server_rendered_html(self):
         html = PublicHTML(self.get("/"))
-        self.assertTrue(set(self.paths[1:]) <= html.anchors)
+        self.assertTrue(set(self.public_paths[1:]) <= html.anchors)
+
+    def test_blog_index_links_to_illustrated_guides_and_unknown_slug_returns_404(self):
+        index = PublicHTML(self.get("/blog/"))
+        for slug, article in ARTICLES.items():
+            with self.subTest(slug=slug):
+                path = f"/blog/{slug}/"
+                self.assertIn(path, index.anchors)
+                response = self.get(path)
+                self.assertContains(response, article.image_alt)
+                html = PublicHTML(response)
+                self.assertEqual(html.metadata["og:type"], "article")
+                self.assertEqual(html.structured_data["BlogPosting"]["headline"], article.title)
+                self.assertIn("/blog/", html.anchors)
+        self.assertEqual(self.get("/blog/missing/").status_code, 404)
 
     def test_landing_links_to_signup_and_each_visible_section(self):
         response = self.get("/")

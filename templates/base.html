@@ -8,7 +8,7 @@
     {% if seo_page %}
     <meta name="description" content="{{ seo_page.description }}">
     <link rel="canonical" href="{{ seo_canonical }}">
-    <meta property="og:type" content="website">
+    <meta property="og:type" content="{{ seo_type|default:'website' }}">
     <meta property="og:site_name" content="Postzyo">
     <meta property="og:title" content="{{ seo_page.title }}">
     <meta property="og:description" content="{{ seo_page.description }}">

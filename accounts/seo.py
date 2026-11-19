@@ -7,6 +7,8 @@ from django.shortcuts import render
 from django.templatetags.static import static
 from django.urls import reverse
 
+from .articles import ARTICLES
+
 
 @dataclass(frozen=True)
 class PublicPage:
@@ -36,6 +38,12 @@ PUBLIC_PAGES = {
         "Find answers about connecting Meta accounts, scheduling posts and billing, or send a support request to Postzyo.",
         "2026-05-07",
     ),
+    "blog_index": PublicPage(
+        "Blog",
+        "Social Media Planning and Scheduling Guides | Postzyo",
+        "Practical guides for planning social content, scheduling Facebook and Instagram posts, and checking delivery.",
+        "2026-11-19",
+    ),
     "privacy_policy": PublicPage(
         "Privacy Policy",
         "Privacy Policy | Postzyo",
@@ -57,19 +65,23 @@ PUBLIC_PAGES = {
 }
 
 
-def _canonical_url(route):
-    return settings.SEO_CANONICAL_ORIGIN + reverse(route)
+def _canonical_url(route, **kwargs):
+    return settings.SEO_CANONICAL_ORIGIN + reverse(route, kwargs=kwargs or None)
 
 
 def public_metadata(request):
-    route = request.resolver_match.view_name if request.resolver_match else None
+    match = request.resolver_match
+    route = match.view_name if match else None
+    article = ARTICLES.get(match.kwargs["slug"]) if route == "blog_article" else None
     page = PUBLIC_PAGES.get(route)
+    if article:
+        page = PublicPage(article.title, f"{article.title} | Postzyo", article.description, article.published)
     if page is None:
         return {}
 
     origin = settings.SEO_CANONICAL_ORIGIN
     home_url = _canonical_url("landing")
-    canonical = _canonical_url(route)
+    canonical = _canonical_url(route, **match.kwargs)
     if route == "landing":
         organization_id = f"{home_url}#organization"
         graph = [
@@ -100,15 +112,33 @@ def public_metadata(request):
             ],
         }]
 
+    if article:
+        graph[0]["itemListElement"].insert(1, {
+            "@type": "ListItem", "position": 2, "name": "Blog", "item": _canonical_url("blog_index"),
+        })
+        graph[0]["itemListElement"][-1]["position"] = 3
+        graph.append({
+            "@type": "BlogPosting",
+            "headline": article.title,
+            "description": article.description,
+            "datePublished": article.published,
+            "image": origin + static(article.image),
+            "mainEntityOfPage": canonical,
+            "author": {"@type": "Organization", "name": "Postzyo", "url": home_url},
+        })
+
     # Escape markup before embedding the JSON as script text.
     json_ld = json.dumps({"@context": "https://schema.org", "@graph": graph}).replace("<", "\\u003c")
     return {
         "seo_page": page,
+        "seo_type": "article" if article else "website",
         "seo_canonical": canonical,
         "seo_image": origin + static(
-            "dashboard/landing/scheduler-sharing.jpg" if route == "landing" else "dashboard/illustrations/dashboard-overview.png"
+            article.image if article else (
+                "dashboard/landing/scheduler-sharing.jpg" if route == "landing" else "dashboard/illustrations/dashboard-overview.png"
+            )
         ),
-        "seo_image_alt": (
+        "seo_image_alt": article.image_alt if article else (
             "Postzyo’s Scheduler with a sample Facebook and Instagram post"
             if route == "landing" else "Postzyo workflow and dashboard preview"
         ),
@@ -126,4 +156,5 @@ def robots_txt(request):
 
 def sitemap_xml(request):
     pages = [(_canonical_url(route), page.last_modified) for route, page in PUBLIC_PAGES.items()]
+    pages += [(_canonical_url("blog_article", slug=slug), article.published) for slug, article in ARTICLES.items()]
     return render(request, "sitemap.xml", {"pages": pages}, content_type="application/xml")

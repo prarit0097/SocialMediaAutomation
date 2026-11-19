@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% load static %}
+{% block content %}
+<article class="card legal-content-card">
+  <div class="legal-section-list">
+    <header class="legal-section-block">
+      <a href="{% url 'blog_index' %}">All guides</a>
+      <h1>{{ article.title }}</h1>
+      <p>{{ article.description }}</p>
+    </header>
+    <figure style="margin:0;max-width:44rem">
+      <img src="{% static article.image %}" alt="{{ article.image_alt }}" decoding="async"
+        style="display:block;width:100%;height:auto;border-radius:12px">
+      <figcaption>Postzyo product preview with sample data</figcaption>
+    </figure>
+    {% for heading, body in article.sections %}
+      <section class="legal-section-block">
+        <h2>{{ heading }}</h2>
+        <p>{{ body }}</p>
+      </section>
+    {% endfor %}
+    <div class="lp-cta-row">
+      <a class="btn" href="{% url 'signup' %}">Start a free trial</a>
+      <a class="btn muted" href="{% url 'help' %}">Get help</a>
+    </div>
+  </div>
+</article>
+{% endblock %}

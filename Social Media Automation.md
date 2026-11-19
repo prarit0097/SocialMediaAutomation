@@ -64,6 +64,8 @@ What it does:
 
 ### Public search and pricing
 
+- The public blog at `/blog/` lists illustrated guides for Facebook and Instagram scheduling, calendar planning, and publish troubleshooting. Articles have their own canonical URL, share image, BlogPosting metadata and sitemap entry. Add each guide in `accounts/articles.py` with an image, image description and publication date.
+
 - Public landing, pricing, help and legal pages render server-side with page-specific titles, descriptions, absolute canonical URLs, social metadata and structured data. `SEO_CANONICAL_ORIGIN` defaults to `https://postzyo.com` and is independent of the media URL configuration.
 - `/pricing/` shows the same INR plan prices and term lengths that checkout uses. `/robots.txt` points crawlers to `/sitemap.xml`, which includes only the registered public pages. Public sign-in utilities and authenticated workspace responses carry `noindex` directives.
 - The host proxy can direct HTTP and `www` traffic to the HTTPS apex in one path- and query-preserving redirect. See [VPS rollout](#vps-rollout-for-canonical-host-and-publishing-workers) for certificate, provider callback and Search Console checks.
