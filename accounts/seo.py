@@ -105,7 +105,13 @@ def public_metadata(request):
     return {
         "seo_page": page,
         "seo_canonical": canonical,
-        "seo_image": origin + static("dashboard/illustrations/dashboard-overview.png"),
+        "seo_image": origin + static(
+            "dashboard/landing/home-sharing.jpg" if route == "landing" else "dashboard/illustrations/dashboard-overview.png"
+        ),
+        "seo_image_alt": (
+            "Social media manager reviewing campaign photos at her desk"
+            if route == "landing" else "Postzyo workflow and dashboard preview"
+        ),
         "seo_breadcrumb": route != "landing",
         "seo_json_ld": json_ld,
     }

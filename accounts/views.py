@@ -71,7 +71,11 @@ class AdminLoginView(LoginView):
 def landing_page(request):
     if request.user.is_authenticated:
         return redirect(_post_login_redirect_name(request.user))
-    return render(request, "accounts/landing.html", {"plans": SUBSCRIPTION_PLAN_CONFIG})
+    return render(
+        request,
+        "accounts/landing.html",
+        {"plans": SUBSCRIPTION_PLAN_CONFIG, "trial_days": TRIAL_PERIOD_DAYS},
+    )
 
 
 def pricing_view(request):

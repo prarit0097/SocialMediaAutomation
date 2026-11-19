@@ -1,328 +1,154 @@
 {% extends 'base.html' %}
 {% load static %}
+
+{% block page_styles %}
+<link rel="stylesheet" href="{% static 'dashboard/landing/home.css' %}">
+{% endblock %}
+
 {% block content %}
-
-<!-- ===== HERO ===== -->
-<section class="card lp-hero">
-  <div class="lp-hero-main">
-    <h1>Schedule Facebook and Instagram posts in one workspace</h1>
-    <p class="hero-copy">Connect your Facebook Pages and linked Instagram business accounts, plan content, schedule posts, and see how they perform. Use AI insights to decide what to publish next.</p>
-    <div class="lp-cta-row">
-      <a class="btn lp-btn-primary" href="{% url 'signup' %}" data-pixel-event="Lead" data-pixel-source="landing_hero_trial">Start Free Trial</a>
-      <a class="btn muted" href="{% url 'login' %}" data-pixel-event="ViewContent" data-pixel-content-name="login_from_landing">Login to Dashboard</a>
-    </div>
-    <div class="lp-trust-inline">
-      <span class="lp-trust-chip"><span class="lp-trust-dot"></span>Auto-publishing active</span>
-      <span class="lp-trust-chip">AI-powered insights</span>
-      <span class="lp-trust-chip">FB + IG in one place</span>
-    </div>
-  </div>
-  <div class="lp-hero-visual">
-    <div class="lp-dashboard-frame">
-      <div class="lp-frame-toolbar">
-        <span class="lp-frame-dot"></span>
-        <span class="lp-frame-dot"></span>
-        <span class="lp-frame-dot"></span>
-        <span class="lp-frame-title">Postzyo Dashboard</span>
+<div class="landing">
+  <section class="landing-intro" aria-labelledby="landing-title">
+    <div class="landing-hero-copy">
+      <h1 id="landing-title">Schedule Facebook and Instagram posts in one place</h1>
+      <p>Plan your content, publish to both platforms, and see how each post performs. All from the same workspace.</p>
+      <div class="landing-actions">
+        <a class="landing-button" href="{% url 'signup' %}" data-pixel-event="Lead" data-pixel-source="landing_hero_trial">Start free trial</a>
+        <a class="landing-button landing-button-secondary" href="#how-it-works">See how it works</a>
       </div>
-      <img src="{% static 'dashboard/illustrations/insights.svg' %}" alt="Dashboard analytics preview">
-      <div class="lp-mini-charts">
-        <div class="lp-mini-chart">
-          <div class="lp-chart-bar-group">
-            <div class="lp-chart-bar" style="height:60%"></div>
-            <div class="lp-chart-bar" style="height:85%"></div>
-            <div class="lp-chart-bar" style="height:45%"></div>
-            <div class="lp-chart-bar" style="height:92%"></div>
-            <div class="lp-chart-bar" style="height:70%"></div>
-          </div>
-          <strong>Reach Growth</strong>
-          <span>7-day trend</span>
-        </div>
-        <div class="lp-mini-chart">
-          <div class="lp-chart-bar-group">
-            <div class="lp-chart-bar accent" style="height:40%"></div>
-            <div class="lp-chart-bar accent" style="height:55%"></div>
-            <div class="lp-chart-bar accent" style="height:75%"></div>
-            <div class="lp-chart-bar accent" style="height:65%"></div>
-            <div class="lp-chart-bar accent" style="height:88%"></div>
-          </div>
-          <strong>Engagement</strong>
-          <span>Likes + comments + shares</span>
-        </div>
+      <p class="landing-trial-note">Try Postzyo free for {{ trial_days }} days. Sign up with Google.</p>
+    </div>
+    <img
+      class="landing-hero-photo"
+      src="{% static 'dashboard/landing/creator-studio-1200.webp' %}"
+      srcset="{% static 'dashboard/landing/creator-studio-600.webp' %} 600w, {% static 'dashboard/landing/creator-studio-1200.webp' %} 1200w"
+      sizes="(max-width: 820px) calc(100vw - 32px), (max-width: 1240px) 50vw, 640px"
+      width="1200" height="800" fetchpriority="high" decoding="async"
+      alt="Social media manager reviewing campaign photos at her desk">
+  </section>
+
+  <nav class="landing-jump" aria-label="On this page">
+    <a href="#features">Features</a>
+    <a href="#how-it-works">How it works</a>
+    <a href="#pricing">Pricing</a>
+    <a href="#faq">FAQ</a>
+  </nav>
+
+  <section class="landing-feature-section" id="features" aria-labelledby="feature-title">
+    <h2 id="feature-title">From content plan to published post</h2>
+    <div class="landing-feature-grid">
+      <div>
+        <h3>Plan ahead</h3>
+        <p>Draft posts in a monthly calendar. Use tags to organize campaigns and move ideas as plans change.</p>
+      </div>
+      <div>
+        <h3>Publish to both</h3>
+        <p>Choose a Facebook Page, a linked Instagram account, or both. Check the delivery status for each destination.</p>
+      </div>
+      <div>
+        <h3>See what performs</h3>
+        <p>Review saved insights, compare recent posts, and use profile-specific AI suggestions to plan your next post.</p>
       </div>
     </div>
-  </div>
-</section>
+  </section>
 
-<!-- ===== SOCIAL PROOF NUMBERS ===== -->
-<section class="card lp-social-proof">
-  <div class="lp-proof-item">
-    <strong>2 Platforms</strong>
-    <span>Facebook + Instagram unified</span>
-  </div>
-  <div class="lp-proof-item">
-    <strong>24/7 Auto-Publish</strong>
-    <span>Queue never sleeps</span>
-  </div>
-  <div class="lp-proof-item">
-    <strong>AI Reports</strong>
-    <span>Profile-wise growth plans</span>
-  </div>
-  <div class="lp-proof-item">
-    <strong>Smart Retry</strong>
-    <span>Auto-recover, else one-click retry</span>
-  </div>
-  <div class="lp-proof-item">
-    <strong>Daily Snapshots</strong>
-    <span>Automated data collection</span>
-  </div>
-</section>
+  <section class="landing-workflow" id="how-it-works" aria-labelledby="workflow-title">
+    <img
+      class="landing-workflow-photo"
+      src="{% static 'dashboard/landing/content-planning-1050.webp' %}"
+      srcset="{% static 'dashboard/landing/content-planning-600.webp' %} 600w, {% static 'dashboard/landing/content-planning-1050.webp' %} 1050w"
+      sizes="(max-width: 820px) calc(100vw - 32px), (max-width: 1240px) 46vw, 520px"
+      width="1050" height="700" loading="lazy" decoding="async"
+      alt="Hands arranging campaign photos beside a notebook and phone">
+    <div class="landing-workflow-copy">
+      <h2 id="workflow-title">Queue your first post</h2>
+      <ol class="landing-steps">
+        <li>
+          <strong>Connect your accounts</strong>
+          <span>Sign in with Meta and select the Pages and linked Instagram profiles you manage.</span>
+        </li>
+        <li>
+          <strong>Choose your content and time</strong>
+          <span>Add a caption and media, select your destinations, and set a time in your local timezone.</span>
+        </li>
+        <li>
+          <strong>Check delivery</strong>
+          <span>Follow each destination in the Scheduler from queued to published, or see why it needs attention.</span>
+        </li>
+      </ol>
+      <a class="landing-text-link" href="#account-requirements">Read the account requirements</a>
+    </div>
+  </section>
 
-<!-- ===== FEATURES ===== -->
-<section class="card" id="features">
-  <div class="section-head lp-section-center">
+  <section class="landing-insights" id="analytics" aria-labelledby="insights-title">
+    <h2 id="insights-title">Decide what to post next</h2>
+    <p>Compare recent Facebook and Instagram performance with saved snapshots. Spot stronger formats and posting windows, then turn AI suggestions into ideas for your calendar.</p>
+  </section>
+
+  <section class="landing-pricing" id="pricing" aria-labelledby="pricing-title">
+    <div class="landing-section-intro">
+      <h2 id="pricing-title">Choose your billing term</h2>
+      <p>Both plans include scheduling, Planning, Insights, and AI Insights.</p>
+    </div>
+    <div class="landing-price-grid">
+      <article class="landing-price">
+        <h3>{{ plans.monthly.price_label }}</h3>
+        <p>Pay for one month at a time.</p>
+        <a class="landing-button" href="{% url 'signup' %}" data-pixel-event="Lead" data-pixel-source="pricing_monthly_trial" data-pixel-content-name="Monthly Growth">Start free trial</a>
+      </article>
+      <article class="landing-price">
+        <h3>{{ plans.yearly.price_label }}</h3>
+        <p>Pay once for a full year of access.</p>
+        <a class="landing-button landing-button-secondary" href="{% url 'pricing' %}" data-pixel-event="ViewContent" data-pixel-source="pricing_yearly_click" data-pixel-content-name="Yearly Scale">Compare plans</a>
+      </article>
+    </div>
+  </section>
+
+  <section class="landing-faq" id="faq" aria-labelledby="faq-title">
     <div>
-      <p class="eyebrow">What You Get</p>
-      <h2>Everything you need to dominate social media.</h2>
-      <p class="section-copy">A complete workspace for teams, agencies, and brands managing Facebook + Instagram daily.</p>
+      <h2 id="faq-title">Frequently asked questions</h2>
+      <a class="landing-text-link" href="{% url 'help' %}">Get help</a>
     </div>
-  </div>
-
-  <div class="lp-feature-grid">
-    <article class="lp-feature-card">
-      <div class="lp-feature-icon-wrap">
-        <img src="{% static 'dashboard/illustrations/connect.svg' %}" alt="Connected accounts">
-      </div>
-      <div class="lp-feature-body">
-        <p class="tile-kicker">Meta Sync</p>
-        <h3>One-Click Account Connect</h3>
-        <p>Merge Facebook Pages and Instagram profiles into a single unified view. Detect stale tokens before they break your workflow.</p>
-      </div>
-    </article>
-
-    <article class="lp-feature-card lp-feature-highlight">
-      <div class="lp-feature-icon-wrap">
-        <img src="{% static 'dashboard/illustrations/schedule.svg' %}" alt="Post scheduling">
-      </div>
-      <div class="lp-feature-body">
-        <p class="tile-kicker">Smart Scheduling</p>
-        <h3>Publish at the Perfect Time</h3>
-        <p>Schedule images, videos, and Reels for FB, IG, or both. Smart queue with retry logic ensures nothing gets lost.</p>
-      </div>
-    </article>
-
-    <article class="lp-feature-card">
-      <div class="lp-feature-icon-wrap">
-        <img src="{% static 'dashboard/illustrations/insights.svg' %}" alt="Analytics insights">
-      </div>
-      <div class="lp-feature-body">
-        <p class="tile-kicker">Deep Analytics</p>
-        <h3>Cross-Platform Comparison</h3>
-        <p>Compare followers, reach, engagement, and post metrics in one view. FB vs IG side-by-side with visual comparison bars.</p>
-      </div>
-    </article>
-
-    <article class="lp-feature-card lp-feature-highlight">
-      <div class="lp-feature-icon-wrap">
-        <img src="{% static 'dashboard/illustrations/ai.svg' %}" alt="AI-powered insights">
-      </div>
-      <div class="lp-feature-body">
-        <p class="tile-kicker">AI Growth Engine</p>
-        <h3>Get Told Exactly What to Do</h3>
-        <p>AI analyzes your data and delivers pros, cons, 7-day action plans, KPI targets, and content ideas specific to your profile.</p>
-      </div>
-    </article>
-
-    <article class="lp-feature-card">
-      <div class="lp-feature-icon-wrap lp-feature-icon-gradient">
-        <strong>Smart Posting Assist</strong>
-        <span>Best time + cadence + A/B test</span>
-      </div>
-      <div class="lp-feature-body">
-        <p class="tile-kicker">Data-Driven</p>
-        <h3>Know When and What to Post</h3>
-        <p>Real-time posting assist shows best time windows, recommended cadence, top formats, and caption A/B test strategies.</p>
-      </div>
-    </article>
-
-    <article class="lp-feature-card">
-      <div class="lp-feature-icon-wrap lp-feature-icon-gradient">
-        <strong>Token Health</strong>
-        <span>Live monitoring</span>
-      </div>
-      <div class="lp-feature-body">
-        <p class="tile-kicker">Reliability</p>
-        <h3>Never Lose Connection</h3>
-        <p>Live token health badge alerts you before tokens expire. Clear reconnect actions keep publishing running smoothly.</p>
-      </div>
-    </article>
-  </div>
-</section>
-
-<!-- ===== HOW IT WORKS ===== -->
-<section class="card lp-how" id="how-it-works">
-  <div class="section-head lp-section-center">
-    <div>
-      <p class="eyebrow">How It Works</p>
-      <h2>Four steps to social media growth.</h2>
-      <p class="section-copy">Get started in minutes, see results in days.</p>
+    <div class="landing-questions">
+      <details id="account-requirements" open>
+        <summary>Which Facebook and Instagram accounts can I connect?</summary>
+        <p>You can connect Facebook Pages you manage and their linked Instagram Business accounts through Meta.</p>
+      </details>
+      <details>
+        <summary>Does Postzyo publish scheduled posts automatically?</summary>
+        <p>Yes. The Scheduler sends due posts and shows a result for each destination. Temporary delays can retry automatically. If a delivery needs verification, the queue flags it so you can check the destination in Meta.</p>
+      </details>
+      <details>
+        <summary>Can I schedule videos and Reels?</summary>
+        <p>Yes. The Scheduler supports Facebook videos and Instagram Reels. Use supported media and check platform requirements when preparing your post.</p>
+      </details>
+      <details>
+        <summary>What does AI Insights use?</summary>
+        <p>Reports use available snapshots and recent post performance from your connected account to suggest ideas and posting strategies.</p>
+      </details>
+      <details>
+        <summary>What happens when my trial ends?</summary>
+        <p>Choose a paid plan to keep access to the workspace after your {{ trial_days }}-day trial. <a href="{% url 'pricing' %}">See pricing and plan details.</a></p>
+      </details>
     </div>
-  </div>
-  <ol class="lp-step-grid">
-    <li>
-      <div class="lp-step-number">1</div>
-      <strong>Connect</strong>
-      <span>Link your Meta app, Facebook Pages, and Instagram profiles securely in one click.</span>
-    </li>
-    <li>
-      <div class="lp-step-number">2</div>
-      <strong>Schedule</strong>
-      <span>Plan content in your local time. Upload media, pick FB/IG/both, and queue it.</span>
-    </li>
-    <li>
-      <div class="lp-step-number">3</div>
-      <strong>Analyze</strong>
-      <span>Track performance with auto-refreshing snapshots. Compare FB vs IG metrics instantly.</span>
-    </li>
-    <li>
-      <div class="lp-step-number">4</div>
-      <strong>Grow</strong>
-      <span>Use AI recommendations to optimize every week. Data-backed decisions, not guesswork.</span>
-    </li>
-  </ol>
-</section>
+  </section>
 
-<!-- ===== ANALYTICS SHOWCASE ===== -->
-<section class="card lp-analytics" id="analytics">
-  <article class="lp-analytics-visual">
-    <img src="{% static 'dashboard/illustrations/insights.svg' %}" alt="Analytics visual">
-    <div class="lp-analytics-badges">
-      <span class="lp-badge-up">+72% Reach</span>
-      <span class="lp-badge-up">+39% Engagement</span>
-      <span class="lp-badge-up">+54% Profile Visits</span>
+  <section class="landing-close" aria-labelledby="start-title">
+    <h2 id="start-title">Ready to schedule your first post?</h2>
+    <div class="landing-actions">
+      <a class="landing-button" href="{% url 'signup' %}" data-pixel-event="Lead" data-pixel-source="landing_final_trial">Start free trial</a>
+      <a class="landing-button landing-button-secondary" href="{% url 'login' %}" data-pixel-event="ViewContent" data-pixel-content-name="login_from_final_cta">Log in</a>
     </div>
-  </article>
-  <article class="lp-analytics-copy">
-    <p class="eyebrow">Built for Growth</p>
-    <h2>See what's working. Fix what's not.</h2>
-    <p class="section-copy">Combined FB + IG reporting with post-level metrics, trend detection, and AI-generated improvement plans.</p>
-    <ul class="lp-check-list">
-      <li>Facebook vs Instagram comparison table</li>
-      <li>Published post performance tracking</li>
-      <li>Automated daily insight snapshots</li>
-      <li>AI-generated 7-day action plans</li>
-      <li>Content idea recommendations</li>
-    </ul>
-  </article>
-</section>
+  </section>
 
-<!-- ===== CTA BAND ===== -->
-<section class="card lp-cta-band">
-  <article>
-    <p class="eyebrow">AI-Powered Growth</p>
-    <h2>Turn your data into weekly growth decisions.</h2>
-    <p>The AI engine blends post metrics, cadence signals, and trend-aware analysis to help every connected profile scale consistently.</p>
-  </article>
-  <article class="lp-quote">
-    <div class="lp-quote-mark">"</div>
-    <p>Your dashboard prioritizes clarity, execution, and measurable outcomes for every connected profile.</p>
-    <strong>- Built for operators who care about results</strong>
-  </article>
-</section>
-
-<!-- ===== PRICING ===== -->
-<section class="card" id="pricing">
-  <div class="section-head lp-section-center">
-    <div>
-      <p class="eyebrow">Pricing</p>
-      <h2>Simple, transparent pricing. No surprises.</h2>
-      <p class="section-copy">Start with a free trial. Upgrade when you're ready.</p>
-    </div>
-  </div>
-  <div class="lp-pricing-grid">
-    <article class="lp-pricing-card lp-pricing-featured">
-      <div class="lp-pricing-badge">Most Popular</div>
-      <p class="tile-kicker">Monthly Plan</p>
-      <h3>{{ plans.monthly.price_label }}</h3>
-      <ul class="lp-check-list">
-        <li>Unlimited FB + IG account connections</li>
-        <li>Smart scheduler with auto-retry</li>
-        <li>Cross-platform analytics dashboard</li>
-        <li>AI profile reports and action plans</li>
-        <li>Smart Posting Assist</li>
-      </ul>
-      <a class="btn lp-btn-primary" href="{% url 'signup' %}" data-pixel-event="Lead" data-pixel-source="pricing_monthly_trial" data-pixel-content-name="Monthly Growth">Start Free Trial</a>
-    </article>
-    <article class="lp-pricing-card">
-      <p class="tile-kicker">Yearly Plan</p>
-      <h3>{{ plans.yearly.price_label }}</h3>
-      <ul class="lp-check-list">
-        <li>Everything in Monthly</li>
-        <li>Annual billing for team budgets</li>
-        <li>Uninterrupted long-term growth</li>
-        <li>Priority for upcoming features</li>
-      </ul>
-      <a class="btn muted" href="{% url 'signup' %}" data-pixel-event="ViewContent" data-pixel-source="pricing_yearly_click" data-pixel-content-name="Yearly Scale">Choose Yearly</a>
-    </article>
-  </div>
-  <a href="{% url 'pricing' %}">Compare Postzyo subscription plans</a>
-</section>
-
-<!-- ===== FAQ ===== -->
-<section class="card" id="faq">
-  <div class="section-head lp-section-center">
-    <div>
-      <p class="eyebrow">FAQ</p>
-      <h2>Got questions? We've got answers.</h2>
-    </div>
-  </div>
-  <div class="lp-faq-grid">
-    <details class="lp-faq-item" open>
-      <summary>Can I connect both Facebook and Instagram?</summary>
-      <p>Yes. Connect your Facebook Pages and linked Instagram Business profiles in one workspace. Manage everything from a single dashboard.</p>
-    </details>
-    <details class="lp-faq-item">
-      <summary>Is publishing fully automatic?</summary>
-      <p>Yes. Once scheduled, our workers automatically publish at the right time with smart retry logic. Most failed posts auto-recover; anything that can't (for example an expired token) is clearly flagged for one-click retry.</p>
-    </details>
-    <details class="lp-faq-item">
-      <summary>How does AI generate recommendations?</summary>
-      <p>AI reads your stored insights, post performance, and cadence data, then generates profile-specific action plans, KPI targets, and content ideas based on real numbers.</p>
-    </details>
-    <details class="lp-faq-item">
-      <summary>Can I schedule videos and Reels?</summary>
-      <p>Yes. Upload MP4/MOV videos and they'll be published as Instagram Reels or Facebook Videos automatically. Image posts are also optimized for each platform.</p>
-    </details>
-    <details class="lp-faq-item">
-      <summary>Is my data safe?</summary>
-      <p>Meta tokens are encrypted at rest using Fernet (AES-128-CBC with HMAC authentication). All traffic is over HTTPS, with CSRF protection and secure session handling.</p>
-    </details>
-  </div>
-</section>
-
-<!-- ===== FINAL CTA ===== -->
-<section class="card lp-final-cta">
-  <h2>Ready to transform your social media?</h2>
-  <p>Join brands and teams managing their Meta presence with AI-powered automation.</p>
-  <div class="lp-cta-row">
-    <a class="btn lp-btn-white" href="{% url 'signup' %}" data-pixel-event="Lead" data-pixel-source="landing_final_trial">Start Free Trial</a>
-    <a class="btn muted" href="{% url 'login' %}" data-pixel-event="ViewContent" data-pixel-content-name="login_from_final_cta">Back to Login</a>
-  </div>
-</section>
-
-<!-- ===== FOOTER ===== -->
-<section class="card lp-legal-strip">
-  <div class="lp-footer-brand">
-    <img src="{% static 'dashboard/brand/postzyo-icon-optimized.png' %}" alt="Postzyo" class="lp-footer-logo">
-    <span>Postzyo</span>
-  </div>
-  <div class="lp-legal-links">
-    <a href="{% url 'privacy_policy' %}">Privacy Policy</a>
-    <a href="{% url 'terms' %}">Terms of Service</a>
-    <a href="{% url 'data_deletion' %}">Data Deletion</a>
-    <a href="{% url 'pricing' %}">Pricing</a>
-    <a href="{% url 'help' %}">Help</a>
-  </div>
-</section>
-
+  <footer class="landing-footer">
+    <strong>Postzyo</strong>
+    <nav aria-label="Footer">
+      <a href="{% url 'privacy_policy' %}">Privacy Policy</a>
+      <a href="{% url 'terms' %}">Terms of Service</a>
+      <a href="{% url 'data_deletion' %}">Data Deletion</a>
+      <a href="{% url 'pricing' %}">Pricing</a>
+      <a href="{% url 'help' %}">Help</a>
+    </nav>
+  </footer>
+</div>
 {% endblock %}

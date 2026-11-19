@@ -32,10 +32,10 @@ The Landing page is the first screen shown at app start (`/`) for non-authentica
 
 What it shows:
 - high-level overview of all core modules (Accounts, Scheduler, Insights, AI Insights)
-- visual feature cards with user-friendly illustrations
+- responsive editorial photos of a social media manager and a content-planning session. WebP sizes adapt to the viewport, the workflow photo lazy-loads, and the homepage uses a separate social-share image.
 - clear `Login` and `Signup` actions
 - simple step flow explaining setup to analytics journey
-- redesigned premium marketing layout with: hero, capability bar, feature matrix, workflow steps, analytics highlight, AI value band, pricing cards, FAQ, and final CTA
+- the homepage leads with the trial and a link to the workflow, then explains planning, per-platform publishing status, and Insights. Section links jump to features, workflow, pricing, and FAQ. The footer links to pricing, help, and legal pages.
 - pricing section aligned with app billing: exactly 2 cards (`INR 6,000 / month` and `INR 70,000 / year`)
 - public legal pages for Meta compliance: `Privacy Policy`, `Terms of Service`, and `User Data Deletion` available at `/privacy-policy/`, `/terms/`, and `/data-deletion/`
 - legal/deletion support mailbox on public compliance pages is driven by `HELP_SUPPORT_EMAIL` (currently `1995praritsidana@gmail.com`)

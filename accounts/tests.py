@@ -25,7 +25,7 @@ class AccountsLandingTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Login")
         self.assertContains(response, "Signup")
-        self.assertContains(response, "What You Get")
+        self.assertContains(response, '<h1 id="landing-title">Schedule Facebook and Instagram posts in one place</h1>', html=True)
         self.assertContains(response, "1703024424409702")
         self.assertContains(response, "G-SCZT2H8750")
         self.assertContains(response, "googletagmanager.com/gtag/js")

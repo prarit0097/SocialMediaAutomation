@@ -8,6 +8,8 @@ from django.contrib.staticfiles import finders
 from django.contrib.staticfiles.storage import staticfiles_storage
 from django.test import SimpleTestCase, override_settings
 
+from accounts.models import TRIAL_PERIOD_DAYS
+
 
 class PublicHTML(HTMLParser):
     def __init__(self, response):
@@ -87,6 +89,16 @@ class PublicSEOTests(SimpleTestCase):
     def test_homepage_links_to_public_pages_in_server_rendered_html(self):
         html = PublicHTML(self.get("/"))
         self.assertTrue(set(self.paths[1:]) <= html.anchors)
+
+    def test_landing_links_to_signup_and_each_visible_section(self):
+        response = self.get("/")
+        html = PublicHTML(response)
+        self.assertIn("/signup/", html.anchors)
+        self.assertContains(response, f"free for {TRIAL_PERIOD_DAYS} days")
+        for fragment in ("features", "how-it-works", "pricing", "faq", "account-requirements"):
+            with self.subTest(fragment=fragment):
+                self.assertIn(f"#{fragment}", html.anchors)
+                self.assertContains(response, f'id="{fragment}"', count=1)
 
     def test_homepage_and_pricing_render_product_and_breadcrumb_schema(self):
         home = PublicHTML(self.get("/"))
