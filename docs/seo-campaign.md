@@ -1,5 +1,22 @@
 # Postzyo SEO campaign
 
+## Paused checkpoint
+
+The campaign was paused by the owner on November 19, 2026. The three counted targets are 2.8% complete using a baseline of 1,000 each.
+
+| Target | Verified | Remaining to 1,000 |
+| --- | ---: | ---: |
+| External backlinks | 25 | 975 |
+| External illustrated articles | 22 | 978 |
+| Illustrated guides on Postzyo | 36 | 964 |
+
+Three LinkedIn short posts with illustrated previews are live. News placements verified so far total zero.
+
+- **Production.** The deployed web release is `d975036`. The November 19 signed-out recheck covered homepage routes and section links, desktop and mobile previews, trial and pricing answers, follow-up consent validation, `www` and login redirects, robots and the 43-URL sitemap. All four guides introduced by the release opened and carried BlogPosting metadata. Later commits add campaign documentation, GitHub guides and their diagrams.
+- **Search Console.** Google reported 43 discovered URLs after the latest sitemap submission. The newest guides still need an indexing check.
+- **Staging.** Real Facebook and Instagram test posts still need verified permalinks from the approved destinations. See the [staging rehearsal](staging-social-publishing-release-rehearsal.md).
+- **External queue.** AlternativeTo remains in free review. SaaS Place is awaiting approval to proceed. Public City is awaiting author review and a CAPTCHA. A LinkedIn long-form draft is awaiting a cover image.
+
 ## Verified progress
 
 | Deliverable | Verified state |

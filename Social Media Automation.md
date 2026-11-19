@@ -7,6 +7,13 @@ This file is the high-level source of truth for what the project does, how the m
 Primary product branding is `Postzyo`. Its public site is `postzyo.com`.
 Primary Git repository: `https://github.com/prarit0097/SocialMediaAutomation`
 
+## November 19, 2026 Release Checkpoint
+
+- The VPS web release at `d975036` serves the redesigned public homepage, desktop and mobile Scheduler and Planning previews, Ask Postzyo, and 36 illustrated blog guides. A signed-out check loaded the homepage assets and public navigation, received answers to trial and pricing questions, and confirmed that the follow-up form rejects requests without consent.
+- The `www` redirect preserves the path and query. The public sitemap lists 43 URLs, and Google Search Console reported Success with 43 discovered URLs. Indexing of the newest guides is pending verification.
+- Real Facebook and Instagram posting from staging remains pending verification. The release rehearsal is documented in [the staging publishing checklist](docs/staging-social-publishing-release-rehearsal.md). Record a public permalink for each approved test destination when that check is completed.
+- The paused SEO campaign's placement counts, editorial queue and remaining work are in the [campaign checkpoint](docs/seo-campaign.md#paused-checkpoint).
+
 ## Core Outcomes
 - Connect and refresh Facebook Pages and linked Instagram accounts through Meta OAuth.
 - Store connected account metadata and encrypted page access tokens.
