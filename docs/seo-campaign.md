@@ -4,15 +4,15 @@
 
 | Deliverable | Verified state |
 | --- | --- |
-| Guides on Postzyo | Twenty-three guides live after the November 19, 2026 web release at `46faa4b`. Verified the blog links, canonicals, BlogPosting metadata, images and all 46 related-guide links. |
+| Guides on Postzyo | Twenty-eight guides live after the November 19, 2026 web release at `f67abce`. Verified the blog links, canonicals, BlogPosting metadata, images and all 56 related-guide links. |
 | External illustrated articles | Eight live articles with illustrations or product screenshots, on GitHub, LinkedIn, Blogger and Google Sites. |
-| Social and news placements | One public LinkedIn article and one public LinkedIn checklist with an illustrated link preview. The Public City draft is ready for author review. |
-| External backlinks | Nine verified links across four sites. The newest Google Sites placement links directly to the guide on missing Meta Insights. The AlternativeTo entry is pending review. |
-| Search Console | The verified `https://postzyo.com/` property accepted the November 19, 2026 sitemap resubmission when it contained 28 URLs. The live file now contains 30 URLs. Google’s recrawl and indexing of the latest guides have yet to be verified. |
+| Social and news placements | One public LinkedIn article and two public LinkedIn short posts with illustrated link previews. The Public City draft is ready for author review. |
+| External backlinks | Ten verified links across four sites, including the new LinkedIn post linking to the call-to-action guide. The AlternativeTo entry is pending review. |
+| Search Console | The verified `https://postzyo.com/` property accepted the November 19, 2026 sitemap resubmission when it contained 28 URLs. The live file now contains 35 URLs. Google’s recrawl and indexing of the latest guides have yet to be verified. |
 
 The campaign uses free publishing and submission routes. For an external placement, record the final public URL, the exact Postzyo destination and the verification date. Test the page signed out, check that the image renders, and inspect the link on the published page before counting it.
 
-The production rollout applied the homepage lead migration and refreshed static assets. The signed-out homepage showed the redesigned Scheduler and Planning sections and answered a trial question through Ask Postzyo. The `www` redirect preserves the path, and the canonical sitemap lists the blog and all 23 guides.
+The production rollout applied the homepage lead migration and refreshed static assets. The signed-out homepage showed the redesigned Scheduler and Planning sections and answered a trial question through Ask Postzyo. The `www` redirect preserves the path, and the canonical sitemap lists the blog and all 28 guides.
 
 ## Publishing opportunities
 
@@ -60,6 +60,7 @@ The production rollout applied the homepage lead migration and refreshed static 
 | [LinkedIn Reels preflight checklist](https://www.linkedin.com/posts/prarit-sidana_how-to-schedule-an-instagram-reel-postzyo-activity-7529193205884485632-CABh) | https://postzyo.com/blog/schedule-instagram-reels/ | The public post and its preview image returned 200 signed out on November 19, 2026. Verified the exact destination inside LinkedIn's outbound link. |
 | [Google Sites two-person campaign check](https://sites.google.com/view/postzyo-field-guides/home) | https://postzyo.com/blog/test-social-publishing-before-client-launch/ | The public article and native link returned 200 signed out on November 19, 2026. The published page rendered its sample Scheduler image from Postzyo's public asset URL. |
 | [Google Sites campaign reporting handoff](https://sites.google.com/view/postzyo-field-guides/campaign-reporting-handoff) | https://postzyo.com/blog/read-partial-facebook-and-instagram-insights/ | Both pages and the illustration returned 200 signed out on November 19, 2026. Verified the native Postzyo link, illustrated embed and navigation between both Google Sites articles. |
+| [LinkedIn call-to-action example](https://www.linkedin.com/posts/prarit-sidana_how-to-choose-a-call-to-action-for-a-social-activity-7529201024092319744-HyLx) | https://postzyo.com/blog/choose-a-call-to-action-for-social-posts/ | Verified the public post, illustrated card and destination inside LinkedIn's outbound link on November 19, 2026. |
 | [AlternativeTo submission](https://alternativeto.net/my-submissions/) | https://postzyo.com/ | Normal review queue. The owner can see it after signing in. |
 
 ## LinkedIn article source
