@@ -4,15 +4,15 @@
 
 | Deliverable | Verified state |
 | --- | --- |
-| Guides on Postzyo | Twenty-eight guides live after the November 19, 2026 web release at `f67abce`. Verified the blog links, canonicals, BlogPosting metadata, images and all 56 related-guide links. |
+| Guides on Postzyo | Thirty-two guides live after the November 19, 2026 web release at `80995d5`. Verified the blog links, canonicals, BlogPosting metadata, images and all 64 related-guide links. |
 | External illustrated articles | Ten live articles with illustrations or product screenshots, on GitHub, LinkedIn, Blogger and Google Sites. |
 | Social and news placements | One public LinkedIn article and two public LinkedIn short posts with illustrated link previews. The Public City draft is ready for author review. |
 | External backlinks | Twelve verified links across four sites. The latest Google Sites article links to the Postzyo campaign closeout guide. The AlternativeTo entry is pending review. |
-| Search Console | The verified `https://postzyo.com/` property accepted the November 19, 2026 sitemap resubmission when it contained 28 URLs. The live file now contains 35 URLs. Google’s recrawl and indexing of the latest guides have yet to be verified. |
+| Search Console | The verified `https://postzyo.com/` property reported Success and 28 discovered pages before accepting the November 19, 2026 resubmission of the 39-URL sitemap. Indexing of the newest guides has yet to be verified. |
 
 The campaign uses free publishing and submission routes. For an external placement, record the final public URL, the exact Postzyo destination and the verification date. Test the page signed out, check that the image renders, and inspect the link on the published page before counting it.
 
-The production rollout applied the homepage lead migration and refreshed static assets. The signed-out homepage showed the redesigned Scheduler and Planning sections and answered a trial question through Ask Postzyo. The `www` redirect preserves the path, and the canonical sitemap lists the blog and all 28 guides.
+The production rollout applied the homepage lead migration and refreshed static assets. The signed-out homepage showed the redesigned Scheduler and Planning sections and answered a trial question through Ask Postzyo. The `www` redirect preserves the path, and the canonical sitemap lists the blog and all 32 guides.
 
 ## Publishing opportunities
 
