@@ -5,9 +5,9 @@
 | Deliverable | Verified state |
 | --- | --- |
 | Guides on Postzyo | Thirty-two guides live after the November 19, 2026 web release at `80995d5`. Verified the blog links, canonicals, BlogPosting metadata, images and all 64 related-guide links. |
-| External illustrated articles | Thirteen live articles with illustrations or product screenshots, on GitHub, LinkedIn, Blogger and Google Sites. |
+| External illustrated articles | Fifteen live articles with illustrations or product screenshots across GitHub, LinkedIn, Blogger, Google Sites and ChatGPT Sites. |
 | Social and news placements | One public LinkedIn article and two public LinkedIn short posts with illustrated link previews. The Public City draft is ready for author review. |
-| External backlinks | Fifteen verified links across four sites. The two latest Blogger articles link to the guides on campaign date changes and auditing old links. The AlternativeTo entry is pending review. |
+| External backlinks | Seventeen verified links across five external sites. The public ChatGPT Sites playbook added two direct links to Postzyo guides. The AlternativeTo entry is pending review. |
 | Search Console | The verified `https://postzyo.com/` property reported Success and 28 discovered pages before accepting the November 19, 2026 resubmission of the 39-URL sitemap. Indexing of the newest guides has yet to be verified. |
 
 The campaign uses free publishing and submission routes. For an external placement, record the final public URL, the exact Postzyo destination and the verification date. Test the page signed out, check that the image renders, and inspect the link on the published page before counting it.
@@ -21,6 +21,7 @@ The production rollout applied the homepage lead migration and refreshed static 
 | WordPress.com | The free plan includes hosting on a WordPress.com subdomain. Create a branded publication and publish original tutorials. [Plan details](https://wordpress.com/pricing/) |
 | Blogger | Postzyo Field Notes has seven live illustrated guides. The two newest articles cover a store returns-policy change and a mobile registration-link audit. [Publication](https://postzyo-field-notes.blogspot.com/) |
 | Google Sites | Postzyo Field Guides has three public illustrated guides on the free Google Sites address. They cover campaign review, a reporting handoff and sold-out promotions. [Publication](https://sites.google.com/view/postzyo-field-guides/home) |
+| ChatGPT Sites | Published the Postzyo Publishing Playbook with two illustrated articles and a sitemap. Verified signed-out access and responsive layouts. Hosting is included with the existing account plan. [Playbook](https://postzyo-publishing-playbook.sunshinypancake1.chatgpt.site/) |
 | GitHub Gist | The signed-in editor uses the signup address as the public commit email. The release rehearsal guide was published through the existing public repository instead. [Gist editor](https://gist.github.com/) |
 | LinkedIn | Published to Anyone. The original article has an inline Scheduler screenshot. The newer Reels checklist uses the illustrated Postzyo link preview. [Article](https://www.linkedin.com/pulse/preflight-check-publishing-same-announcement-facebook-prarit-sidana-jslnc/) [Reels checklist](https://www.linkedin.com/posts/prarit-sidana_how-to-schedule-an-instagram-reel-postzyo-activity-7529193205884485632-CABh) |
 | AlternativeTo | Postzyo is in the free normal review queue under Commercial. The signed-in preview confirmed the Social Media Scheduling, Calendar View and Multiple Account support features after the listing update on November 19, 2026. [Submission receipt](https://alternativeto.net/my-submissions/) [Submission rules](https://alternativeto.net/faq/#add-a-new-application) |
@@ -71,6 +72,8 @@ The production rollout applied the homepage lead migration and refreshed static 
 | [GitHub staging release rehearsal](https://github.com/prarit0097/SocialMediaAutomation/blob/b145fab7d3574051ac3ae457077cacf23ba00558/docs/staging-social-publishing-release-rehearsal.md) | https://postzyo.com/blog/test-social-publishing-before-client-launch/ | The rendered article, image and destination returned 200 signed out on November 19, 2026. The published link is marked `rel="nofollow"`. |
 | [Blogger returns-policy update](https://postzyo-field-notes.blogspot.com/2026/11/how-to-announce-store-returns-change-on.html) | https://postzyo.com/blog/update-scheduled-posts-when-a-campaign-date-changes/ | Article, WebP illustration and direct destination returned 200 signed out on November 19, 2026. |
 | [Blogger mobile registration-link audit](https://postzyo-field-notes.blogspot.com/2026/11/a-phone-first-link-audit-after-moving.html) | https://postzyo.com/blog/audit-old-social-links-after-a-website-update/ | Article, WebP illustration and direct destination returned 200 signed out on November 19, 2026. |
+| [ChatGPT Sites publishing brief guide](https://postzyo-publishing-playbook.sunshinypancake1.chatgpt.site/write-a-publishing-brief.html) | https://postzyo.com/blog/test-social-publishing-before-client-launch/ | Public article, illustration and direct destination returned 200 signed out on November 19, 2026. |
+| [ChatGPT Sites backup artwork guide](https://postzyo-publishing-playbook.sunshinypancake1.chatgpt.site/prepare-a-backup-post.html) | https://postzyo.com/blog/organize-a-shared-social-media-asset-folder/ | Public article, illustration and direct destination returned 200 signed out on November 19, 2026. |
 | [AlternativeTo submission](https://alternativeto.net/my-submissions/) | https://postzyo.com/ | Normal review queue. The owner can see it after signing in. |
 
 ## LinkedIn article source
