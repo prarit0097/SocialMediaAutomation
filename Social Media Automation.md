@@ -32,7 +32,7 @@ The Landing page is the first screen shown at app start (`/`) for non-authentica
 
 What it shows:
 - high-level overview of all core modules (Accounts, Scheduler, Insights, AI Insights)
-- responsive editorial photos of a social media manager and a content-planning session. WebP sizes adapt to the viewport, the workflow photo lazy-loads, and the homepage uses a separate social-share image.
+- real Postzyo Scheduler and Planning screenshots populated with sample data. Phones use dedicated WebP captures of the post composer and the calendar item form. Larger screens show the desktop composer and calendar grid. The Planning preview lazy-loads, and the homepage uses a Scheduler preview when shared.
 - clear `Login` and `Signup` actions
 - simple step flow explaining setup to analytics journey
 - the homepage leads with the trial and a link to the workflow, then explains planning, per-platform publishing status, and Insights. Section links jump to features, workflow, pricing, and FAQ. The footer links to pricing, help, and legal pages.
@@ -211,6 +211,8 @@ What it does:
 ### Scheduler
 
 Scheduler supports Facebook Pages, connected Instagram professional accounts, combined FB + IG posts, and one composed post sent to multiple selected accounts. The queue shows an independent delivery row for each destination. Users choose the account with a searchable picker, confirm the browser-local time, and can view profile-specific posting windows and caption guidance from stored insights.
+
+The account picker closes after selection. Bulk mode shows the multi-account controls and hides the single-account fields.
 
 - The scheduling time is stored in UTC with a display timezone. `next_attempt_at` governs delivery and backoff. Schedule requests with the same user-scoped idempotency key and content return the original result. The composer reuses the key when retrying an unchanged submission after a network error.
 - Operators can edit, reschedule or cancel eligible queued destinations and retry known failures. The queue shows Scheduled, Processing, Retrying, Blocked, Verify outcome, Published, Failed and Cancelled. Opening it only reads the signed-in operator's rows.

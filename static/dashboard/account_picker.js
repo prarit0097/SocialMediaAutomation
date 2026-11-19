@@ -25,6 +25,7 @@
     ".acct-pick-badge--fb{background:#1877f2}",
     ".acct-pick-badge--ig{background:linear-gradient(45deg,#f09433,#dc2743,#bc1888)}",
     ".acct-pick-panel{position:absolute;z-index:50;top:calc(100% + 6px);left:0;right:0;background:var(--surface,#fff);border:1px solid rgba(120,120,140,.3);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.18);padding:8px;max-height:320px;display:flex;flex-direction:column}",
+    ".acct-pick-panel[hidden]{display:none}",
     ".acct-pick-search{width:100%;padding:8px 10px;border:1px solid rgba(120,120,140,.35);border-radius:8px;margin-bottom:6px;font:inherit;background:var(--surface,#fff);color:inherit}",
     ".acct-pick-list{overflow-y:auto;display:flex;flex-direction:column;gap:2px}",
     ".acct-pick-item{display:flex;align-items:center;gap:10px;width:100%;padding:8px 10px;border:0;border-radius:8px;background:transparent;cursor:pointer;text-align:left;font:inherit;color:inherit}",
