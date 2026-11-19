@@ -1,0 +1,60 @@
+<div class="homepage-assistant" data-homepage-assistant hidden>
+  <button class="assistant-launcher" type="button" aria-controls="homepage-assistant-dialog" aria-expanded="false">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M20.5 11.5a7.5 7.5 0 0 1-7.5 7.5H5l1.5-3A7.5 7.5 0 1 1 20.5 11.5Z"/>
+      <path d="M9 11h6M9 14h4"/>
+    </svg>
+    Ask Postzyo
+  </button>
+
+  <dialog class="assistant-dialog" id="homepage-assistant-dialog" aria-labelledby="assistant-title">
+    <header class="assistant-header">
+      <h2 id="assistant-title">Ask Postzyo</h2>
+      <button class="assistant-close" type="button" aria-label="Close Postzyo assistant" autofocus>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>
+    </header>
+    <section class="assistant-body" aria-label="Ask a question">
+      <div class="assistant-log" role="log" aria-label="Conversation" tabindex="0">
+        <div class="assistant-message">Ask about pricing, connecting your accounts, or scheduling your first post.</div>
+      </div>
+      <div class="assistant-suggestions" aria-label="Suggested questions">
+        <button type="button" data-question="How long is the free trial?">Free trial</button>
+        <button type="button" data-question="Connect Instagram account">Connect Instagram</button>
+        <button type="button" data-question="Schedule a post">Schedule a post</button>
+      </div>
+      <form class="assistant-question-form" method="post" action="{% url 'homepage_assistant_ask' %}">
+        {% csrf_token %}
+        <label for="assistant-question">Your question</label>
+        <div class="assistant-question-row">
+          <input id="assistant-question" name="question" type="text" maxlength="300" required autocomplete="off">
+          <button class="assistant-primary" type="submit">Send</button>
+        </div>
+        <p class="assistant-status" role="status"></p>
+      </form>
+      <button class="assistant-text-action" type="button" data-show-contact>Request a follow-up</button>
+    </section>
+    <section class="assistant-body assistant-contact" aria-labelledby="assistant-contact-title" hidden>
+      <button class="assistant-text-action" type="button" data-show-chat>Back to chat</button>
+      <h3 id="assistant-contact-title">Request a follow-up</h3>
+      <p>Share your details if you’d like the Postzyo team to email you about the product.</p>
+      <form class="assistant-contact-form" method="post" action="{% url 'homepage_assistant_follow_up' %}">
+        {% csrf_token %}
+        <label for="assistant-name">Name</label>
+        <input id="assistant-name" name="name" type="text" required maxlength="120" autocomplete="name">
+        <label for="assistant-email">Email</label>
+        <input id="assistant-email" name="email" type="email" required maxlength="254" autocomplete="email">
+        <input name="website" type="text" hidden tabindex="-1" autocomplete="off">
+        <label class="assistant-consent">
+          <input name="consent" type="checkbox" required>
+          <span>I agree to receive an email follow-up about Postzyo.</span>
+        </label>
+        <button class="assistant-primary" type="submit">Send request</button>
+      </form>
+      <p class="assistant-status" role="status" tabindex="-1"></p>
+      <a class="assistant-privacy" href="{% url 'privacy_policy' %}">Privacy Policy</a>
+    </section>
+  </dialog>
+</div>

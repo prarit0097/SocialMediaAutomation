@@ -3,6 +3,7 @@
 
 {% block page_styles %}
 <link rel="stylesheet" href="{% static 'dashboard/landing/home.css' %}">
+<link rel="stylesheet" href="{% static 'dashboard/landing/assistant.css' %}">
 {% endblock %}
 
 {% block content %}
@@ -157,4 +158,9 @@
     </nav>
   </footer>
 </div>
+{% endblock %}
+
+{% block page_extras %}
+{% include "accounts/homepage_assistant.html" %}
+<script src="{% static 'dashboard/landing/assistant.js' %}" defer></script>
 {% endblock %}

@@ -98,6 +98,7 @@ def _legal_page_context(page_key: str) -> dict:
                     "heading": "Information We Collect",
                     "points": [
                         "Account identity data such as name, email address, and Google profile picture used for login and workspace identity.",
+                        "Name, email address, and submission time when a visitor requests an email follow-up through the homepage assistant. We do not store the visitor's assistant questions as chat history.",
                         "Connected Meta asset data such as Facebook Page IDs, Instagram Business account IDs, page names, token metadata, and encrypted access tokens.",
                         "Operator-generated content such as scheduled post captions, media URLs, uploaded media files, planning items, and workspace settings.",
                         "Analytics and automation records such as insight snapshots, publishing logs, retry states, token health states, and queue execution metadata.",
@@ -107,6 +108,7 @@ def _legal_page_context(page_key: str) -> dict:
                     "heading": "How We Use Information",
                     "points": [
                         "To authenticate users and maintain secure access to the Postzyo workspace.",
+                        "To follow up about Postzyo when a visitor gives permission through the homepage assistant.",
                         "To connect Meta assets, publish scheduled content, store insights snapshots, and generate profile-specific recommendations.",
                         "To monitor system health, diagnose failures, prevent duplicate tasks, and improve automation reliability.",
                         "To comply with platform, security, legal, and audit requirements where applicable.",
@@ -133,6 +135,7 @@ def _legal_page_context(page_key: str) -> dict:
                     "points": [
                         "User account data, scheduled content, insight snapshots, and automation records are retained for as long as required to operate the service, troubleshoot issues, maintain historical analytics, and satisfy legal obligations.",
                         "Users may request deletion of account-linked data through the Data Deletion page and support contact listed below.",
+                        "Visitors can withdraw an email follow-up request or ask us to delete the contact details they submitted by emailing the support contact.",
                     ],
                 },
             ],
@@ -191,6 +194,7 @@ def _legal_page_context(page_key: str) -> dict:
                         f"Send a deletion request from the email address associated with your Postzyo account to {support_email}.",
                         "Use the subject line: Postzyo Data Deletion Request.",
                         "Include your account email address and any connected workspace identifiers that help us locate the correct account.",
+                        "For details submitted through the homepage assistant, contact us from the email address you shared and ask to delete your follow-up request. A Postzyo account is not required.",
                     ],
                 },
                 {

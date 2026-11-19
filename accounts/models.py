@@ -9,6 +9,20 @@ from django.utils import timezone
 TRIAL_PERIOD_DAYS = 3
 
 
+class HomepageLead(models.Model):
+    name = models.CharField(max_length=120)
+    email = models.EmailField(unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-created_at", "-pk")
+        verbose_name = "homepage follow-up request"
+        verbose_name_plural = "homepage follow-up requests"
+
+    def __str__(self):
+        return self.name
+
+
 def _default_subscription_expiry():
     return timezone.now().date() + timedelta(days=TRIAL_PERIOD_DAYS)
 

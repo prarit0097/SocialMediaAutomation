@@ -54,6 +54,14 @@ What it does:
 - production reverse-proxy chain preserves the original HTTPS protocol header through both host Nginx and container Nginx so Django secure redirects do not loop on live deployment
 - production container Nginx now re-resolves the Docker web service through Docker DNS, so web container restarts/redeploys do not leave stale upstream IPs that cause 502 errors
 
+### Homepage assistant and follow-up requests
+
+- **Ask Postzyo** opens a responsive assistant for visitors. It matches more than 10,000 question phrasings to maintained Postzyo answers, including common Hinglish wording and spelling mistakes. Topics include pricing, the trial, account setup, Meta permissions, publishing, Planning, Insights, billing and privacy.
+- Answers use current trial and plan values from the app. When the assistant cannot find a clear match, it links to Help. The conversation stays in the current page and the server does not store it as chat history.
+- Visitors can optionally request an email follow-up by entering a name and email and selecting the consent checkbox. Postzyo records the contact details and submission time once per normalized email. Asking a question requires no signup, purchase or contact details.
+- Authorized staff can review requests in Django Admin under **Accounts → Homepage follow-up requests**. The consent form links to the Privacy Policy, and visitors can use the Data Deletion page to request removal. The form saves a request for staff to review.
+- Questions and follow-up requests have separate rate limits. With the two-proxy deployment, Postzyo uses the client address appended by the outermost trusted proxy.
+
 ### Public search and pricing
 
 - Public landing, pricing, help and legal pages render server-side with page-specific titles, descriptions, absolute canonical URLs, social metadata and structured data. `SEO_CANONICAL_ORIGIN` defaults to `https://postzyo.com` and is independent of the media URL configuration.

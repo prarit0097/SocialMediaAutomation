@@ -1,5 +1,6 @@
 ﻿from django.urls import path
 
+from . import assistant_views
 from .views import (
     AdminLoginView,
     data_deletion_view,
@@ -24,4 +25,6 @@ urlpatterns = [
     path("terms/", terms_view, name="terms"),
     path("data-deletion/", data_deletion_view, name="data_deletion"),
     path("help/", help_view, name="help"),
+    path("assistant/ask/", assistant_views.ask, name="homepage_assistant_ask"),
+    path("assistant/follow-up/", assistant_views.follow_up, name="homepage_assistant_follow_up"),
 ]

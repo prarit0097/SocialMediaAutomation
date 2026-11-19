@@ -1,6 +1,24 @@
 from django import forms
 
 
+class HomepageQuestionForm(forms.Form):
+    question = forms.CharField(max_length=300)
+
+
+class HomepageFollowUpForm(forms.Form):
+    name = forms.CharField(max_length=120)
+    email = forms.EmailField(max_length=254)
+    consent = forms.ChoiceField(choices=(("on", "Email me about Postzyo"),))
+
+    def clean_email(self):
+        local, domain = self.cleaned_data["email"].rsplit("@", 1)
+        try:
+            ascii_domain = domain.encode("idna").decode("ascii")
+        except UnicodeError as error:
+            raise forms.ValidationError("Enter a valid email address.") from error
+        return self.fields["email"].clean(f"{local.lower()}@{ascii_domain.lower()}")
+
+
 class HelpRequestForm(forms.Form):
     TOPIC_CHOICES = [
         ("account_access", "Account access"),
