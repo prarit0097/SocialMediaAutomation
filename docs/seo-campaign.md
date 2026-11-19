@@ -6,7 +6,7 @@
 | --- | --- |
 | Guides on Postzyo | Twenty-one guides live after the November 19, 2026 web release at `9c239b7`. Verified the blog links, canonicals, BlogPosting metadata and images for all 21. |
 | External illustrated articles | Eight live articles with illustrations or product screenshots, on GitHub, LinkedIn, Blogger and Google Sites. |
-| Social and news placements | One public LinkedIn article and one public LinkedIn checklist with an illustrated link preview. Illustrated editorial drafts exist for Public City and ASBN. Neither news placement is public. |
+| Social and news placements | One public LinkedIn article and one public LinkedIn checklist with an illustrated link preview. The Public City draft is ready for author review. |
 | External backlinks | Nine verified links across four sites. The newest Google Sites placement links directly to the guide on missing Meta Insights. The AlternativeTo entry is pending review. |
 | Search Console | The verified `https://postzyo.com/` property reported Success and 16 discovered pages before accepting the November 19, 2026 resubmission of the updated 28-URL sitemap. Search Console previously added the Instagram Reels guide to its priority crawl queue. Indexing of the new guides has yet to be verified. |
 
@@ -27,7 +27,7 @@ The production rollout applied the homepage lead migration and refreshed static 
 | SaaSHub | The workflow requests direct submission by the product owner and asks for a product-domain email address for higher-priority verification. [Submission form](https://www.saashub.com/services/submit) |
 | Medium | The author account was signed out. The editor redirects to sign-in and states that proceeding accepts Medium's terms. [Terms](https://policy.medium.com/medium-terms-of-service-9db0094a1e0f) |
 | SaaS Place | Free manual review with no account. The submission form states that sending an entry accepts its terms. Approval is pending. Marketing is the relevant category. [Submission form](https://saasplace.io/submit/) |
-| ASBN Small Business Network | Prepared the illustrated manuscript “How to Hand Off a Small Business Social Inbox Between Shifts.” Verified the two-page PDF and author-bio link. Submission is pending an approved business phone number and contributor headshot. The upload input lists PDF, while the editorial instructions ask for Word or Google Docs. [Contributor form](https://www.asbn.com/contribute/) |
+| ASBN Small Business Network | The owner asked to skip this channel. Editorial draft retained locally. |
 | Digital Soules | Free editorial pitches. It welcomes practical tutorials and checklists and requires firsthand input. Its guidelines allow one relevant link in the author bio. [Editorial guidelines](https://digitalsoules.com/write-for-us/) |
 | StartFast and AllBusiness | StartFast's product form requires a paid plan. AllBusiness charges an administrative fee on accepted guest posts. [StartFast](https://startfa.st/submit) [AllBusiness](https://www.allbusiness.com/guest-post-overview) |
 | DotProTools | Sent the Social Media category form on the free tier using Postzyo's public support contact. It returned to the network homepage without a receipt. The public category had no matching listing, so acceptance is unverified. [Submission form](https://dotprotools.com/marketing-tools/submit) |

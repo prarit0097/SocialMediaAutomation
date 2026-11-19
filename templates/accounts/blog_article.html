@@ -19,6 +19,16 @@
         <p>{{ body }}</p>
       </section>
     {% endfor %}
+    {% if related_guides %}
+      <section class="legal-section-block">
+        <h2>Related guides</h2>
+        <ul>
+          {% for slug, guide in related_guides %}
+            <li><a href="{% url 'blog_article' slug=slug %}">{{ guide.title }}</a></li>
+          {% endfor %}
+        </ul>
+      </section>
+    {% endif %}
     <div class="lp-cta-row">
       <a class="btn" href="{% url 'signup' %}">Start a free trial</a>
       <a class="btn muted" href="{% url 'help' %}">Get help</a>

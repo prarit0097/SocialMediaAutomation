@@ -106,6 +106,17 @@ class PublicSEOTests(SimpleTestCase):
                 self.assertIn("/blog/", html.anchors)
         self.assertEqual(self.get("/blog/missing/").status_code, 404)
 
+    def test_every_guide_links_to_two_other_public_guides(self):
+        guide_paths = {f"/blog/{slug}/" for slug in ARTICLES}
+        for path in sorted(guide_paths):
+            with self.subTest(path=path):
+                response = self.get(path)
+                self.assertContains(response, "Related guides")
+                html = PublicHTML(response)
+                related_links = {link for link in html.anchors if link.startswith("/blog/") and link != "/blog/"}
+                self.assertEqual(len(related_links), 2)
+                self.assertTrue(related_links <= guide_paths - {path})
+
     def test_landing_links_to_signup_and_each_visible_section(self):
         response = self.get("/")
         html = PublicHTML(response)
