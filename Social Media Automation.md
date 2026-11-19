@@ -64,7 +64,7 @@ What it does:
 
 ### Public search and pricing
 
-- The public blog at `/blog/` lists illustrated guides for Facebook and Instagram scheduling, launch rehearsals, Meta connections, calendar planning, accessibility, campaign changes, website-link audits and reporting. Each guide has its own canonical URL, share image, BlogPosting metadata and sitemap entry. Article pages also link to two related guides. Add new articles and their related guide slugs in `accounts/articles.py`.
+- The public blog at `/blog/` lists illustrated guides for Facebook and Instagram scheduling, launch rehearsals, Meta connections, calendar planning, accessibility, campaign changes and closeout, website-link audits and reporting. Editorial guides also cover calls to action, customer FAQs, Reel opening frames and shared asset folders. Each guide has its own canonical URL, share image, BlogPosting metadata and sitemap entry, plus links to two related guides. Add new articles and their related guide slugs in `accounts/articles.py`.
 
 - Public landing, pricing, help and legal pages render server-side with page-specific titles, descriptions, absolute canonical URLs, social metadata and structured data. `SEO_CANONICAL_ORIGIN` defaults to `https://postzyo.com` and is independent of the media URL configuration.
 - `/pricing/` shows the same INR plan prices and term lengths that checkout uses. `/robots.txt` points crawlers to `/sitemap.xml`, which includes only the registered public pages. Public sign-in utilities and authenticated workspace responses carry `noindex` directives.
