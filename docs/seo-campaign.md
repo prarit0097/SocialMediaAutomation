@@ -39,7 +39,7 @@ The campaign uses free publishing and submission routes. For an external placeme
 
 | Page | Destination | Status |
 | --- | --- | --- |
-| [Scheduled post delivery checklist](https://github.com/prarit0097/SocialMediaAutomation/blob/codex/postzyo-publishing-technical-seo/docs/scheduled-post-delivery-checklist.md) | https://postzyo.com/ | Public GitHub documentation |
+| [Scheduled post delivery checklist](https://github.com/prarit0097/SocialMediaAutomation/blob/d961e98/docs/scheduled-post-delivery-checklist.md) | https://postzyo.com/ | Verified signed out on November 19, 2026. Article and image returned 200. GitHub marked the link `rel="nofollow"`. |
 | [AlternativeTo submission](https://alternativeto.net/my-submissions/) | https://postzyo.com/ | Normal review queue. The owner can see it after signing in. |
 
 ## LinkedIn article draft
