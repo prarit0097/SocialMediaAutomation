@@ -594,13 +594,14 @@ This project includes local MCP servers under `mcp_servers/` so Codex or future 
 - SQLite can still hit transient write locks under high parallel activity; PostgreSQL is strongly recommended for production workloads.
 
 ## Test Reliability Notes
-- The first publishing and technical SEO batch was verified with 237 Django tests on PostgreSQL 16. SQLite skips the two PostgreSQL locking regressions. Local browser checks exercised schedule replay, status filters and queue edits. Local Nginx checks covered redirects, callbacks, media and staging access.
+- The publishing and technical SEO release was verified with 238 Django tests on PostgreSQL 16, including PostgreSQL-only locking and upgrade coverage. Local browser checks exercised schedule replay, status filters and queue edits. Nginx checks covered redirects, callbacks, media and staging access.
 - static storage coverage (`core/tests_storage.py`) locks in hashed URLs when a manifest entry exists, unhashed fallback when it is missing or absent, and that the stock Django storage would raise in that case.
 - force-refresh-all regression coverage now explicitly checks counter seeding before dispatch, preservation of task-written counters against the post-dispatch save, cooldown suppression on no-op runs, once-per-run accounts-cache invalidation from the status endpoint, and that skipped/no-token accounts cannot prematurely finalize a run that still has live refresh tasks.
 - MCP helper tests are optional and auto-skip when the external `mcp` Python package is not installed.
 - Instagram local image optimization tests are auto-skip when Pillow (`PIL`) is not installed.
 - publishing task tests clear cache in setup to avoid stale lock-key side effects between tests.
 - scheduler regressions cover read-only queue requests, independent dispatch by platform, safe retry and reconciliation, schedule replay and conflicts, and user-scoped queue actions.
+- PostgreSQL upgrade coverage includes pre-existing scheduled rows. The owner backfill validates deferred foreign keys before creating the partial Instagram claim index, inside the same atomic migration.
 - planning coverage now also checks invalid month validation, connected-account ownership boundaries, cross-user item isolation, and AI planner account-context isolation.
 
 ## Static Asset Cache-Busting

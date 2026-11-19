@@ -33,6 +33,10 @@ def preserve_legacy_delivery(apps, schema_editor):
         next_attempt_at=None,
         error_message='A previous worker might have sent this post. Review the destination before posting it again.',
     )
+    if schema_editor.connection.vendor == 'postgresql':
+        # Flush owner FK triggers before the following partial unique index is created.
+        with schema_editor.connection.cursor() as cursor:
+            cursor.execute('SET CONSTRAINTS ALL IMMEDIATE')
 
 
 class Migration(migrations.Migration):

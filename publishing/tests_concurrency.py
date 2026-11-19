@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.db import connection, connections, transaction
+from django.db.migrations.executor import MigrationExecutor
 from django.test import RequestFactory, TransactionTestCase, skipUnlessDBFeature
 from django.utils import timezone
 
@@ -96,3 +97,32 @@ class PublishClaimConcurrencyTests(TransactionTestCase):
         post.refresh_from_db()
         self.assertEqual(post.status, "processing")
         self.assertEqual(post.stage, "final_write")
+
+
+class PublishingMigrationTests(TransactionTestCase):
+    def test_postgresql_upgrade_of_existing_rows_creates_the_claim_index(self):
+        if connection.vendor != "postgresql":
+            self.skipTest("Verifies PostgreSQL deferred foreign keys during upgrade")
+        prior = ("publishing", "0002_add_scalability_indexes")
+        next_revision = ("publishing", "0003_scheduledpost_attempt_count_and_more")
+        targets = [prior, ("integrations", "0008_connectedaccount_insight_refresh_expires_at_and_more")]
+        self.addCleanup(lambda: MigrationExecutor(connection).migrate([next_revision]))
+        executor = MigrationExecutor(connection)
+        executor.migrate(targets)
+        apps = executor.loader.project_state(targets).apps
+        user = apps.get_model("auth", "User").objects.create(username="migration-qa", last_login=timezone.now())
+        account = apps.get_model("integrations", "ConnectedAccount").objects.create(
+            user_id=user.pk, platform="facebook", page_id="migration-page", page_name="Migration QA", access_token="test-token",
+        )
+        apps.get_model("publishing", "ScheduledPost").objects.create(
+            account_id=account.pk, platform="facebook", message="pending", scheduled_for=timezone.now(),
+        )
+
+        MigrationExecutor(connection).migrate([next_revision])
+
+        post = ScheduledPost.objects.get()
+        self.assertEqual(post.owner_id, user.pk)
+        self.assertEqual(post.next_attempt_at, post.scheduled_for)
+        with connection.cursor() as cursor:
+            constraints = connection.introspection.get_constraints(cursor, ScheduledPost._meta.db_table)
+        self.assertIn("publish_one_ig_claim_per_account", constraints)
