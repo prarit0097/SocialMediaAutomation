@@ -4,15 +4,15 @@
 
 | Deliverable | Verified state |
 | --- | --- |
-| Guides on Postzyo | Six guides live after the November 19, 2026 web release at `c69c675`. The public blog index, all six articles, and their images returned 200. |
+| Guides on Postzyo | Nine guides live after the November 19, 2026 web release at `2afc802`. Verified the public blog index links, article canonicals, BlogPosting metadata and images for all nine. |
 | External illustrated articles | Five live articles with illustrations or product screenshots, on GitHub, LinkedIn and Blogger. |
 | Social and news placements | One public LinkedIn article. A Public City editorial draft is ready for author review. |
 | External backlinks | Five verified article links across three sites. Three point to the homepage and two point to the media URL guide. The AlternativeTo entry is pending review. |
-| Search Console | The existing verified `https://postzyo.com/` URL-prefix property accepted resubmission of `sitemap.xml` on November 19, 2026. Google previously reported six discovered pages. The updated live sitemap contains 13 URLs, pending Google's recrawl. |
+| Search Console | The verified `https://postzyo.com/` property reported Success and 13 discovered pages on November 19, 2026. Search Console accepted resubmission after the live sitemap grew to 16 URLs. The latest URLs still await Google’s recrawl. |
 
 The campaign uses free publishing and submission routes. For an external placement, record the final public URL, the exact Postzyo destination and the verification date. Test the page signed out, check that the image renders, and inspect the link on the published page before counting it.
 
-The production rollout applied the homepage lead migration and refreshed static assets. The signed-out homepage showed the redesigned Scheduler and Planning sections and answered a trial question through Ask Postzyo. The `www` redirect preserved the blog path, and the canonical sitemap listed the blog and all six guides.
+The production rollout applied the homepage lead migration and refreshed static assets. The signed-out homepage showed the redesigned Scheduler and Planning sections and answered a trial question through Ask Postzyo. The `www` redirect preserved the blog path, and the canonical sitemap listed the blog and all nine guides.
 
 ## Publishing opportunities
 
