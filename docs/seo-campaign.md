@@ -5,9 +5,9 @@
 | Deliverable | Verified state |
 | --- | --- |
 | Guides on Postzyo | Eleven guides live after the November 19, 2026 web release at `8db1024`. Verified the public index links, article canonicals, BlogPosting metadata and images for all eleven. |
-| External illustrated articles | Five live articles with illustrations or product screenshots, on GitHub, LinkedIn and Blogger. |
+| External illustrated articles | Six live articles with illustrations or product screenshots, on GitHub, LinkedIn and Blogger. |
 | Social and news placements | One public LinkedIn article. A Public City editorial draft is ready for author review. |
-| External backlinks | Five verified article links across three sites. Three point to the homepage and two point to the media URL guide. The AlternativeTo entry is pending review. |
+| External backlinks | Six verified article links across three sites. Three point to the homepage, two to the media URL guide, and one to the campaign date change guide. The AlternativeTo entry is pending review. |
 | Search Console | The verified `https://postzyo.com/` property reported Success and 13 discovered pages on November 19, 2026. Search Console accepted resubmission at 16 URLs. The same live sitemap now contains 18 URLs. Google’s recrawl of the latest release has yet to be verified. |
 
 The campaign uses free publishing and submission routes. For an external placement, record the final public URL, the exact Postzyo destination and the verification date. Test the page signed out, check that the image renders, and inspect the link on the published page before counting it.
@@ -19,12 +19,16 @@ The production rollout applied the homepage lead migration and refreshed static 
 | Channel | Evidence and next action |
 | --- | --- |
 | WordPress.com | The free plan includes hosting on a WordPress.com subdomain. Create a branded publication and publish original tutorials. [Plan details](https://wordpress.com/pricing/) |
-| Blogger | Postzyo Field Notes has three live illustrated guides covering the weekend publishing handoff, naming approved image exports, and checking delivery before retrying a post. [Publication](https://postzyo-field-notes.blogspot.com/) |
+| Blogger | Postzyo Field Notes has four live illustrated guides covering the weekend publishing handoff, approved image exports, delivery checks before retry, and holiday-hours updates. [Publication](https://postzyo-field-notes.blogspot.com/) |
 | LinkedIn | Published from the signed-in author account to Anyone. The article uses an inline Scheduler screenshot. [Live article](https://www.linkedin.com/pulse/preflight-check-publishing-same-announcement-facebook-prarit-sidana-jslnc/) |
 | AlternativeTo | Postzyo is in the free normal review queue under Commercial. The signed-in preview confirmed the Social Media Scheduling, Calendar View and Multiple Account support features after the listing update on November 19, 2026. [Submission receipt](https://alternativeto.net/my-submissions/) [Submission rules](https://alternativeto.net/faq/#add-a-new-application) |
 | Product Hunt | The regular launch route is free. Prepare a verified personal maker account, product description, logo and gallery image. [Launch requirements](https://help.producthunt.com/en/articles/17734646-8-launch-faq-and-myths) |
 | SaaSHub | The workflow requests direct submission by the product owner and asks for a product-domain email address for higher-priority verification. [Submission form](https://www.saashub.com/services/submit) |
 | Medium | The author account was signed out. The editor redirects to sign-in and states that proceeding accepts Medium's terms. [Terms](https://policy.medium.com/medium-terms-of-service-9db0094a1e0f) |
+| SaaS Place | Free manual review with no account. The submission form states that sending an entry accepts its terms. Approval is pending. Marketing is the relevant category. [Submission form](https://saasplace.io/submit/) |
+| ASBN Small Business Network | Accepts practical small-business articles and website links in the contributor bio. The form requires a phone number. First-time contributors also supply a bio, headshot and LinkedIn profile. The instructions ask for Word or Google Docs, while the upload input advertises PDF and image files. [Contributor form](https://www.asbn.com/contribute/) |
+| Digital Soules | Free editorial pitches. It welcomes practical tutorials and checklists and requires firsthand input. Its guidelines allow one relevant link in the author bio. [Editorial guidelines](https://digitalsoules.com/write-for-us/) |
+| StartFast and AllBusiness | StartFast's product form requires a paid plan. AllBusiness charges an administrative fee on accepted guest posts. [StartFast](https://startfa.st/submit) [AllBusiness](https://www.allbusiness.com/guest-post-overview) |
 | Social Media Today | Contributor guidelines accept useful social media practice articles and allow relevant links. The public contribution page currently directs readers to its community. Confirm an active editorial submission route before pitching. [Contributor guidelines](https://www.socialmediatoday.com/contributor-guidelines/) [Contribution page](https://www.socialmediatoday.com/contribute/) |
 | Public City | The free editorial form permits a relevant author website link. An illustrated draft about correcting changed announcements is ready for human editing and fact-checking as required by its guidelines. The submission form also requires a CAPTCHA. [Editorial form and guidelines](https://publcity.com/write-for-us/#submitform) |
 
@@ -49,6 +53,7 @@ The production rollout applied the homepage lead migration and refreshed static 
 | [Blogger Friday handoff guide](https://postzyo-field-notes.blogspot.com/2026/11/a-friday-handoff-for-weekend-facebook.html) | https://postzyo.com/ | Verified signed out on November 19, 2026. The calendar image loaded and the article links directly to the homepage. |
 | [Blogger image export guide](https://postzyo-field-notes.blogspot.com/2026/11/how-to-label-image-exports-for-social.html) | https://postzyo.com/blog/check-media-url-before-scheduling/ | Verified signed out on November 19, 2026. The article, WebP illustration and direct destination returned 200. |
 | [Blogger scheduled-post retry guide](https://postzyo-field-notes.blogspot.com/2026/11/what-to-check-before-retrying-scheduled.html) | https://postzyo.com/blog/check-media-url-before-scheduling/ | Verified signed out on November 19, 2026. The article, Scheduler screenshot and direct destination returned 200. |
+| [Blogger holiday-hours checklist](https://postzyo-field-notes.blogspot.com/2026/11/a-holiday-hours-checklist-for-facebook.html) | https://postzyo.com/blog/update-scheduled-posts-when-a-campaign-date-changes/ | Verified signed out on November 19, 2026. The article, WebP illustration and direct destination returned 200. |
 | [AlternativeTo submission](https://alternativeto.net/my-submissions/) | https://postzyo.com/ | Normal review queue. The owner can see it after signing in. |
 
 ## LinkedIn article source
