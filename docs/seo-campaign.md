@@ -4,9 +4,9 @@
 
 | Deliverable | Verified state |
 | --- | --- |
-| Guides on Postzyo | Three guides on the release branch. Verify public URLs after rollout. |
+| Guides on Postzyo | Three guides on the release branch. On November 19, 2026, the live `www` host redirected to the apex, which served the old homepage and returned 404 for `/blog/`. Rollout needs authenticated access to the VPS. |
 | External illustrated articles | One public GitHub guide with a product screenshot. No independent editorial placement verified. |
-| Social and news placements | No live placements verified. |
+| Social and news placements | LinkedIn article saved as a draft. Cover upload and publication are pending. No live news placement verified. |
 | External backlinks | One public GitHub guide links to the homepage. Its rel attribute is recorded below. The AlternativeTo entry is pending review. |
 | Search Console | The connected account did not list a Postzyo property on November 19, 2026. |
 
@@ -17,7 +17,7 @@ The campaign uses free publishing and submission routes. For an external placeme
 | Channel | Evidence and next action |
 | --- | --- |
 | WordPress.com | The free plan includes hosting on a WordPress.com subdomain. Create a branded publication and publish original tutorials. [Plan details](https://wordpress.com/pricing/) |
-| LinkedIn | LinkedIn documents article publishing for eligible signed-in authors. Use a relevant Postzyo page or authorized author profile and give the article platform-specific examples. [Article publishing](https://www.linkedin.com/help/linkedin/answer/a522427) |
+| LinkedIn | The signed-in author account saved the article with a working Postzyo homepage link in the editor. Chrome blocks automated cover upload until local file access is enabled. [Saved draft](https://www.linkedin.com/article/edit/7529178807308754945/) [Article publishing](https://www.linkedin.com/help/linkedin/answer/a522427) |
 | AlternativeTo | Account and email verified. Postzyo submitted with its official website, logo and a Scheduler screenshot under Commercial. The submission is in the normal review queue. [Submission receipt](https://alternativeto.net/my-submissions/) [Submission rules](https://alternativeto.net/faq/#add-a-new-application) |
 | Product Hunt | The regular launch route is free. Prepare a verified personal maker account, product description, logo and gallery image. [Launch requirements](https://help.producthunt.com/en/articles/17734646-8-launch-faq-and-myths) |
 | SaaSHub | Check the free listing workflow and product verification. The submission form asks operators to submit their own product. [Submission form](https://www.saashub.com/services/submit) |
