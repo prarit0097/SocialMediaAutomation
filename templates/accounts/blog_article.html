@@ -11,7 +11,7 @@
     <figure style="margin:0;max-width:44rem">
       <img src="{% static article.image %}" alt="{{ article.image_alt }}" decoding="async"
         style="display:block;width:100%;height:auto;border-radius:12px">
-      <figcaption>Postzyo product preview with sample data</figcaption>
+      <figcaption>{{ article.image_caption }}</figcaption>
     </figure>
     {% for heading, body in article.sections %}
       <section class="legal-section-block">
