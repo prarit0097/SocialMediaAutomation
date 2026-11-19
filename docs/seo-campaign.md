@@ -4,15 +4,15 @@
 
 | Deliverable | Verified state |
 | --- | --- |
-| Guides on Postzyo | Three guides live after the November 19, 2026 rollout of `5c11a62`. The public blog index and all three article URLs returned 200. |
+| Guides on Postzyo | Six guides live after the November 19, 2026 web release at `c69c675`. The public blog index, all six articles, and their images returned 200. |
 | External illustrated articles | Three live articles with product screenshots, on GitHub, LinkedIn and Blogger. |
 | Social and news placements | One public LinkedIn article. A Public City editorial draft is ready for author review. |
 | External backlinks | Three verified article links to the homepage. The AlternativeTo entry is pending review. |
-| Search Console | The connected account did not list a Postzyo property on November 19, 2026. |
+| Search Console | The existing verified `https://postzyo.com/` URL-prefix property accepted resubmission of `sitemap.xml` on November 19, 2026. Google previously reported six discovered pages. The updated live sitemap contains 13 URLs, pending Google's recrawl. |
 
 The campaign uses free publishing and submission routes. For an external placement, record the final public URL, the exact Postzyo destination and the verification date. Test the page signed out, check that the image renders, and inspect the link on the published page before counting it.
 
-The production rollout applied the homepage lead migration and refreshed static assets. The signed-out homepage showed the redesigned Scheduler and Planning sections and answered a trial question through Ask Postzyo. The `www` redirect preserved the blog path, and the canonical sitemap listed the blog and all three guides.
+The production rollout applied the homepage lead migration and refreshed static assets. The signed-out homepage showed the redesigned Scheduler and Planning sections and answered a trial question through Ask Postzyo. The `www` redirect preserved the blog path, and the canonical sitemap listed the blog and all six guides.
 
 ## Publishing opportunities
 
