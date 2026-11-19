@@ -5,9 +5,9 @@
 | Deliverable | Verified state |
 | --- | --- |
 | Guides on Postzyo | Thirty-two guides live after the November 19, 2026 web release at `80995d5`. Verified the blog links, canonicals, BlogPosting metadata, images and all 64 related-guide links. |
-| External illustrated articles | Ten live articles with illustrations or product screenshots, on GitHub, LinkedIn, Blogger and Google Sites. |
+| External illustrated articles | Eleven live articles with illustrations or product screenshots, on GitHub, LinkedIn, Blogger and Google Sites. |
 | Social and news placements | One public LinkedIn article and two public LinkedIn short posts with illustrated link previews. The Public City draft is ready for author review. |
-| External backlinks | Twelve verified links across four sites. The latest Google Sites article links to the Postzyo campaign closeout guide. The AlternativeTo entry is pending review. |
+| External backlinks | Thirteen verified links across four sites. The latest GitHub article links to the Postzyo launch rehearsal guide. The AlternativeTo entry is pending review. |
 | Search Console | The verified `https://postzyo.com/` property reported Success and 28 discovered pages before accepting the November 19, 2026 resubmission of the 39-URL sitemap. Indexing of the newest guides has yet to be verified. |
 
 The campaign uses free publishing and submission routes. For an external placement, record the final public URL, the exact Postzyo destination and the verification date. Test the page signed out, check that the image renders, and inspect the link on the published page before counting it.
@@ -21,6 +21,7 @@ The production rollout applied the homepage lead migration and refreshed static 
 | WordPress.com | The free plan includes hosting on a WordPress.com subdomain. Create a branded publication and publish original tutorials. [Plan details](https://wordpress.com/pricing/) |
 | Blogger | Postzyo Field Notes has five live illustrated guides. Its newest article shows how a fitness studio can use follow-up posts to cover registration, arrival and a full class. [Publication](https://postzyo-field-notes.blogspot.com/) |
 | Google Sites | Postzyo Field Guides has three public illustrated guides on the free Google Sites address. They cover campaign review, a reporting handoff and sold-out promotions. [Publication](https://sites.google.com/view/postzyo-field-guides/home) |
+| GitHub Gist | The signed-in editor uses the signup address as the public commit email. The release rehearsal guide was published through the existing public repository instead. [Gist editor](https://gist.github.com/) |
 | LinkedIn | Published to Anyone. The original article has an inline Scheduler screenshot. The newer Reels checklist uses the illustrated Postzyo link preview. [Article](https://www.linkedin.com/pulse/preflight-check-publishing-same-announcement-facebook-prarit-sidana-jslnc/) [Reels checklist](https://www.linkedin.com/posts/prarit-sidana_how-to-schedule-an-instagram-reel-postzyo-activity-7529193205884485632-CABh) |
 | AlternativeTo | Postzyo is in the free normal review queue under Commercial. The signed-in preview confirmed the Social Media Scheduling, Calendar View and Multiple Account support features after the listing update on November 19, 2026. [Submission receipt](https://alternativeto.net/my-submissions/) [Submission rules](https://alternativeto.net/faq/#add-a-new-application) |
 | Product Hunt | The regular launch route is free. Prepare a verified personal maker account, product description, logo and gallery image. [Launch requirements](https://help.producthunt.com/en/articles/17734646-8-launch-faq-and-myths) |
@@ -66,6 +67,7 @@ The production rollout applied the homepage lead migration and refreshed static 
 | [LinkedIn call-to-action example](https://www.linkedin.com/posts/prarit-sidana_how-to-choose-a-call-to-action-for-a-social-activity-7529201024092319744-HyLx) | https://postzyo.com/blog/choose-a-call-to-action-for-social-posts/ | Verified the public post, illustrated card and destination inside LinkedIn's outbound link on November 19, 2026. |
 | [Blogger fitness class follow-up guide](https://postzyo-field-notes.blogspot.com/2026/11/three-follow-up-posts-after-fitness.html) | https://postzyo.com/blog/turn-customer-faqs-into-social-posts/ | The article, WebP illustration and direct Postzyo destination returned 200 signed out on November 19, 2026. |
 | [Google Sites sold-out promotion guide](https://sites.google.com/view/postzyo-field-guides/when-a-promotion-sells-out) | https://postzyo.com/blog/close-out-a-social-media-campaign/ | The public guide, WebP illustration and direct destination returned 200 signed out on November 19, 2026. Verified navigation from the publication home. |
+| [GitHub staging release rehearsal](https://github.com/prarit0097/SocialMediaAutomation/blob/b145fab7d3574051ac3ae457077cacf23ba00558/docs/staging-social-publishing-release-rehearsal.md) | https://postzyo.com/blog/test-social-publishing-before-client-launch/ | The rendered article, image and destination returned 200 signed out on November 19, 2026. The published link is marked `rel="nofollow"`. |
 | [AlternativeTo submission](https://alternativeto.net/my-submissions/) | https://postzyo.com/ | Normal review queue. The owner can see it after signing in. |
 
 ## LinkedIn article source
